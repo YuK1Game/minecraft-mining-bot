@@ -250,6 +250,17 @@ test('default geometry can finish every short segment and receive both layers of
   assert.equal(inventory.items.filter(item => item.name === 'minecraft:cobblestone_slab').reduce((n, item) => n + item.count, 0), 32 * 64 - placedSlabs)
 })
 
+test('regional search measures the entrance height at each horizontal candidate', async () => {
+  const f = fixture({ full: true })
+  for (let x = -14; x <= 14; x++) for (let z = -14; z <= 14; z++) f.put({ x, y: 32, z }, 'iron_ore')
+  // The observation centre is above the level of every available entrance.
+  const chosen = await planMine({ ...f, origin: { x: 0.5, y: 66, z: 0.5 }, resource: 'raw_iron', upperYs: [32],
+    width: 16, length: 16, searchRadius: 4, maxCandidates: 12 })
+  assert.equal(chosen.status, 'planned', JSON.stringify(chosen.diagnostics))
+  assert.equal(chosen.plan.shaft.topY, 64)
+  assert.equal(chosen.plan.shaft.topLanding.y, 64)
+})
+
 test('a solid obstruction or an unsupported surface entrance cannot be selected as a mine', async () => {
   for (const mode of ['body', 'hole']) {
     const f = fixture({ full: true })

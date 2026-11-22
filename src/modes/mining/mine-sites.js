@@ -93,6 +93,14 @@ async function observeExtension(ctx,branch,search){
   return out.changed?results.partial('MINE_OBSERVATION_RECEIVED',{evidence:out.result.evidence}):out.result
 }
 
+function rejectSite(ctx,search,plan){
+  const {code,diagnostics={}}=plan,index=search.index
+  const details={code,unknown:diagnostics.unknown,ore:diagnostics.observedOres,unsafe:diagnostics.rejectedHazard,lowerYs:diagnostics.lowerYs,samples:diagnostics.unsafeSamples}
+  search.rejected??={}
+  if(JSON.stringify(search.rejected[index])!==JSON.stringify(details))ctx.log?.(`採掘候補 ${index+1}/${OFFSETS.length}: ${JSON.stringify(details)}`)
+  search.rejected[index]=details
+}
+
 async function nextMine(ctx,resource,targetHeld){
   const mine=memory(ctx),sites=mine.sites??=[],revision=revisionOf(ctx),worldScope=state.mineWorldScope(raw(ctx))
   if(!live(ctx))return {result:stopped()}
@@ -100,9 +108,16 @@ async function nextMine(ctx,resource,targetHeld){
   if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT','確認済み採掘場が8か所に達しました。保管した鉱石と採掘範囲を確認します。','supplies_changed')}
   const search=mine.search??={index:0}
   const requestKey=JSON.stringify([resource,targetHeld,scope(ctx)])
-  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin}
+  if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed}
   // Observation moves must not move the nine fixed candidate centres too.
   search.origin??=originAt(ctx,0,sites).origin
+  // Reconsider a legacy exhausted search once with measured entrances,
+  // without resetting any saved observation budgets.
+  if(search.index>=OFFSETS.length && search.exhaustedRevision!=null && !search.deferred && !search.entranceSurveyed){
+    search.index=0;search.rejected={};search.entranceSurveyed=true;delete search.exhaustedRevision
+    if(!await save(ctx,null))return {result:blocked('MINE_CHECKPOINT','採掘候補の判定を保存します。','owner_released')}
+  }
+  search.entranceSurveyed=true
   if(search.wait?.revision===revision && search.wait?.requestKey===requestKey && search.wait?.index===search.index){
     return observeSite(ctx,search,search.wait)
   }
@@ -130,6 +145,7 @@ async function nextMine(ctx,resource,targetHeld){
       search.wait={revision,requestKey,index:search.index,code:planned.code??'MINE_PLAN_PENDING',cells,...(previous?.observation?{observation:previous.observation}:{})}
       return observeSite(ctx,search,search.wait)
     }else{
+      rejectSite(ctx,search,planned)
       delete search.wait;search.index++
       if(search.index>=OFFSETS.length)search.exhaustedRevision=revision
     }
@@ -137,6 +153,7 @@ async function nextMine(ctx,resource,targetHeld){
     return {result:blocked(planned.code??'MINE_PLAN_PENDING','既存の採掘場を保護し、次の2層の採掘範囲を観測しています。')}
   }
   if(sites.some(site=>site.plan.id===planned.plan.id)){
+    rejectSite(ctx,search,{code:'MINE_SITE_ALREADY_USED'})
     search.index++;delete search.wait
     if(search.index>=OFFSETS.length)search.exhaustedRevision=revision
     await save(ctx,null)

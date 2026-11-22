@@ -15,6 +15,16 @@ function point (plan, u, y, v) {
   const f = DIRECTIONS[plan.site.direction], r = { x: -f.z, z: f.x }
   return { x: plan.site.anchor.x + f.x * u + r.x * v, y, z: plan.site.anchor.z + f.z * u + r.z * v }
 }
+function shaftSurfaceLayout (site) {
+  const plan = { site }, mid = Math.floor((site.width - 2) / 2), y = site.surfaceY
+  const columns = [[0, mid], [1, mid], [0, mid + 1], [1, mid + 1]].map(([u, v]) => {
+    const p = point(plan, u, 0, v)
+    return { x: p.x, z: p.z }
+  })
+  const approach = point(plan, 2, y, mid), landing = point(plan, 0, y, mid - 1)
+  return { columns, approach: { ...approach, x: approach.x + 0.5, z: approach.z + 0.5 },
+    topLanding: { ...landing, x: landing.x + 0.5, z: landing.z + 0.5 }, entryTorch: point(plan, 1, y, mid - 1) }
+}
 function local (plan, p) {
   const f = DIRECTIONS[plan.site.direction], dx = p.x - plan.site.anchor.x, dz = p.z - plan.site.anchor.z
   return { u: dx * f.x + dz * f.z, v: -dx * f.z + dz * f.x, y: p.y }
@@ -68,12 +78,10 @@ function createMineGeometry ({ scope, anchor, direction = 'east', width = 24, le
       add(layer, 'branch', `branch-${u}-right`, u, mid + 2, u, width - 1, 1, 2)
     }
   }
-  const columns = [[0, mid], [1, mid], [0, mid + 1], [1, mid + 1]].map(([u, v]) => { const p = point(plan, u, 0, v); return { x: p.x, z: p.z } })
+  const { columns, approach, topLanding, entryTorch } = shaftSurfaceLayout(plan.site)
   const ladder = columns[0], back = point(plan, -1, 0, mid), backing = { x: back.x, z: back.z }
-  const topLanding = point(plan, 0, surfaceY, mid - 1), entryTorch = point(plan, 1, surfaceY, mid - 1)
   plan.shaft = { topY: surfaceY, bottomY, columns, ladder: { ...ladder, face: faceOf(f), support: backing }, fillColumns: columns.slice(1),
-    approach: { ...point(plan, 2, surfaceY, mid), x: point(plan, 2, surfaceY, mid).x + 0.5, z: point(plan, 2, surfaceY, mid).z + 0.5 },
-    topLanding: { ...topLanding, x: topLanding.x + 0.5, z: topLanding.z + 0.5 },
+    approach, topLanding,
     entryTorch: { position: entryTorch, support: { ...entryTorch, y: surfaceY - 1 }, face: 1, name: 'minecraft:torch' },
     landings: plan.layers.map(layer => ({ layer: layer.id, y: layer.y, clear: [point(plan, 1, layer.y, mid), point(plan, 1, layer.y + 1, mid)], floor: [{ position: point(plan, 1, layer.y - 1, mid), half: 'bottom' }], stand: { ...point(plan, 1, layer.y - 0.5, mid), x: point(plan, 1, layer.y, mid).x + 0.5, z: point(plan, 1, layer.y, mid).z + 0.5 } })) }
   plan.id = createHash('sha256').update(JSON.stringify(plan)).digest('hex').slice(0, 20)
@@ -171,4 +179,4 @@ function classifyMineCell (plan, p) {
   return { allowedDig: false, protected: !within, role: within ? 'vein_candidate' : 'outside' }
 }
 
-module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }
+module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }
