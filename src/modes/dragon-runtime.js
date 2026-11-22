@@ -90,8 +90,9 @@ function createDragonRuntime (ports) {
     const currentGoal = ledger.goal(), hold = currentGoal?.hold
     if (dim === 'overworld') {
       const mineGoal = record.stage === 'early' && ['early.home_reserve', 'early.diamond'].includes(currentGoal?.key)
-      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS') && !ports.threatened() &&
-        await ctx.minePorts?.reconcilePlacement?.()) {
+      // This only reads receipts and settles a checkpoint. The runtime still
+      // fences the read against actual interaction, movement and combat owners.
+      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS') && await ctx.minePorts?.reconcilePlacement?.()) {
         if (hold && ledger.goal() === currentGoal && currentGoal.hold === hold) {
           ledger.held({ ...hold.basis, minePlacementReconciled: true })
         }

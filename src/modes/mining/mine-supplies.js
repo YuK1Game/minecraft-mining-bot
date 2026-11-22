@@ -144,7 +144,8 @@ function createMineSupplies (ctx, actions, storage) {
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
     // A refill is an outstanding request until its full target is observed.
     // Crossing the normal carry reserve must not make the Bot leave early.
-    if (have('cobblestone') < needs.cobblestone) branch.refillCobblestone = true
+    const shaftUnderway = Number.isInteger(branch.shaft?.depth) && branch.shaft.depth < plan.shaft.topY
+    if (shaftUnderway && have('cobblestone') < needs.cobblestone) branch.refillCobblestone = true
     // Only unopened deficits are withdrawn, and an existing supply pair is
     // physically read again. Stored estimates never masquerade as inventory.
     const deficits = Object.fromEntries(Object.entries(needs).map(([name, n]) => [name, Math.max(0, n - have(name))]).filter(([, n]) => n > 0))

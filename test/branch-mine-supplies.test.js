@@ -21,7 +21,7 @@ function fixture (plankCounts, extra = {}) {
     walk: async () => { calls.push(['walk to workbench']); return { status: 'blocked' } },
     house: { craft: async (name, times) => { calls.push(['craft', name, times]); inv.items.push({ name, count: times * 4, slot: inv.items.length }) }, why: () => null }
   }
-  return { plan, calls, inv, supplies: createMineSupplies(ctx, actions, {}) }
+  return { plan, calls, inv, branch: ctx.memory.early.mine.branch, supplies: createMineSupplies(ctx, actions, {}) }
 }
 
 test('multi-batch ladder sticks reserve two planks per craft before crafting', async () => {
@@ -44,6 +44,7 @@ test('supply reserves do not cause a surface round trip after every completed sh
 
 test('a started cobblestone refill keeps its target until confirmed inventory reaches it', async () => {
   const f = fixture([], { ladder: 64, cobblestone: 31 })
+  f.branch.shaft = { depth: f.plan.shaft.topY - 2, landings: {} }
   const stack = f.inv.items.find(item => item.name === 'minecraft:cobblestone')
   assert.equal((await f.supplies.ensure(f.plan)).code, 'MINE_SUPPLIES_IN_PROGRESS')
   stack.count = 32
@@ -53,6 +54,15 @@ test('a started cobblestone refill keeps its target until confirmed inventory re
   stack.count = 60
   assert.equal((await f.supplies.ensure(f.plan)).code, 'MINE_SUPPLIES_READY')
   assert.deepEqual(f.calls, [['acquire', 'cobblestone', 64], ['acquire', 'cobblestone', 64]])
+})
+
+test('initial preparation can proceed once the construction reserve is met', async () => {
+  const f = fixture([], { ladder: 64, cobblestone: 31 })
+  const stack = f.inv.items.find(item => item.name === 'minecraft:cobblestone')
+  assert.equal((await f.supplies.ensure(f.plan)).code, 'MINE_SUPPLIES_IN_PROGRESS')
+  stack.count = 32
+  assert.equal((await f.supplies.ensure(f.plan)).code, 'MINE_SUPPLIES_READY')
+  assert.deepEqual(f.calls, [['acquire', 'cobblestone', 64]])
 })
 
 test('a first lower-layer request budgets the still-unbuilt upper shaft as well', async () => {
