@@ -123,16 +123,19 @@ async function reach (ctx, destination, { open = false } = {}) {
       const out = entry
         ? await build(entry, { done: p => p.x === entry.x && p.y === entry.y && p.z === entry.z, aborted: cancelled, limits: { rise: 7, pad: 7 } })
         : await build(destination, { done: beside, aborted: cancelled })
-      let entered = out.ok
+      let entered = out.ok, door = 'DOOR_WALK_REFUSED'
       if (entry && out.ok && !cancelled()) {
         const opened = await openDoor({ origin, getBlock, getFeet, walk: hands.walk, useDoor: p => operations.interactions.useDoor(p), log: ctx.log })
-        entered = opened && !cancelled() && await hands.walk(interior) && inside()
+        const walked = opened && !cancelled() && await hands.walk(interior)
+        entered = walked && inside()
+        // Which part did not happen, and the walk's own reason (two unexplained lines on 2026-11-23, 17:38 and 18:20 JST).
+        if (!entered) door = !opened ? 'DOOR_NOT_OPEN' : walked ? 'DOOR_WALK_NOT_INSIDE' : `DOOR_WALK_REFUSED: ${hands.why?.() ?? '理由不明'}`
       }
       if (entered || cancelled()) shared.dragonHomeInner = null
       else {
         shared.dragonHomeInner = { until: now() + RETRY_MS, entrance: !!entry }
         const feet = getFeet()
-        ctx.log?.(`プレイヤーモード: 本拠点の中の ${destination.x}, ${destination.y}, ${destination.z} へ、掘る・積む道でも行けませんでした（${out.ok ? 'DOOR_WALK_REFUSED' : out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
+        ctx.log?.(`プレイヤーモード: 本拠点の中の ${destination.x}, ${destination.y}, ${destination.z} へ、掘る・積む道でも行けませんでした（${out.ok ? door : out.code}。足元 ${feet ? `${Math.floor(feet.x)}, ${Math.floor(feet.y)}, ${Math.floor(feet.z)}` : '?'}）。1分後にもう一度試します`)
       }
     }
     return !cancelled() && at() && (!open || stand.go(destination, cancelled))

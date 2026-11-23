@@ -103,7 +103,12 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     await sleep(300)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 12000)
     const at = getFeet()
-    return !!at && Math.hypot(at.x - target.x, at.z - target.z) <= 0.45 && Math.abs(at.y - target.y) <= 0.2
+    const there = !!at && Math.hypot(at.x - target.x, at.z - target.z) <= 0.45 && Math.abs(at.y - target.y) <= 0.2
+    // A walk that began and ended short: how the motion itself ended is the refusal the caller logs (before, `why`
+    // kept an older refusal or nothing: real Realm 2026-11-23 17:38:26 and 18:20:41 JST, DOOR_WALK_REFUSED 0.3 s
+    // after the walk through the house door began, with no reason in the log).
+    if (!there) { const motion = getMotion(); why = `WALK_SHORT:${String(motion?.reason ?? motion?.phase ?? '?').slice(0, 90)}` }
+    return there
   }
   // From farther than one walk reaches: hops of about ten blocks toward the
   // target over received ground (the walk itself plans at most 16 blocks; real
