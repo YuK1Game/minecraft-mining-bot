@@ -26,6 +26,18 @@ test('a start refused because the previous operation is still ending is tried ag
   assert.equal(other.starts.length, 0)
 })
 
+test('a walk that began and ended short says how the motion ended (live 2026-11-23 17:38 and 18:20 JST: no reason at the door)', async () => {
+  const feet = { x: 0.5, y: 64, z: 0.5 }
+  let clock = 0, motion = { phase: 'idle', reason: null }
+  const operations = { movement: { start: () => { feet.z = 1.1; motion = { phase: 'failed', reason: 'サーバーから速度の変更を受信したため再計画します。' } } } }
+  const ports = createScaffoldPorts({ operations, getBlock: (x, y) => ({ known: true, name: y <= 63 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 63 ? 'block' : 'empty' }), getFeet: () => ({ ...feet }), getInventory: () => ({ known: true, items: [] }), getMotion: () => motion, pillarStep: async () => ({}), sleep: async ms => { clock += ms }, now: () => clock })
+  assert.equal(await ports.walk({ x: 0.5, y: 64, z: 2.5 }), false)
+  assert.equal(ports.why(), 'WALK_SHORT:サーバーから速度の変更を受信したため再計画します。')
+  // A walk that arrives leaves the earlier reason alone (callers read it only after a failure).
+  operations.movement.start = target => { Object.assign(feet, target); motion = { phase: 'completed', reason: null } }
+  assert.equal(await ports.walk({ x: 0.5, y: 64, z: 2.5 }), true)
+})
+
 test('a tree farther than one walk is approached in hops over received ground', async () => {
   const f = scene()
   assert.equal(await f.ports.walk({ x: 40.5, y: 64, z: 0.5 }), false, 'one walk does not reach 40 blocks')

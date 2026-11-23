@@ -250,10 +250,8 @@ test('under the opened floor at the door: the way that digs and stacks goes to t
   assert.equal(stuck.logs.length, before)
 })
 
-test('three metres from the furnace through the west wall is not at the furnace: round by the door and in', async () => {
-  // Live 2026-11-19 05:47-05:52 JST: the way that digs and stacks ended at (-4902, 76, -4987), outside the
-  // south-west corner, two cells from the furnace. The home step counted that as arrived, the open stand found
-  // no walk in, and nothing was said or done for five minutes.
+// The house with its room and doorway open, and ground round the south-west corner outside the walls.
+function walledOut () {
   const world = createOverhangWorld()
   for (let x = origin.x + 1; x <= origin.x + 5; x++) for (let z = origin.z + 1; z <= origin.z + 5; z++) for (let y = origin.y + 1; y <= origin.y + 3; y++) world.setBlock(x, y, z, 'air')
   for (let y = origin.y + 1; y <= origin.y + 2; y++) world.setBlock(origin.x + 3, y, origin.z + 6, 'air')
@@ -264,6 +262,34 @@ test('three metres from the furnace through the west wall is not at the furnace:
   }
   const furnace = { x: origin.x + 1, y: origin.y + 1, z: origin.z + 4 }
   world.setBlock(furnace.x, furnace.y, furnace.z, 'furnace')
+  return { world, furnace }
+}
+
+test('the walk in through the open door ends short: the line says how the walk ended', async () => {
+  // Live 2026-11-23 17:38:26 and 18:20:41 JST: at the door stand, the walk in through the open door ended 0.3 s
+  // after it began and the line said only DOOR_WALK_REFUSED. (Before the next test: its walled-in bot leaves the
+  // steps from this corner barred in the walk's three-minute memory.)
+  const { world, furnace } = walledOut()
+  const short = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 })
+  short.ctx.hands.approach = async () => false
+  const step = short.ctx.hands.walk
+  let ended = null
+  short.ctx.hands.walk = async target => {
+    if (target.x === origin.x + 3.5 && target.z === origin.z + 5.5) { ended = 'WALK_SHORT:サーバーから速度の変更を受信したため再計画します。'; return false }
+    return step(target)
+  }
+  short.ctx.hands.why = () => ended
+  assert.equal(await approachHome(short.ctx, furnace, { open: true }), false)
+  const said = short.logs.filter(line => /本拠点の中の .* へ、掘る・積む道でも行けませんでした/.test(line))
+  assert.equal(said.length, 1, short.logs.join('\n'))
+  assert.match(said[0], /DOOR_WALK_REFUSED: WALK_SHORT:サーバーから速度の変更を受信したため再計画します。。足元 /)
+})
+
+test('three metres from the furnace through the west wall is not at the furnace: round by the door and in', async () => {
+  // Live 2026-11-19 05:47-05:52 JST: the way that digs and stacks ended at (-4902, 76, -4987), outside the
+  // south-west corner, two cells from the furnace. The home step counted that as arrived, the open stand found
+  // no walk in, and nothing was said or done for five minutes.
+  const { world, furnace } = walledOut()
   const f = bot(world, { x: origin.x - 1, y: origin.y + 1, z: origin.z + 5 })
   f.ctx.hands.approach = async () => { f.did.push('approach'); return false }
   const walk = f.ctx.hands.walk, visited = []
