@@ -336,7 +336,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)
       const ctx = { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
-        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => tripRise(null, () => climbUp(cancelled)), storage, cancelled, signal }
+        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => tripRise(null, () => climbUp(cancelled)), rise: () => climbUp(cancelled), storage, cancelled, signal }
       ctx.minePorts = createMinePorts(ctx)
       return ctx
     }
@@ -359,7 +359,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) houseDamage.tick() } catch { /* The next tick looks again. */ }
     if (expedition.tick()) {
-      if (shared.travelNight?.cover && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
+      if (shared.travelNight?.cover && !require('./dragon-rest-pit').resting(shared) && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
       return
     }
     keepAim()

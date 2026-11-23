@@ -13,7 +13,8 @@ const turns = async n => { for (let i = 0; i < n; i++) await new Promise(resolve
 
 // live(): what of the Bot's state is read from elsewhere at each look (position, inventory, the hand).
 // ports(signal, shared): the ports a step gets beside the stand-ins here (the hands of helpers/dig-world.js).
-async function createWorld (t, { items = [PICK], step = async () => ({ done: false, reason: 'iron_helmet を準備しています（0/2）。' }), live = () => ({}), ports = () => ({}), getBlock = () => ({ known: false }) } = {}) {
+// more: further ports of the runtime itself (the long trip, the nearest hostile).
+async function createWorld (t, { items = [PICK], step = async () => ({ done: false, reason: 'iron_helmet を準備しています（0/2）。' }), live = () => ({}), ports = () => ({}), getBlock = () => ({ known: false }), more = {} } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dragon-goal-'))
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))
   const w = { root, at: 1e9, lines: [], life: 'a/0', step, calls: 0, hung: false, shared: null, rt: null, worn: [],
@@ -30,7 +31,7 @@ async function createWorld (t, { items = [PICK], step = async () => ({ done: fal
     w.shared = shared
     const raw = () => ({ ...w.raw, ...live() })
     w.rt = createDragonRuntime({ now: () => w.at, shared, root, getBlock, log: line => w.lines.push(line),
-      runtime: { raw, host, armor: () => ({ known: true, worn: w.worn }), inventory: () => raw().inventory },
+      runtime: { raw, host, armor: () => ({ known: true, worn: w.worn }), inventory: () => raw().inventory, ...more },
       active: () => true, legacyBusy: () => false, legacyIdle: () => true, stopLegacy: () => {}, lifeKey: () => w.life, loading: () => false, threatened: () => w.threatened === true,
       stepPorts: signal => { w.hung = false; return { cancelled: () => signal.aborted, getFeet: () => raw().position, hands: {}, log: line => w.lines.push(line), shared, operations: {}, runtime: { raw, inventory: () => raw().inventory }, ...ports(signal, shared) } },
       early: ctx => { w.calls++; return w.step(ctx, w) } })

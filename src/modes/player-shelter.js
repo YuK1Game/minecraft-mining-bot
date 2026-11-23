@@ -10,6 +10,9 @@
 //   hostile within 10 m. It ends at 18 health or when hunger falls under 18.
 // The pit record is the long trip's (shared.travelNight), so a pit dug during
 // a trip to find trees is kept and opened by the same rules.
+// A rest pit the expedition dug for its own wait (owner 'dragon', dragon-rest-pit.js) is the expedition's while
+// it owns the work: it is not this shelter's until a tick here takes it over (the ordinary play works again).
+// Counted as active it made the expedition wait for this shelter, whose tick it had stopped.
 const { normalizeMode } = require('./bot-mode')
 const { dayPhase } = require('../travel/night-stop')
 
@@ -38,7 +41,7 @@ const MESSAGES = { night: '夜のため、ふたをした穴の中で朝まで�
 function createPlayerShelter ({ getMode, shared, agent, recovery = null, getClock, getVitals, hostileDistance = () => null, travelBusy = () => false, dig, uncover, disposed = () => false, log = () => {}, now = Date.now }) {
   let busy = false, reason = null
   const record = () => (shared.travelNight ??= { cover: null, pitTried: 0 })
-  const active = () => busy || !!shared.travelNight?.cover && shared.playerWanted === true
+  const active = () => busy || !!shared.travelNight?.cover && shared.travelNight.owner !== 'dragon' && shared.playerWanted === true
 
   async function restart () {
     for (let attempt = 0; attempt < 5 && !disposed() && shared.playerWanted === true; attempt++) {
@@ -52,6 +55,7 @@ function createPlayerShelter ({ getMode, shared, agent, recovery = null, getCloc
     busy = true
     try {
       const pit = record()
+      if (pit.owner) pit.owner = null
       const decision = shelterDecision({ pit, clock: getClock(), vitals: getVitals(), hostileDistance: hostileDistance(), now: now(), wanted: true })
       if (decision.action === 'none') return decision
       if (decision.action === 'stay') {

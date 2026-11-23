@@ -14,6 +14,8 @@
 const { hasFood } = require('./player-food')
 const { threatWait } = require('./dragon-threat-wait')
 
+const { REST } = require('./dragon-rest-pit')
+
 const REGEN = 18
 const WAIT = '安全な場所で食事を取り、体力18以上への回復を待ちます。'
 
@@ -26,7 +28,21 @@ function unfed ({ meal, inventory, hunger }) {
 }
 
 // One step of the wait. nether / recover: the expedition's own steps for the way back to the food.
-async function heal ({ ctx, record, dim, shared, runtime, threatened, supplies, nether, recover, now = Date.now }) {
+// rest: the wait's covered pit (dragon-rest-pit.js), or null.
+async function heal ({ ctx, record, dim, shared, runtime, threatened, supplies, nether, recover, rest = null, now = Date.now }) {
+  const hunger = () => ctx.operations.food.snapshot?.()?.hunger
+  // Under its lid the wait and its meals go on whatever stands above; with nothing left to feed it, out to the food.
+  if (rest?.inside()) {
+    const meal = ctx.operations.food.preview()
+    if (meal.ready) await ctx.operations.food.eat()
+    else if (!(Number.isFinite(hunger()) && hunger() >= REGEN) && unfed({ meal, inventory: runtime.inventory(), hunger: hunger() })) return rest.leave('unfed')
+    return { phase: 'recovering', reason: REST }
+  }
+  // Badly hurt in the open with nothing near: the wait is taken under a lid, before a retreat leads it on.
+  if (dim === 'overworld' && rest) {
+    const dug = await rest.enter({ fed: ctx.operations.food.preview().ready === true || Number.isFinite(hunger()) && hunger() >= REGEN })
+    if (dug) return dug
+  }
   // An enemy that stands near without hitting for twenty seconds no longer holds the meal and the hunt
   // (live 2026-11-19 01:21-01:34 JST: thirteen minutes at health 7 with no food, then a creeper).
   const hit = now() - Number(shared.travelLastDamageAt ?? 0) < 10000
