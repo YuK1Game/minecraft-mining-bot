@@ -34,6 +34,9 @@ async function openDoor ({ origin, getBlock, useDoor, walk, getFeet, log = () =>
   const stands = doorStands(getBlock, at).sort((a, b) => far(a) - far(b))
   if (Math.hypot(at.x + 0.5 - feet.x, at.y - feet.y, at.z + 0.5 - feet.z) > 3 && stands.length) { try { await walk(stands[0]) } catch {} }
   for (let attempt = 0; attempt < 2; attempt++) {
+    // The walk to the stand may have opened it already (the hands click a closed door on their way: door-on-way.js);
+    // a second click would close it again.
+    if (isOpen(getBlock(at.x, at.y, at.z))) return true
     try { await useDoor(at) } catch (error) { log(`プレイヤーモード: 拠点の家のドアを開けられません ${String(error?.message ?? error).slice(0, 80)}`); return false }
     const until = now() + 3000
     while (now() < until && !isOpen(getBlock(at.x, at.y, at.z))) await sleep(200)

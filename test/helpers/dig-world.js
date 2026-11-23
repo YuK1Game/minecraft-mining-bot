@@ -13,6 +13,7 @@
 // block (a sword two). w.uses counts them by tool, w.swaps the swaps.
 const { createNavigator } = require('../../src/movement/navigation')
 const { createScaffoldPorts } = require('../../src/modes/player-scaffold-ports')
+const { isDoor, openDoorCell } = require('../../src/movement/door-cell')
 
 const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', copper_ore: 'raw_copper', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt', oak_log: 'oak_log', birch_log: 'birch_log' }
 // Water is given as a source (only names were read); seagrass stands in water.
@@ -33,20 +34,20 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const mined = new Set()
   let revision = 1
   const key = (x, y, z) => `${x},${y},${z}`
-  const put = new Map()
+  const put = new Map(), opened = new Set()
   const getBlock = (x, y, z) => {
     if (put.has(key(x, y, z))) return block(put.get(key(x, y, z)))
     if (mined.has(key(x, y, z))) return block('air')
     const c = received.rows[y]?.[z - received.z0]?.[x - received.x0]
     // received.states: the block states read for single cells (a door's open_bit, a chest's facing).
-    if (c) { const states = received.states?.[key(x, y, z)]; return states ? { ...block(received.legend[c]), properties: states } : block(received.legend[c]) }
+    if (c) { const states = received.states?.[key(x, y, z)]; return states ? { ...block(received.legend[c]), properties: opened.has(key(x, y, z)) ? { ...states, open_bit: 1 } : states } : block(received.legend[c]) }
     const name = outside(x, y, z)
     return name ? block(name) : { known: false }
   }
   const navigator = createNavigator({ world: { getBlock, revision: () => revision } })
   let state = navigator.physics.fromServer({ position: { x: received.feet.x, y: received.feet.y + 1.62, z: received.feet.z }, rotation: { yaw: 0, pitch: 0 }, gameMode: 'survival' })
   for (let i = 0; i < 20; i++) state = navigator.physics.step(state, {})
-  const w = { lines: [], minedNames: [], placed: [], trips: [], failures: [], uses: {}, swaps: 0, at: 0, getBlock }
+  const w = { lines: [], minedNames: [], placed: [], trips: [], failures: [], uses: {}, swaps: 0, at: 0, corrections: 0, clicks: [], getBlock }
   const SELECTED = 0
   const inHand = () => items.find(item => item.slot === SELECTED && item.count > 0)
   const tierInHand = () => TIERS[/^minecraft:(\w+)_pickaxe$/.exec(inHand()?.name ?? '')?.[1]] ?? 0
@@ -102,11 +103,25 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
       const route = navigator.plan(state, target, options)
       if (!route.ready) throw new Error(route.reason)
       const stepper = navigator.createStepper(route, state)
-      for (let i = 0; i < 400; i++) { const frame = stepper.next(); state = frame.predictedState; if (frame.phase !== 'moving') break }
+      // The server lets no body into a closed door: the feet are put back where they last stood outside it.
+      const shut = at => { const cell = [Math.floor(at.x), Math.floor(at.y + 0.001), Math.floor(at.z)], found = getBlock(...cell); return isDoor(found) && !openDoorCell(getBlock, ...cell) }
+      w.motion = { phase: 'completed', reason: null }
+      for (let i = 0; i < 400; i++) {
+        const frame = stepper.next()
+        if (shut(frame.predictedState.position)) { w.motion = { phase: 'replan_required', reason: 'Server correction replayed through sent input; replan from the corrected present prediction' }; w.corrections++; break }
+        state = frame.predictedState
+        if (frame.phase !== 'moving') break
+      }
     } },
     // An ordinary placement: into a received open cell with a solid block on one of its sides, within reach. The
     // block is received and the item leaves the bag.
     interactions: { placeBlock: async data => place(data),
+      // An ordinary click on a wooden door within reach: its lower half is received open.
+      useDoor: async at => {
+        const found = getBlock(at.x, at.y, at.z)
+        if (!isDoor(found) || Math.hypot(at.x + 0.5 - state.position.x, at.z + 0.5 - state.position.z) > 4.5) throw new Error('受信した木のドアがありません。')
+        opened.add(key(at.x, at.y, at.z)); revision++; w.clicks.push({ ...at })
+      },
       // The floor block over a gap is clicked against a face of a solid block beside the cell (player-scaffold-ports.js `bridge`).
       previewPlaceAgainst: ({ position, slot, clicked }) => placeable(position, slot) && getBlock(clicked.x, clicked.y, clicked.z).boundingBox === 'block' ? { ready: true } : { ready: false, errors: ['設置できません。'] },
       placeAgainst: async data => place(data) },
@@ -148,7 +163,7 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
     return { status: 'completed', serverConfirmed: true }
   }
   const inventory = () => ({ known: true, items: items.filter(item => item.count > 0) })
-  const hands = createScaffoldPorts({ operations, getBlock, getFeet, getInventory: inventory, getMotion: () => ({ phase: 'idle' }), getHealth: () => health, getHeld: () => inHand() ?? null, pillarStep, sleep: async ms => { w.at += ms }, now: () => w.at })
+  const hands = createScaffoldPorts({ operations, getBlock, getFeet, getInventory: inventory, getMotion: () => w.motion ?? { phase: 'idle' }, log: line => w.lines.push(line), getHealth: () => health, getHeld: () => inHand() ?? null, pillarStep, sleep: async ms => { w.at += ms }, now: () => w.at })
   // What the expedition hands to a step (dragon-runtime.js), as far as the gathering reads it.
   w.ctx = {
     memory: { early: {} }, shared: {}, log: line => w.lines.push(line), cancelled: () => false, operations, hands, getFeet, getBlock,
