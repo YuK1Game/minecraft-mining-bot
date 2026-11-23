@@ -58,7 +58,7 @@ async function approach (ctx, target, avoid = null) {
 async function receivedWoodDestination (ctx, feet) {
   const origin = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
   const approached = cellRest(ctx.shared, 'overworld:wood-approach', { now: ctx.now })
-  let destination = null, best = ROAM_M ** 2
+  let destination = null, at = null, best = ROAM_M ** 2
   for (let dx = -ROAM_M; dx <= ROAM_M; dx++) {
     if (ctx.cancelled()) return null
     for (let dz = -ROAM_M; dz <= ROAM_M; dz++) {
@@ -71,6 +71,7 @@ async function receivedWoodDestination (ctx, feet) {
         if (block?.known !== true || !SOURCES.log.test(bare(block.name)) ||
             unavailableAt(ctx, block, p)) continue
         destination = column
+        at = y
         best = distance
         break
       }
@@ -80,7 +81,18 @@ async function receivedWoodDestination (ctx, feet) {
   if (!destination || ctx.cancelled()) return null
   // Give other trees and the ordinary search a turn if this route fails.
   approached.miss(destination, 0, 0)
-  return { x: destination.x, z: destination.z }
+  return { x: destination.x, y: at, z: destination.z }
+}
+
+// The dig-and-stack road to a received tree the long trip cannot bring nearer (supply-roam.js): to within sight of
+// the gathering (collect looks 12 cells round the feet), outside the house.
+function buildToWood (ctx) {
+  const build = createBuildWalk({ hands: ctx.hands, getHouse: () => ctx.shared.playerHouse, log: ctx.log })
+  return wood => build({ x: wood.x, y: wood.y, z: wood.z }, {
+    done: cell => Math.max(Math.abs(cell.x - wood.x), Math.abs(cell.z - wood.z)) <= 8 && Math.abs(cell.y - wood.y) <= 5 &&
+      !inside(ctx.shared.playerHouse?.origin, { x: cell.x + 0.5, y: cell.y, z: cell.z + 0.5 }),
+    aborted: ctx.cancelled
+  })
 }
 
 async function explore (ctx, resource) {
@@ -91,9 +103,10 @@ async function explore (ctx, resource) {
   const wood = resource === 'log' && ctx.runtime.raw().dimension === 'overworld'
   const visible = () => inView(ctx, resource).length > 0
   const findWood = wood ? () => receivedWoodDestination(ctx, feet) : null
+  const buildTo = wood && typeof ctx.hands?.block === 'function' ? buildToWood(ctx) : null
   if (wood && (step['log:shortWalks'] ?? 0) >= WOOD_SEARCH_STEPS) {
     step['log:shortWalks'] = 0
-    if (await roam(ctx, resource, step, feet, visible, { afterWalks: true, findWood })) return
+    if (await roam(ctx, resource, step, feet, visible, { afterWalks: true, findWood, buildTo })) return
   }
   const offset = Number(step[resource] ?? 0)
   const options = [[1, 0], [0, 1], [-1, 0], [0, -1]]
@@ -129,7 +142,7 @@ async function explore (ctx, resource) {
   if (nearTarget) delete step['log:roamTarget']
   step[resource] = (Math.floor(offset / 7) + 1) * 7
   // No heading had a place to walk to (a tunnel underground has none): the long trip goes instead (supply-roam.js).
-  await roam(ctx, resource, step, feet, visible, { findWood })
+  await roam(ctx, resource, step, feet, visible, { findWood, buildTo })
 }
 
 function protectedAt (ctx, p) {
