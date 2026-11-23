@@ -1,7 +1,7 @@
 'use strict'
 
-// A stand under unreceived sky is read by one rule (src/travel/open-sky.js skyOver), in the route of a long trip
-// (coarse-route.js) and in its arrival (openSky).
+// A stand under unreceived sky in the route of a long trip (coarse-route.js) is read by src/travel/open-sky.js
+// skyOver. The arrival (openSky) keeps its reading: the trip asks for the terrain above the Bot's own column.
 // Real Realm 2026-11-23 14:48-15:40 JST, the trip back to the mine at (9808, 10178) from (9856, 68, 10164):
 // 15:39 JST GET /blocks, one cell in the middle of each section of 25 chunks: y 64-79 received in all of them,
 // y 80-95 in the Bot's chunk column and the one west of it, y 96-143 only in the Bot's own chunk (x 9856-9871,
@@ -62,11 +62,10 @@ test('eight received open cells under the unreceived are the sky; fewer, or cove
   assert.equal(skyOver(column({ open: 28, roofAt: 80, top: 400 }), 0, 66, 0, solid), false, 'a received roof is cover however much is open above it')
   assert.equal(skyOver(column({ open: 0, top: 400 }), 0, 66, 0, solid), false, 'nothing received over the head')
   assert.equal(skyOver((x, y) => y < 128 ? { known: true, name: 'minecraft:air', boundingBox: 'empty' } : { known: false }, 0, 124, 0, solid), true, 'unreceived from y 128: the sky, as before')
-  // The arrival of the trip reads the same rule: 16 m from the mine, under 13 received cells of air (column 9812,10178 at 15:39).
+  // The arrival of the trip is about the Bot's own column, whose terrain above the trip asks for: unreceived under
+  // y 128 is not the sky there, as before (column 9812,10178 at 15:39: 13 received cells of air, unreceived from y 80).
   const mine = (x, y, z) => y <= 66 ? { known: true, name: 'minecraft:grass_block', boundingBox: 'block' } : y < 80 ? { known: true, name: 'minecraft:air', boundingBox: 'empty' } : { known: false }
-  assert.equal(openSky(mine, { x: 9812.5, y: 67, z: 10178.5 }), true)
-  const planks = (x, y, z) => y === 70 ? { known: true, name: 'minecraft:oak_planks', boundingBox: 'block' } : mine(x, y, z)
-  assert.equal(openSky(planks, { x: 9812.5, y: 67, z: 10178.5 }), true, 'a built roof is not cover for the arrival, as before')
-  const rock = (x, y, z) => y === 75 ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : mine(x, y, z)
-  assert.equal(openSky(rock, { x: 9812.5, y: 67, z: 10178.5 }), false)
+  assert.equal(openSky(mine, { x: 9812.5, y: 67, z: 10178.5 }), false)
+  const asked = (x, y, z) => y >= 80 && y < 128 ? { known: true, name: 'minecraft:air', boundingBox: 'empty' } : mine(x, y, z)
+  assert.equal(openSky(asked, { x: 9812.5, y: 67, z: 10178.5 }), true, 'after the terrain above was received')
 })
