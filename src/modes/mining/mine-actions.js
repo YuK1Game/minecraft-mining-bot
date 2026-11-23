@@ -23,13 +23,33 @@ function placements (block, request) {
   })
 }
 
+// The first placement whose click can be seen from `feet`. The middle of each face first. A side face whose middle
+// is hidden (a rung's plate, the rim of the floor the Bot stands on) is then tried at other points of the same face:
+// a block is placed by a click anywhere on a face. Real Realm 2026-11-23 12:03-12:13 JST: the wall behind the next
+// rung, (9885,52,10125), opened into a cave. Its only face to click, the east face of (9884,52,10125), was hidden at
+// its middle by the plate of the rung above; the south edge of that face was in plain view. The fill was refused
+// every 2 s for ten minutes with no line in the log, and the goal was held.
+const SPREAD = [0.5, 0.25, 0.75, 0.1, 0.9]
 function visibleMinePlacement (block, request, feet) {
   if (!feet) return null
   const eye = { ...feet, y: feet.y + 1.62 }
-  return placements(block, request).find(plan => {
-    const geometry = houseClickGeometry(plan.clicked, plan.face, plan.clickY)
-    return geometry && solid(block(plan.clicked)) && !interactionSightError(block, eye, geometry.point, plan.clicked)
-  }) ?? null
+  const seen = plan => {
+    const geometry = houseClickGeometry(plan.clicked, plan.face, plan.clickY, plan.clickAcross)
+    return !!geometry && solid(block(plan.clicked)) && !interactionSightError(block, eye, geometry.point, plan.clicked)
+  }
+  const plans = placements(block, request)
+  const centred = plans.find(seen)
+  if (centred) return centred
+  // A slab stays a bottom slab: low on the face only. A height the caller fixed is kept.
+  const heights = Number.isFinite(request.clickY) ? [request.clickY] : /_slab$/.test(full(request.name)) ? [0.25, 0.1, 0.4] : SPREAD
+  for (const plan of plans) {
+    if (!(plan.face >= 2)) continue
+    for (const clickY of heights) for (const clickAcross of SPREAD) {
+      const moved = { ...plan, clickY, clickAcross }
+      if (seen(moved)) return moved
+    }
+  }
+  return null
 }
 
 function createMineActions (ctx) {
@@ -151,6 +171,13 @@ function createMineActions (ctx) {
     return wait(mined ? 'MINE_BLOCK_UNCONFIRMED' : 'MINE_DIG_REFUSED', 'terrain_received', { detail: ctx.hands.why?.() })
   }
   const placement = request => placements(block, request)[0] ?? null
+  // A placement that was not made says where and why, once for each place and reason (it is tried again every step).
+  function refusedSay (position, name, why) {
+    const line = `${key(position)} に ${String(full(name)).replace(/^minecraft:/, '')} を置けません（${String(why ?? '理由不明').replace(/[\p{C}§]/gu, ' ').slice(0, 120)}）`
+    if (ctx.shared.minePlaceSaid === line) return
+    ctx.shared.minePlaceSaid = line
+    ctx.log?.('採掘場: ' + line)
+  }
   async function place (request) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!worldMatches()) return wait('MINE_SCOPE_UNKNOWN', 'owner_released')
@@ -158,7 +185,7 @@ function createMineActions (ctx) {
     // Keep explicit faces fixed and prefer a visible one for inferred support.
     const inferredSupport = request.supportPurpose && !request.clicked && !request.support
     const plan = (inferredSupport ? visibleMinePlacement(block, request, ctx.getFeet()) : null) ?? placement(request)
-    if (!plan) return wait('MINE_PLACE_SUPPORT_UNKNOWN')
+    if (!plan) { if (cell(request.position)) refusedSay(request.position, request.name, '置く面になる受信済みの固いブロックがありません'); return wait('MINE_PLACE_SUPPORT_UNKNOWN') }
     const { position, name } = plan, actionKey = 'place:' + key(position), pending = branch()?.pendingAction
     if (matches(position, name, plan)) {
       // A received existing piece can be reused after a reload. This proves
@@ -192,11 +219,13 @@ function createMineActions (ctx) {
       // proof and mistake our temporary floor for somebody else's block.
       if (supportFill && !recordSupportReceipt(branch(), branch()?.pendingAction, block(position), held(inventory(), name))) return wait('MINE_SUPPORT_RECEIPT_UNCONFIRMED', 'inventory_update')
       if (!await clear(actionKey)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
+      ctx.shared.minePlaceSaid = null
       return done('MINE_PLACEMENT_RECEIVED', { position, name, consumed: 1 })
     }
     // Preserve unknown acknowledgements for current-state reconciliation.
     // An explicit rejection can be cleared immediately.
     if (house.placementRetrySafe()) await clear(actionKey)
+    refusedSay(position, name, house.why())
     return wait('MINE_PLACEMENT_UNCONFIRMED', 'inventory_update', { detail: house.why() })
   }
   async function confirmPosition (to) {
