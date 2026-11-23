@@ -16,18 +16,18 @@ const { createScaffoldPorts } = require('../../src/modes/player-scaffold-ports')
 
 const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', copper_ore: 'raw_copper', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt', oak_log: 'oak_log', birch_log: 'birch_log' }
 // Water is given as a source (only names were read); seagrass stands in water.
-const EMPTY = new Set(['air', 'leaf_litter', 'short_grass', 'water', 'seagrass'])
+const EMPTY = new Set(['air', 'leaf_litter', 'short_grass', 'water', 'seagrass', 'torch'])
 const WET = { extra: [{ name: 'minecraft:water', properties: { liquid_depth: 0 } }] }
 // The pickaxe tier a block needs (actions/mining.js PICK, as far as these boxes hold).
 const NEEDS = { stone: 1, cobblestone: 1, andesite: 1, diorite: 1, granite: 1, dripstone_block: 1, coal_ore: 1, iron_ore: 2, copper_ore: 2 }
 const TIERS = { wooden: 1, stone: 2, iron: 3, diamond: 4 }
 const FACES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 // The block states the physics needs. Leaves as received under the feet at the tree (persistent_bit 0, update_bit 0);
-// logs upright and leaf litter flat where only the name was read.
-const STATES = name => /_leaves$/.test(name) ? { persistent_bit: 0, update_bit: 0 } : /_log$/.test(name) ? { pillar_axis: 'y' } : name === 'leaf_litter' ? { growth: 0, 'minecraft:cardinal_direction': 'south' } : name === 'water' ? { liquid_depth: 0 } : {}
+// logs upright, leaf litter flat and torches standing where only the name was read.
+const STATES = name => /_leaves$/.test(name) ? { persistent_bit: 0, update_bit: 0 } : /_log$/.test(name) ? { pillar_axis: 'y' } : name === 'leaf_litter' ? { growth: 0, 'minecraft:cardinal_direction': 'south' } : name === 'water' ? { liquid_depth: 0 } : name === 'torch' ? { torch_facing_direction: 'top' } : {}
 const block = name => ({ known: true, name: `minecraft:${name}`, boundingBox: EMPTY.has(name) ? 'empty' : 'block', properties: STATES(name), extra: name === 'seagrass' ? WET.extra : [] })
 
-// received: { x0, z0, feet, legend, rows: { y: [row of z, a character per x] } }.
+// received: { x0, z0, feet, legend, rows: { y: [row of z, a character per x] }, states?: { 'x,y,z': block states } }.
 // outside(x, y, z): the block where nothing was read (a name, or null for a cell not received).
 function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0, name: 'minecraft:iron_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 200 }], health = 20, logs = false } = {}) {
   const mined = new Set()
@@ -38,7 +38,8 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
     if (put.has(key(x, y, z))) return block(put.get(key(x, y, z)))
     if (mined.has(key(x, y, z))) return block('air')
     const c = received.rows[y]?.[z - received.z0]?.[x - received.x0]
-    if (c) return block(received.legend[c])
+    // received.states: the block states read for single cells (a door's open_bit, a chest's facing).
+    if (c) { const states = received.states?.[key(x, y, z)]; return states ? { ...block(received.legend[c]), properties: states } : block(received.legend[c]) }
     const name = outside(x, y, z)
     return name ? block(name) : { known: false }
   }
@@ -74,6 +75,19 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
     })
   }
   const REFUSED = '射程内の採掘面への視線が遮られているか、未取得です。'
+  const placeable = (position, slot) => {
+    const row = items.find(item => item.slot === slot && item.count > 0)
+    const eye = { x: state.position.x, y: state.position.y + 1.62, z: state.position.z }
+    const solid = ([dx, dy, dz]) => { const found = getBlock(position.x + dx, position.y + dy, position.z + dz); return found.known === true && found.boundingBox === 'block' }
+    return !!row && getBlock(position.x, position.y, position.z).boundingBox === 'empty' && FACES.some(solid) && Math.hypot(position.x + 0.5 - eye.x, position.y + 0.5 - eye.y, position.z + 0.5 - eye.z) <= 5
+  }
+  const place = ({ position, slot }) => {
+    if (!placeable(position, slot)) throw new Error('設置できません。')
+    const row = items.find(item => item.slot === slot && item.count > 0)
+    row.count--
+    w.put(position, row.name.replace('minecraft:', ''))
+    w.placed.push({ ...position, name: row.name.replace('minecraft:', '') })
+  }
   const operations = {
     perception: { entities: () => [] },
     inventory: { equip: async slot => {
@@ -92,16 +106,12 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
     } },
     // An ordinary placement: into a received open cell with a solid block on one of its sides, within reach. The
     // block is received and the item leaves the bag.
-    interactions: { placeBlock: async ({ position, slot }) => {
-      const row = items.find(item => item.slot === slot && item.count > 0)
-      const eye = { x: state.position.x, y: state.position.y + 1.62, z: state.position.z }
-      const solid = ([dx, dy, dz]) => { const found = getBlock(position.x + dx, position.y + dy, position.z + dz); return found.known === true && found.boundingBox === 'block' }
-      if (!row || getBlock(position.x, position.y, position.z).boundingBox !== 'empty' || !FACES.some(solid) || Math.hypot(position.x + 0.5 - eye.x, position.y + 0.5 - eye.y, position.z + 0.5 - eye.z) > 5) throw new Error('設置できません。')
-      row.count--
-      w.put(position, row.name.replace('minecraft:', ''))
-      w.placed.push({ ...position, name: row.name.replace('minecraft:', '') })
-    } },
+    interactions: { placeBlock: async data => place(data),
+      // The floor block over a gap is clicked against a face of a solid block beside the cell (player-scaffold-ports.js `bridge`).
+      previewPlaceAgainst: ({ position, slot, clicked }) => placeable(position, slot) && getBlock(clicked.x, clicked.y, clicked.z).boundingBox === 'block' ? { ready: true } : { ready: false, errors: ['設置できません。'] },
+      placeAgainst: async data => place(data) },
     mining: {
+
       preview: ([cell]) => besideLiquid(cell) ? { ready: false, errors: [BESIDE_LIQUID] } : !visible(cell) ? { ready: false, errors: [REFUSED] } : lesser(cell) ? { ready: false, errors: [LESSER(cell)] } : { ready: true },
       start ([cell]) {
         if (besideLiquid(cell)) throw new Error(BESIDE_LIQUID)
@@ -123,8 +133,22 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
     }
   }
   const getFeet = () => ({ ...state.position })
+  // One pillar step, as the server answers it: a carried fill block received under the feet, the feet one higher,
+  // one block less. Only on the ground with two open cells over the head; otherwise nothing changes.
+  const FILL = ['minecraft:dirt', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate']
+  const pillarStep = async ({ column, feetY, material }) => {
+    const row = items.find(item => item.count > 0 && (material ? item.name === material : item.name === 'minecraft:dirt'))
+    const at = w.cell()
+    if (!row || !FILL.includes(row.name) || at.x !== column.x || at.z !== column.z || at.y !== feetY || !state.onGround || !open(at.x, at.y + 2, at.z)) return { status: 'blocked', reason: 'PILLAR_REFUSED' }
+    row.count--
+    w.put(at, row.name.replace('minecraft:', ''))
+    w.placed.push({ ...at, name: row.name.replace('minecraft:', '') })
+    state = navigator.physics.fromServer({ position: { x: at.x + 0.5, y: at.y + 1 + 1.62, z: at.z + 0.5 }, rotation: { yaw: 0, pitch: 0 }, gameMode: 'survival' })
+    for (let i = 0; i < 20; i++) state = navigator.physics.step(state, {})
+    return { status: 'completed', serverConfirmed: true }
+  }
   const inventory = () => ({ known: true, items: items.filter(item => item.count > 0) })
-  const hands = createScaffoldPorts({ operations, getBlock, getFeet, getInventory: inventory, getMotion: () => ({ phase: 'idle' }), getHealth: () => health, getHeld: () => inHand() ?? null, pillarStep: async () => ({ ok: false }), sleep: async ms => { w.at += ms }, now: () => w.at })
+  const hands = createScaffoldPorts({ operations, getBlock, getFeet, getInventory: inventory, getMotion: () => ({ phase: 'idle' }), getHealth: () => health, getHeld: () => inHand() ?? null, pillarStep, sleep: async ms => { w.at += ms }, now: () => w.at })
   // What the expedition hands to a step (dragon-runtime.js), as far as the gathering reads it.
   w.ctx = {
     memory: { early: {} }, shared: {}, log: line => w.lines.push(line), cancelled: () => false, operations, hands, getFeet, getBlock,
