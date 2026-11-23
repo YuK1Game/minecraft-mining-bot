@@ -37,3 +37,13 @@ test('an open door is left alone; a door that does not open is reported', async 
   assert.equal(stuck.walks.length, 1)
   assert.equal(stuck.uses.length, 2)
 })
+
+test('a door the walk to its stand opened is not clicked again (a second click would close it)', async () => {
+  const f = scene()
+  let clock = 0
+  const uses = []
+  const ok = await openDoor({ origin, getBlock: f.getBlock, getFeet: () => ({ x: f.door.x + 0.5, y: f.door.y, z: f.door.z + 6.5 }), walk: async () => { f.state.open = true; return true }, useDoor: async at => { uses.push(at); f.state.open = !f.state.open }, now: () => clock, sleep: async ms => { clock += ms } })
+  assert.equal(ok, true)
+  assert.deepEqual(uses, [])
+  assert.equal(f.state.open, true)
+})

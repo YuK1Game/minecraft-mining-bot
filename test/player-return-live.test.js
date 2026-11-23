@@ -233,7 +233,11 @@ test('the house chests full, a chest outside the wall: not clicked from inside, 
   assert.equal(await second.sim.run(other, { until: done, ms: 900000 }), true, second.sim.log.join('\n'))
   assert.equal(lines(second.sim, /チェストの確認 → チェストへ接近（CHEST_CHOSEN）/).length >= 1, true, second.sim.log.join('\n'))
   assert.equal(refusedOpens(second.sim), 0)
-  assert.equal(lines(second.sim, /家のドアから外へ出ました/).length, 1)
+  // Since the hands click a closed door on their way in (door-on-way.js), the walk in ends on another cell than the
+  // door stand, and the open click's own check finds the chest outside from there: no way out is needed. The first
+  // half of this test still goes out through the door.
+  assert.equal(lines(second.sim, /家のドアから外へ出ました/).length <= 1, true)
+  assert.equal(second.sim.events.filter(event => event.kind === 'door').length, 1, 'the door is clicked once: a second click would close it')
   assert.equal(second.sim.stored(near, 'diamond'), 22)
   assert.equal(lines(second.sim, /に失敗/).length, 0, second.sim.log.join('\n'))
 })

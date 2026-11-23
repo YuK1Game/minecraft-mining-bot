@@ -12,8 +12,10 @@ const { low, offGrid } = require('./low-block')
 const { adrift, footings } = require('./ledge-footing')
 const { digTool, toolNeeded } = require('./dig-tool')
 const { toolOf } = require('../quarry/quarry-rules')
+const { shutDoorOnWay } = require('./door-on-way')
+const { isOpen } = require('../movement/door-cell')
 
-function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, getHeld = () => null, getScope = () => null, pillarStep, disposed = () => false, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
+function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, getHeld = () => null, getScope = () => null, pillarStep, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
   const air = cell => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && AIR.test(found.name ?? '') }
   const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
@@ -89,7 +91,20 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     }
     return false
   }
-  async function walk (target) {
+  // A closed door on the way is clicked open first (door-on-way.js); it counts as open by its received open_bit.
+  async function unlatch (target) {
+    const door = shutDoorOnWay(block, getFeet(), target)
+    if (!door || typeof operations.interactions?.useDoor !== 'function') return false
+    let sent = null
+    if (!await begin(() => { sent = operations.interactions.useDoor(door) })) return false
+    try { await sent } catch (error) { return refused(error) }
+    const open = await until(() => isOpen(block(door.x, door.y, door.z)), 3000)
+    if (open) log(`プレイヤーモード: 歩く道の閉じたドア (${door.x}, ${door.y}, ${door.z}) を開けました`)
+    return open
+  }
+  const walk = target => stride(target, false)
+  async function stride (target, again) {
+    if (!again) await unlatch(target)
     let started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     if (!started && (RIM.test(said) || RIM.test(why ?? '')) && await footing(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     // The landing refusal is read before the step-down, whose own refusal
@@ -108,6 +123,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     // A walk that began and ended short: how the motion itself ended is the refusal the caller logs (before, `why`
     // kept an older refusal or nothing: real Realm 2026-11-23 17:38:26 and 18:20:41 JST, DOOR_WALK_REFUSED 0.3 s
     // after the walk through the house door began, with no reason in the log).
+    if (!there && !again && await unlatch(target)) return stride(target, true)
     if (!there) { const motion = getMotion(); why = `WALK_SHORT:${String(motion?.reason ?? motion?.phase ?? '?').slice(0, 90)}` }
     return there
   }

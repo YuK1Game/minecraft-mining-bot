@@ -95,7 +95,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
   const buildHands = (done, actions = operations) => createScaffoldPorts({
-    operations: actions, disposed: done, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
+    operations: actions, disposed: done, log, pillarStep: (step, settings) => runtime.pillarStep(step, settings),
     getScope: () => {
       const state = runtime.raw(), host = runtime.host()
       // Host keeps its received lifecycle separate from the raw packet state.
