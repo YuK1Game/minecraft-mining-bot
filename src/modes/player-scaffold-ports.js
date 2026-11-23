@@ -9,7 +9,7 @@ const DIRT = 'minecraft:dirt'
 // What the climb may stand on: dirt first, then the cobblestone it mined on the way.
 const FILL = [DIRT, 'minecraft:cobblestone', 'minecraft:cobbled_deepslate']
 const { low, offGrid } = require('./low-block')
-const { onRim, footings } = require('./ledge-footing')
+const { adrift, footings } = require('./ledge-footing')
 const { digTool, toolNeeded } = require('./dig-tool')
 const { toolOf } = require('../quarry/quarry-rules')
 
@@ -74,17 +74,18 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     }
     return false
   }
-  // On the rim of a block (the body's centre over air, ledge-footing.js) no walk can be planned either: one
-  // simulated connector onto a full stand, level or one block lower. It counts when the feet's own cell has a floor.
+  // On the rim of a block (the body's centre over air, or an edge of it over water one block down: ledge-footing.js)
+  // no walk can be planned either: one simulated connector onto a full stand, level or one block lower. It counts
+  // when the feet's own cell has a floor and no edge of the body is over water.
   const RIM = /starting footprint has no known safe support/
   async function footing (toward = null) {
-    if (!onRim(block, getFeet())) return false
+    if (!adrift(block, getFeet())) return false
     for (const stand of footings(block, getFeet(), toward)) {
       if (!await begin(() => operations.movement.start(stand.target, stand.options))) continue
       await sleep(300)
       await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
       const at = getFeet()
-      if (at && !offGrid(at) && !onRim(block, at)) return true
+      if (at && !offGrid(at) && !adrift(block, at)) return true
     }
     return false
   }
