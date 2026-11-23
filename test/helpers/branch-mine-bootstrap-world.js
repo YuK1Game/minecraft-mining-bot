@@ -28,7 +28,9 @@ function createBootstrapWorld (t) {
   Object.assign(w.plan, createMineGeometry({ scope: w.plan.scope, anchor: { x: 0, z: 0 }, direction: 'east', surfaceY: 70, upperY: 66, lowerY: null, width: 12, length: 12 }))
   w.branch.progress = { upper: createMineState(w.plan, { layer: 'upper' }) }
   delete w.branch.request
-  const origin = { x: -9, y: 69, z: -4 }, home = chestOf(origin)
+  // The house stands nine cells west of the stone outcrop (x 5..12): the gathering takes nothing within eight cells
+  // of the walls (safety/house-protection.js `inYard`), and the outcrop is this scene's stone.
+  const origin = { x: -10, y: 69, z: -4 }, home = chestOf(origin)
   ctx.shared.playerHouse = { origin, done: true, built: true, spawn: true }
   ctx.memory.early.spawnReady = true
   const existingArmor = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots']
