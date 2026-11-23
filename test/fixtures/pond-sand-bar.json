@@ -1,0 +1,20 @@
+{
+  "note": "Received blocks round the Bot on a sand bar in the pond south-east of the starter house, real Realm 2026-11-23 19:10 JST: two GET /blocks reads of radius 3, centres (9892, 61, 10173) and (9892, 64, 10173), every cell known. Rows run z 10170..10176, a character per x 9889..9895. Feet (9892.705, 63.000, 10173.460), on the ground.",
+  "x0": 9889,
+  "z0": 10170,
+  "feet": { "x": 9892.705, "y": 63, "z": 10173.46 },
+  "legend": { "S": "sand", "D": "grass_block", "G": "water", "C": "seagrass", "c": "dirt", "d": "stone", "p": "copper_ore", ".": "air" },
+  "states": { "9889,62,10174": { "liquid_depth": 1 }, "9889,61,10174": { "liquid_depth": 9 }, "9889,61,10175": { "liquid_depth": 1 } },
+  "rows": {
+    "67": [".......", ".......", ".......", ".......", ".......", ".......", "......."],
+    "66": [".......", ".......", ".......", ".......", ".......", ".......", "......."],
+    "65": [".......", ".......", ".......", ".......", ".......", ".......", "......."],
+    "64": [".......", ".......", ".......", ".......", ".......", ".......", "......."],
+    "63": [".......", ".......", ".......", ".......", ".......", ".......", "..SSD.."],
+    "62": ["GGGGGGC", "GGCCGGC", "GGGGGGG", "GCCSGGC", "GSSSSSG", ".SSSS.S", ".SSScDD"],
+    "61": ["CCCGGGC", "GGCSGGC", "CSSSSGC", "GSSSSSS", "GSSSSSS", "GSSSSSS", "SSSSccc"],
+    "60": ["SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSccc"],
+    "59": ["SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "SSSSSSS", "dSSSSSS", "dddddcc"],
+    "58": ["ccccccc", "ccccccc", "ccccccc", "cccpccc", "ddddddc", "ddddddd", "ddddddd"]
+  }
+}
