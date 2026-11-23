@@ -115,16 +115,17 @@ function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => nu
       const missing = left ? left.length : last
       const next = hold(house, { now: now(), missing, short, met })
       write(next)
+      const wait = minutes(next.repair.until - next.repair.heldAt)
       const seen = left ? `残り ${left.length} 手` : missing !== null ? `最後に見た時は残り ${missing} 手` : '家は未確認'
       const thing = repair.need ? `家の${LABEL[repair.need]}` : '家'
-      say(met ? `${thing}が直ったため、残りの修理は保留して作業に戻ります（${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`
-        : spent ? `${thing}の修理で、いま置ける手がないため保留します（観測は破損のまま: ${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`
-        : `${thing}の修理が ${minutes(GIVE_UP_MS)} 分で終わらないため保留します（観測は破損のまま: ${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`)
+      say(met ? `${thing}が直ったため、残りの修理は保留して作業に戻ります（${seen}。見直し: ${wait} 分後、または材料・家の様子が変わった時）`
+        : spent ? `${thing}の修理で、いま置ける手がないため保留します（観測は破損のまま: ${seen}。見直し: ${wait} 分後、または材料・家の様子が変わった時）`
+        : `${thing}の修理が ${minutes(GIVE_UP_MS)} 分で終わらないため保留します（観測は破損のまま: ${seen}。見直し: ${wait} 分後、または材料・家の様子が変わった時）`)
       return 'held'
     }
     const why = review(repair, { now: now(), sight, short: shortNow(house, left) })
     if (!why) return null
-    write(resume(house, { now: now(), getBlock }))
+    write(resume(house, { now: now(), getBlock, why }))
     say(`保留していた家の修理を見直します（${WHY[why]}${sight ? `・残り ${sight.missing} 手` : ''}）`)
     return 'resumed'
   }
