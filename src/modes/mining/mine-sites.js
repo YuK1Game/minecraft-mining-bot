@@ -10,10 +10,16 @@ const { at,air,solid,count,scope,live,received,save,blocked,stopped,results }=re
 const { leaveMine }=require('./mine-route')
 const { observeCandidate,observationSignature,MAX_WAITS }=require('./mine-observation')
 const { visitDeferred,centreOf,withinWalk }=require('./mine-site-visit')
-const MAX_SITES=8,MAX_BYTES=900000
+const MAX_BYTES=900000
 const OFFSETS=[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]
 // Rings at 48, 96, 144 and 192 m. Saved searches name a centre by its index, so rings are only appended.
 const EXPANDED_OFFSETS=[...OFFSETS,...[2,3,4].flatMap(ring=>OFFSETS.slice(1).map(([x,z])=>[x*ring,z*ring]))]
+// The archive holds as many sites as the search has centres. It was a fixed 8 from the time the search had the
+// nine inner centres; the outer rings were added without it, and the eighth retirement ended all mining: with
+// eight sites saved, nextMine answered MINE_SITE_LIMIT on every tick and no centre was looked at again.
+// Real Realm 2026-11-23 22:42:47 JST: 「採掘範囲を使い終えたため…次の採掘場を調べます（保存済み8か所）」, then
+// 22:42:49 「確認済み採掘場が8か所に達しました。」 with raw_iron 10/33. MAX_BYTES bounds the saved record.
+const MAX_SITES=EXPANDED_OFFSETS.length
 // The centre's own column can be a pond, a beach or a treetop. The columns around it are read too, the centre first.
 const AROUND=[[0,0],...[4,8,12].flatMap(r=>[[r,0],[0,r],[-r,0],[0,-r],[r,r],[-r,r],[-r,-r],[r,-r]])]
 const siteOffsets=sites=>sites.length?EXPANDED_OFFSETS:OFFSETS
@@ -119,7 +125,7 @@ async function nextMine(ctx,resource,targetHeld){
   const mine=memory(ctx),sites=mine.sites??=[],revision=revisionOf(ctx),worldScope=state.mineWorldScope(raw(ctx))
   if(!live(ctx))return {result:stopped()}
   if(mine.branch?.segmentTask || mine.branch?.vein || mine.branch?.pendingAction)return {result:blocked('MINE_OBSERVATION_PENDING_WORK','施工中の区間と埋戻しを完了してから次の採掘場を調べます。','inventory_update')}
-  if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT','確認済み採掘場が8か所に達しました。保管した鉱石と採掘範囲を確認します。','supplies_changed')}
+  if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT',`確認済み採掘場が${MAX_SITES}か所に達しました。保管した鉱石と採掘範囲を確認します。`,'supplies_changed')}
   const search=mine.search??={index:0},candidateCount=siteOffsets(sites).length
   const requestKey=searchKey(resource,targetHeld,scope(ctx))
   if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed;delete search.visited}
