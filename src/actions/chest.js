@@ -71,14 +71,16 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
     return block
   }
   function matchingScope (a, b) { return isDeepStrictEqual(a, b) }
+  const unreceived = message => Object.assign(new Error(message), { code: 'INVENTORY_UNKNOWN' })
   function validate (attempt = pending, inventoryRequired = false) {
     const current = base()
     if (attempt && !matchingScope(current.scope, attempt.scope)) throw new Error('チェスト操作中に接続またはlifeが変わりました。')
     if (attempt) { const block = blockAt(attempt.position); if (attempt.blockName && block.name !== attempt.blockName) throw new Error('操作対象の収納容器が置き換わりました。') }
     if (inventoryRequired) {
       const observed = craftingStatus()
-      if (inventoryUncertain || observed.authority !== true || observed.inventoryKnown !== true || current.state.inventory?.known !== true || observed.pendingRequestId != null) throw new Error('サーバー権威の確定した持ち物が必要です。')
-      for (let slot = 0; slot < 36; slot++) if (!validRaw(crafting.rawItem(slot))) throw new Error('持ち物全体の実スタックIDが必要です。')
+      // Both are about the Bot's own inventory, not about the chest: the code lets a caller tell them apart.
+      if (inventoryUncertain || observed.authority !== true || observed.inventoryKnown !== true || current.state.inventory?.known !== true || observed.pendingRequestId != null) throw unreceived('サーバー権威の確定した持ち物が必要です。')
+      for (let slot = 0; slot < 36; slot++) if (!validRaw(crafting.rawItem(slot))) throw unreceived('持ち物全体の実スタックIDが必要です。')
     }
     return current
   }
@@ -413,4 +415,4 @@ function createChest ({ client, getState, world, crafting, interactions, allocat
   return { open, depositDiamond: options => deposit({ ...options, expectedName: 'minecraft:diamond' }, 'deposit_diamond'), depositItem: options => deposit(options, 'deposit_item'), withdrawItem, applyPacket, status, snapshot, cancel, rawItem: slot => Number.isInteger(slot) && slot >= 0 && slot < (window?.slotCount ?? 0) && slots.has(slot) ? copy(slots.get(slot)) : null }
 }
 
-module.exports = { createChest }
+module.exports = { createChest, validRaw }

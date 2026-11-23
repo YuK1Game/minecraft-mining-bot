@@ -50,7 +50,7 @@ test('the public agent stop cancels a return withdrawal through the real mode wi
   const runtime = {
     host: () => host, disposed: () => disposed,
     raw: () => ({ ...sim.state, position: sim.getPosition(), inventory: sim.inventory() }),
-    position: sim.getPosition, inventory: sim.inventory, armor: () => sim.worn, scope: sim.scope,
+    position: sim.getPosition, inventory: sim.inventory, mainSlot: sim.mainSlot, armor: () => sim.worn, scope: sim.scope,
     autonomy: () => ({ snapshot: () => ({ running: sim.agent.running, busy: false, actionActive: false }) }),
     motion: () => operations.movement.snapshot(), hostiles: () => [], nearestHostile: () => Infinity,
     chunkMoveHeld: () => false, resetHeld: () => false, manualChestStorage: () => null, combatOwns: () => false,

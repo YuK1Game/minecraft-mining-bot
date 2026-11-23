@@ -29,6 +29,7 @@ const { low } = require('../../src/modes/low-block')
 const { openAccess } = require('../../src/actions/open-face')
 const { chestsNear } = require('../../src/modes/player-storage')
 const { createBuildWalk } = require('../../src/modes/player-build-walk')
+const { createChestPack } = require('../../src/modes/chest-pack')
 
 const EYE = 1.62, WALK = 4.3, TRAVEL = 4, GROUND = 64
 const extra = () => ({ has_nbt: 'false', can_place_on: [], can_destroy: [] })
@@ -215,6 +216,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   const raw = (name, count, damage = 0) => ({ network_id: idOf(name), count, metadata: 0, has_stack_id: true, stack_id: ++stackId, block_runtime_id: 0, extra: damage > 0 ? worn(damage) : extra() })
   for (const [slot, name, count, damage] of items) bag[slot] = raw(name, count, damage)
   let uncertain = false
+  let slotsFrom = 0 // the main slots are received from this time on
   // What the durability reader says of a tool (inventory/durability.js; the real one needs the real item ids):
   // the same reading for a row of the inventory and for a slot of a chest.
   const USES = { wooden: 59, stone: 131, iron: 250, diamond: 1561 }
@@ -251,7 +253,8 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
   const server = { contents: 'send', transfer: 'ok', requests: [], window: null, hand: null }, truth = []
   const observed = { authority: true, inventoryKnown: true, pendingRequestId: null, openContainer: null }
   const crafting = {
-    snapshot: () => structuredClone(observed), rawItem: slot => bag[slot] ? structuredClone(bag[slot]) : null,
+    // After a respawn the single inventory record has forgotten every main slot until the resync answers (sim.die).
+    snapshot: () => structuredClone(observed), rawItem: slot => clock >= slotsFrom && bag[slot] ? structuredClone(bag[slot]) : null,
     applyPacket (name, packet) {
       if (name === 'container_open') observed.openContainer = { id: packet.window_id, type: packet.window_type }
       if (name === 'container_close') observed.openContainer = null
@@ -397,12 +400,14 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const hands = createScaffoldPorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, getMotion: () => motion, pillarStep, sleep, now })
     // The route that digs and stacks (player-build-walk.js), only when a scenario turns it on.
     const build = sim.digging === true ? createBuildWalk({ hands, getHouse: () => sim.house, log: say }) : null
-    const storagePorts = createStoragePorts({ operations, disposed, getBlock, getFeet, getInventory: inventory, held: combatOwns, sleep, now, tool })
+    // The chest work reads its inventory through the real reader (chest-pack.js), as mode-runtime.js wires it.
+    const pack = createChestPack({ uncertain: () => uncertain, rawItem: slot => crafting.rawItem(slot), inventory: () => inventory() })
+    const storagePorts = createStoragePorts({ operations, disposed, getBlock, getFeet, getInventory: pack, held: combatOwns, sleep, now, tool })
     const waterJob = createPlayerWater({ getMode: () => sim.mode, shared, agent: { objective: {}, start: async () => {}, stop () {}, settled }, getPosition: getFeet, getBlock, start: (target, options) => movement.start(target, options), moving: () => motion.phase === 'moving', why: () => motion.reason, disposed, log: say, now, sleep })
     const door = () => sim.house?.origin ? openDoor({ origin: sim.house.origin, getBlock, useDoor: at => operations.interactions.useDoor(at), walk: target => hands.walk(target), getFeet, log: say, now, sleep }) : Promise.resolve(true)
     const jobs = { other: null } // 'flee', 'shelter', ... while set
     const base = createPlayerBase({
-      getMode: () => sim.mode, shared, log: say, disposed, getFeet, getPosition, getBlock, getInventory: inventory, getWorn: () => sim.worn, now, sleep,
+      getMode: () => sim.mode, shared, log: say, disposed, getFeet, getPosition, getBlock, getInventory: pack, getWorn: () => sim.worn, now, sleep,
       agent: { objective: { objective: 'diamond' }, start: async options => { if (gone) throw new Error('reloaded'); agent.running = true; agent.starts.push({ at: clock, options }) }, stop: reason => { agent.running = false; agent.stopUntil = clock + sim.stopLagMs; agent.stops.push({ at: clock, reason }); path = []; motion = { phase: 'idle', reason: null } }, settled, running: () => agent.running },
       hands: storagePorts, chest: chestMaker ?? (async options => makeChest(options, at => storagePorts.room(at))), canBuild: mayBuild, pendingChest,
       porch: () => { const o = sim.house?.origin; return o ? { stand: { x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null },
@@ -437,10 +442,12 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     get clock () { return clock }, get trips () { return trips },
     set uncertain (value) { uncertain = value }, get uncertain () { return uncertain },
     resync: sendInventory,
+    mainSlot: slot => crafting.rawItem(slot),
     give (slot, name, count, damage = 0) { bag[slot] = raw(name, count, damage); sendInventory() },
     fight (ms) { combatUntil = clock + ms; path = []; motion = { phase: 'idle', reason: 'combat' } },
     eat (ms) { eatingUntil = clock + ms },
-    die (spawn) { state.lifecycle = { deathId: state.lifecycle.deathId + 1, dead: false }; for (let slot = 0; slot < 36; slot++) bag[slot] = air(); Object.assign(body, spawn); path = []; Object.assign(travel, { busy: false, phase: 'idle' }); server.window = null; observe('container_close', { window_id: windowId }); sendInventory() },
+    // `slotsAfterMs`: how long the main slots stay unreceived after the respawn (the host's rows read "known, nothing held" meanwhile).
+    die (spawn, { slotsAfterMs = 0 } = {}) { slotsFrom = clock + slotsAfterMs; state.lifecycle = { deathId: state.lifecycle.deathId + 1, dead: false }; for (let slot = 0; slot < 36; slot++) bag[slot] = air(); Object.assign(body, spawn); path = []; Object.assign(travel, { busy: false, phase: 'idle' }); server.window = null; observe('container_close', { window_id: windowId }); sendInventory() },
     reconnect () { state.connectionId = `sim-${++connections}`; server.window = null; observed.openContainer = null; observe('start_game', { server_authoritative_inventory: true, itemstates: REGISTRY }); observe('item_registry', { itemstates: REGISTRY }); sendInventory() },
     goal: runtime => runtime.base.status().goal
   }
