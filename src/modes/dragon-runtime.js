@@ -10,7 +10,7 @@ const { runDragonEndStep } = require('./dragon-end')
 const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
-const { heal } = require('./dragon-heal')
+const { heal, hungry, feed } = require('./dragon-heal')
 const { createRest } = require('./dragon-rest-pit')
 const { finishTree } = require('./dragon-tree')
 const { createProgress } = require('./dragon-progress')
@@ -93,6 +93,9 @@ function createDragonRuntime (ports) {
       judge(...says.heal(raw().health, ctx.operations.food?.snapshot?.()?.hunger))
       return heal({ ctx, record, dim, shared, runtime, threatened: ports.threatened, supplies, nether: stepNether, recover: recoverDragon, rest })
     }
+    // Hunger of 6 or less and nothing to eat: a meal or the way to food before the work (dragon-heal.js).
+    const want = hungry({ ctx, record, dim, shared, runtime, threatened: ports.threatened })
+    if (want) { judge(...says.hungry(ctx.operations.food?.snapshot?.()?.hunger, want)); return feed(want, { ctx, supplies }) }
     if (record.recovery || record.lootRecovery) {
       judge(...says.recover(record))
       const recovery = await recoverDragon(ctx, record)

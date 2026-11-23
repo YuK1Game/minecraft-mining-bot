@@ -64,4 +64,24 @@ async function heal ({ ctx, record, dim, shared, runtime, threatened, supplies, 
   return { phase: 'recovering', reason: WAIT }
 }
 
-module.exports = { heal, unfed, REGEN, WAIT }
+// Hunger this low with nothing to eat: the food comes before the work, while the health is still whole.
+// Before, only health of 12 or less sent the expedition for food, so a Bot with an empty pack worked on
+// until it starved down to that (real Realm 2026-11-24 08:16 JST: hunger 6, no food, no armour, health
+// 19.5, 「採掘場の資材を準備しています」; hunger had been under 18 - no regeneration - since 07:47).
+const HUNGRY = 6
+// What that asks for now: 'eat' (a meal can be taken), 'food' (the way to food), or null (not hungry, or not here).
+function hungry ({ ctx, record, dim, shared, runtime, threatened }) {
+  const food = ctx.operations.food, hunger = food?.snapshot?.()?.hunger
+  if (dim !== 'overworld' || record.stage !== 'early' || record.recovery || !shared.playerHouse?.origin) return null
+  if (!Number.isFinite(hunger) || hunger > HUNGRY || threatened()) return null
+  const meal = food.preview()
+  if (meal?.ready === true) return 'eat'
+  return unfed({ meal, inventory: runtime.inventory(), hunger }) ? 'food' : null
+}
+async function feed (want, { ctx, supplies }) {
+  if (want === 'food') return supplies.acquire('food', 1)
+  await ctx.operations.food.eat()
+  return { phase: 'recovering', reason: '満腹度が少ないため、先に食事を取ります。' }
+}
+
+module.exports = { heal, hungry, feed, unfed, REGEN, HUNGRY, WAIT }
