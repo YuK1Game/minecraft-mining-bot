@@ -124,7 +124,9 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // hop steps toward it as well and the height counts in the distance (real
   // Realm 2026-11-17 11:46 JST: 32 m from the base chest and 7 blocks above
   // it, the hops kept to the highest ground and the trip ended there).
-  async function approach (target, within = 12) {
+  // `avoid(cell)`: cells no hop ends in (the caller's own ground rule, e.g. the inside of the house for work that is
+  // done outside it: house/house-outdoors.js). The target itself is the caller's choice.
+  async function approach (target, within = 12, { avoid = null } = {}) {
     const away = at => Math.hypot(target.x - at.x, target.z - at.z, Number.isFinite(target.y) ? target.y - at.y : 0)
     for (let hop = 0; hop < 10 && !disposed(); hop++) {
       const at = getFeet()
@@ -136,7 +138,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
       let moved = false
       for (const turn of [0, 0.5, -0.5, 1, -1]) {
         const angle = Math.atan2(dz, dx) + turn, x = Math.floor(at.x + Math.cos(angle) * reach), z = Math.floor(at.z + Math.sin(angle) * reach), y = standY(x, z, base, want)
-        if (y === null) continue
+        if (y === null || avoid?.({ x, y, z }) === true) continue
         await walk({ x: x + 0.5, y, z: z + 0.5 })
         const after = getFeet()
         if (after && away(after) < far - 2) { moved = true; break }
