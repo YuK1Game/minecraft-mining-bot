@@ -34,6 +34,7 @@ module.exports = {
   mineCargo: (inventory, pending) => ['mine.cargo', '採掘場の荷を収納します', pending ? '収納の続きが残っている' : slots(inventory)],
   pack: inventory => ['pack', 'いらない物を捨てて持ち物を空けます', `${slots(inventory)}（35 枠から）`],
   heal: (health, hunger) => ['heal', '体力の回復を先にします', `体力 ${one(health)}（12 以下で始め、18 で終わり）・満腹度 ${one(hunger)}`],
+  hungry: (hunger, want) => ['hungry', want === 'eat' ? '食事を先に取ります' : '食料を先に用意します', `満腹度 ${one(hunger)}（6 以下）${want === 'eat' ? '' : 'で、食べられる物がない'}`],
   recover: record => ['recover', '死亡後の復帰・回収を先にします', record.recovery ? '復帰の記録が残っている' : '落とした物の回収の記録が残っている'],
   weapon: () => ['weapon', '石の剣を作ります', '持ち物に武器がない'],
   tree: logs => ['tree', '伐り始めた木を最後まで伐ります', Number.isFinite(logs) ? `記録した木の原木 ${logs} 個` : '足場の片付けが残っている'],

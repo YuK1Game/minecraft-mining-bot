@@ -134,3 +134,17 @@ test('a wait for health is said with the health that began it, before the wait i
   await w.pass(600000, { tickMs: 2000, each: () => { w.have('iron_ingot', Math.floor((w.at - 1e9) / 20000)) } })
   assert.deepEqual(judged().slice(3).map(line => line.replace(/（\d+ 分/, '（N 分')), Array(2).fill('判断（N 分続いています）: 遠征［early.home_reserve#1］ 本拠点のラージチェストに再出発用の装備を揃えます｜理由: 予備チェストを開けて、足りない装備を調べる'), w.lines.join('\n'))
 })
+
+// Real Realm 2026-11-24 08:16 JST: hunger 6, no food, health 19.5, and the expedition went on with the mine's supplies.
+test('hunger of 6 with nothing to eat is said and comes before the goal\'s work; at 7 the work goes on', async t => {
+  let hunger = 7, work = 0
+  const food = { preview: () => ({ ready: false, code: 'FOOD_NOT_IN_INVENTORY' }), eat: async () => {}, snapshot: () => ({ hunger }) }
+  const w = await createWorld(t, { step: async () => { work += 1; return { done: false, reason: 'iron_helmet を準備しています（0/2）。' } }, ports: () => ({ operations: { food } }) })
+  await w.pass(20000, { tickMs: 2000 })
+  assert.ok(work > 0 && w.said(/食料を先に用意します/).length === 0, w.lines.join('\n'))
+  hunger = 6
+  const before = work
+  await w.pass(20000, { tickMs: 2000 })
+  assert.equal(w.said(JUDGED).filter(line => /食料を先に用意します｜理由: 満腹度 6（6 以下）で、食べられる物がない/.test(line)).length, 1, w.lines.join('\n'))
+  assert.equal(work, before, 'the goal\'s work waits for the food')
+})

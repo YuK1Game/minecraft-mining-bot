@@ -4,7 +4,7 @@
 // food: 「安全な場所で食事を取り、体力18以上への回復を待ちます。」 for ten minutes, and again after the stall reset.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { heal, unfed, WAIT } = require('../src/modes/dragon-heal')
+const { heal, hungry, feed, unfed, WAIT } = require('../src/modes/dragon-heal')
 const { keeping, RAW } = require('../src/modes/raw-meat-keep')
 
 const FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken)$|^minecraft:bread$/
@@ -94,4 +94,42 @@ test('unfed: an unreceived hunger does not regenerate; food a meal refuses for a
   assert.equal(unfed({ meal: { ready: false, code: 'HUNGER_FULL' }, inventory, hunger: 20 }), false)
   assert.equal(unfed({ meal: { ready: true }, inventory: { items: [] }, hunger: 5 }), false)
   assert.equal(unfed({ meal: { ready: false, code: 'FOOD_NOT_IN_INVENTORY' }, inventory: { items: [] }, hunger: 20 }), true)
+})
+
+// Real Realm 2026-11-24 08:16 JST: hunger 6, no food, health 19.5: the expedition went on preparing the mine.
+function hungryScene ({ items = [], hunger = 6, stage = 'early', dim = 'overworld', house = true, recovery = null, threatened = false } = {}) {
+  const calls = []
+  const preview = () => items.some(item => FOOD.test(item.name)) ? { ready: true } : { ready: false, code: 'FOOD_NOT_IN_INVENTORY' }
+  const ctx = { operations: { food: { preview, eat: async () => { calls.push('eat') }, snapshot: () => ({ hunger }) } } }
+  const supplies = { acquire: async (name, count) => { calls.push(`acquire ${name} ${count}`); return { done: false, reason: 'hunt' } } }
+  const run = async () => {
+    const want = hungry({ ctx, record: { stage, recovery }, dim, shared: { playerHouse: house ? { origin: { x: 9877, y: 64, z: 10138 } } : null }, runtime: { inventory: () => ({ known: true, items }) }, threatened: () => threatened })
+    return want ? feed(want, { ctx, supplies }) : null
+  }
+  return { run, calls }
+}
+
+test('as at 08:16 JST: hunger 6 and nothing to eat, health whole: the food comes before the work', async () => {
+  const f = hungryScene()
+  assert.deepEqual(await f.run(), { done: false, reason: 'hunt' })
+  assert.deepEqual(f.calls, ['acquire food 1'])
+})
+
+test('hunger 6 with food in the pack: the meal is taken here; hunger 7, or unreceived: the work goes on', async () => {
+  const fed = hungryScene({ items: [{ slot: 1, name: 'minecraft:bread', count: 1 }] })
+  assert.equal((await fed.run()).phase, 'recovering')
+  assert.deepEqual(fed.calls, ['eat'])
+  for (const hunger of [7, 18, null]) {
+    const f = hungryScene({ hunger })
+    assert.equal(await f.run(), null)
+    assert.deepEqual(f.calls, [])
+  }
+})
+
+test('not for the hungry step: an enemy near, no home, a death recovery, another dimension or stage', async () => {
+  for (const over of [{ threatened: true }, { house: false }, { recovery: { dimension: 'overworld' } }, { dim: 'nether' }, { stage: 'nether' }]) {
+    const f = hungryScene(over)
+    assert.equal(await f.run(), null)
+    assert.deepEqual(f.calls, [])
+  }
 })
