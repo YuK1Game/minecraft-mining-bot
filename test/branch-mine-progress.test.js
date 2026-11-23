@@ -69,6 +69,25 @@ test('confirmed preparation counts growing supplies without treating them as min
   assert.equal(note(), false, 'unreceived inventory cannot advance preparation')
 })
 
+test('supplies gathered for a layer whose shaft is finished count, and count once (live 2026-11-24 04:32 JST)', t => {
+  const w = createMineWorld(t), level = w.plan.layers.find(p => p.id === 'upper')
+  w.branch.shaft = { depth: level.y, landings: { upper: true } }
+  let stone = w.items.find(row => row.name === 'minecraft:cobblestone')
+  if (!stone) w.items.push(stone = { name: 'minecraft:cobblestone', count: 0, slot: 30 })
+  stone.count = 2
+  const ledger = createGoalLedger({ shared: {}, world: () => 'world' })
+  ledger.open('early.home_reserve')
+  w.ctx.goal = { mark: ledger.mark }
+  const note = () => noteMinePreparation(w.ctx, w.branch, 'upper')
+  assert.equal(note(), false, 'the first look is the baseline')
+  for (const n of [20, 40, 60]) { stone.count = n; assert.equal(note(), true, `cobblestone ${n} is more than before`) }
+  stone.count = 10
+  assert.equal(note(), false, 'used up')
+  stone.count = 60
+  assert.equal(note(), false, 'gathered again to the same amount is no new mark')
+  assert.equal(ledger.goal().results, 0)
+})
+
 test('a skipped branch, retirement, duplicate record and another world do not manufacture construction progress', t => {
   const w = createMineWorld(t), mine = w.ctx.memory.early.mine, world = w.plan.scope
   const steps = mineSteps(w.plan, { layer: 'upper' }), cursor = steps.findIndex(step => step.kind === 'branch')

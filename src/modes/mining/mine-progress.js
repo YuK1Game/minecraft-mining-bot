@@ -37,10 +37,15 @@ function noteMineProgress (ctx) {
 function noteMinePreparation (ctx, branch, layer) {
   if (!live(ctx)) return false
   const plan = branch.plan, level = plan.layers.find(p => p.id === layer)
-  if (!level || branch.shaft?.depth <= level.y) return false
+  if (!level) return false
   const stock = inventory(ctx)
   if (!stock) return false
-  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p), refillTorches: branch.refillTorches === true, built: builtWork(branch) })
+  // The full refill targets, whatever is carried: a target that shrinks as the stock grows (64 to 32
+  // cobblestone, 32 to 8 torches) would stop counting halfway. The layer's work asks for supplies too, so a
+  // finished shaft does not end the count (live 2026-11-24 04:32-04:39 JST: cobblestone 2 to 88 for the upper
+  // layer in seven minutes counted for nothing, and the goal was held for an hour on the way home).
+  // The mark only ever counts a new most since the last result: using supplies up and gathering them again is none.
+  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p), refillCobblestone: true, refillTorches: true, built: builtWork(branch) })
   if (!needs) return false
 
   const have = name => count(name, stock.items)
