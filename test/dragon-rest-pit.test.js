@@ -13,10 +13,15 @@
 // Stand-ins: the server (a column of blocks: a mined block is air and its drop is in the bag, the body falls into
 // the cell mined under it, a placement is the received block and one item less), the early step, the meal, the
 // walk, and the climb out (player-climb.js has its own tests): it mines the lid and stands the Bot on its pillar.
-// Their success is not the game's.
+// The stand-in's mining refuses rock without a pickaxe of its tier in the hand, by the dig rules the real check
+// reads (quarry-rules.js; actions/mining.js 「適切なツルハシの装備を確認できません」), and its equip swaps the
+// row into the selected slot. Their success is not the game's.
 // Before (main ee3d626, the first scene): no block is mined, the wait stands on the grass at health 5.9.
 // The last scene joins the ordinary shelter (player-shelter.js) and the expedition's wait for the ordinary jobs
 // (crew-busy.js): a recorded pit counted as the shelter's work, for which the expedition waits.
+// The pickaxe scenes (travel/pit-tool.js): real Realm 2026-11-23 17:52:56 and 18:00:36 JST, on stone with the
+// stone sword in the hand: 「回復の穴を作れませんでした（DIG_REFUSED:適切なツルハシの装備を確認できません: stone）」.
+// Before (main ce70959) the first of them ends with that line and no block mined.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
@@ -26,6 +31,7 @@ const { pitSite, resting, REST, RETRY_MS } = require('../src/modes/dragon-rest-p
 const { WAIT } = require('../src/modes/dragon-heal')
 const { createPlayerShelter } = require('../src/modes/player-shelter')
 const { crewBusy } = require('../src/modes/crew-busy')
+const { blockRule, toolOf } = require('../src/quarry/quarry-rules')
 
 const SRC = path.resolve(__dirname, '..', 'src')
 const full = name => 'minecraft:' + name
@@ -36,16 +42,20 @@ const TOOLS = () => [{ slot: 0, name: full('diamond_sword'), count: 1, durabilit
 const DUG = /体力 5\.9 のため、ふたをした穴の中で回復を待ちます/, OUT = /体力が戻ったので、穴を出ます/
 
 // Grass at y 70 (the feet stand in y 71), dirt under it, stone from y 66 down. holes: cells that are air.
-function ground ({ feet = { x: 9905.5, y: 71, z: 10089.5 }, holes = [], bag = [...TOOLS(), { slot: 2, name: full('cooked_mutton'), count: 3 }], refuse = null } = {}) {
+// surface / rock: the top block's height and the highest stone, for a scene that stands on rock.
+function ground ({ feet = { x: 9905.5, y: 71, z: 10089.5 }, holes = [], bag = [...TOOLS(), { slot: 2, name: full('cooked_mutton'), count: 3 }], refuse = null, surface = 70, rock = 66 } = {}) {
   const key = (x, y, z) => `${x},${y},${z}`
   const changed = new Map(holes.map(cell => [key(cell.x, cell.y, cell.z), 'air']))
-  const getBlock = (x, y, z) => block(changed.get(key(x, y, z)) ?? (y > 70 ? 'air' : y === 70 ? 'grass_block' : y >= 67 ? 'dirt' : 'stone'))
-  const g = { feet: { ...feet }, bag, mined: [], placed: [], walks: [], getBlock, hunger: 19, meals: 0, retreats: 0, health: 5.9, hostile: 13.1 }
+  const getBlock = (x, y, z) => block(changed.get(key(x, y, z)) ?? (y > surface ? 'air' : y <= rock ? 'stone' : y === surface ? 'grass_block' : 'dirt'))
+  const g = { feet: { ...feet }, bag, mined: [], placed: [], walks: [], equips: [], getBlock, hunger: 19, meals: 0, retreats: 0, health: 5.9, hostile: 13.1 }
   const give = name => { const row = bag.find(item => item.name === full(name)); if (row) row.count++; else bag.push({ slot: bag.length, name: full(name), count: 1 }) }
   g.operations = {
     mining: { start ([cell]) {
       if (refuse) throw new Error(refuse)
       const name = getBlock(cell.x, cell.y, cell.z).name.replace('minecraft:', '')
+      // Rock needs a pickaxe of its tier in the hand (the selected slot is 0).
+      const rule = blockRule(full(name)), tool = toolOf(bag.find(item => item.slot === 0 && item.count > 0))
+      if (rule?.needs === 'pickaxe' && !(tool?.kind === 'pickaxe' && tool.tier >= rule.tier)) throw new Error(`適切なツルハシの装備を確認できません: ${name}`)
       changed.set(key(cell.x, cell.y, cell.z), 'air'); g.mined.push({ x: cell.x, y: cell.y, z: cell.z })
       give(name === 'stone' ? 'cobblestone' : 'dirt')
       // The body falls into the cell mined under it.
@@ -56,7 +66,15 @@ function ground ({ feet = { x: 9905.5, y: 71, z: 10089.5 }, holes = [], bag = [.
       if (!row || getBlock(position.x, position.y, position.z).boundingBox !== 'empty') throw new Error('設置できません。')
       row.count--; changed.set(key(position.x, position.y, position.z), row.name.replace('minecraft:', '')); g.placed.push({ ...position })
     } },
-    inventory: { equip: async slot => { const row = bag.find(item => item.slot === slot); if (row) row.slot = 0 } },
+    // Through the inventory into the selected slot: the two rows change places.
+    inventory: { equip: async slot => {
+      const row = bag.find(item => item.slot === slot && item.count > 0), was = bag.find(item => item.slot === 0 && item.count > 0)
+      if (!row) throw new Error('持ち替える物がありません。')
+      g.equips.push(row.name.replace('minecraft:', ''))
+      if (was && was !== row) was.slot = slot
+      row.slot = 0
+      return { phase: 'completed', slot: 0, sourceSlot: slot, selectedSlotChanged: false }
+    } },
     food: {
       preview: () => bag.some(item => /cooked_/.test(item.name) && item.count > 0) ? g.hunger < 20 ? { ready: true } : { ready: false, code: 'HUNGER_FULL' } : { ready: false, code: 'FOOD_NOT_IN_INVENTORY' },
       eat: async () => { g.meals++; bag.find(item => /cooked_/.test(item.name) && item.count > 0).count--; g.hunger = 20 },
@@ -67,15 +85,15 @@ function ground ({ feet = { x: 9905.5, y: 71, z: 10089.5 }, holes = [], bag = [.
   // The long trip's own runtime over this column: only its pit is called.
   g.trip = createLongTravelRuntime({
     require: name => require(path.resolve(SRC, name)), host: { world: { getBlock }, shared: {}, log: () => {} }, operations: g.operations,
-    working: () => ({ position: { x: g.feet.x, y: g.feet.y + 1.62, z: g.feet.z }, inventory: { items: items() }, health: g.health })
+    working: () => ({ position: { x: g.feet.x, y: g.feet.y + 1.62, z: g.feet.z }, inventory: { items: items() }, heldItem: items().find(item => item.slot === 0) ?? null, health: g.health })
   })
   g.items = items
   // The shared climb: through the lid, up on its own pillar to the ground it dug through.
   g.climb = shared => async () => {
     g.climbedWith = shared.travelNight?.cover ?? null
     const x = Math.floor(g.feet.x), z = Math.floor(g.feet.z)
-    for (let y = Math.round(g.feet.y); y <= 70; y++) changed.set(key(x, y, z), 'dirt')
-    g.feet.y = 71
+    for (let y = Math.round(g.feet.y); y <= surface; y++) changed.set(key(x, y, z), 'dirt')
+    g.feet.y = surface + 1
   }
   return g
 }
@@ -253,4 +271,43 @@ test("the expedition does not wait for the ordinary shelter over its own pit; th
   assert.equal(resting(shared), false)
   assert.equal(shelter.status().active, true)
   assert.deepEqual(stops, [REST])
+})
+
+// As at 17:52:56 JST: on stone at (9904, 62, 10142), the stone sword in the hand, one stone pickaxe with 24 uses
+// and six with 2, no food, hunger that regenerates.
+const WORN = () => [
+  { slot: 0, name: full('stone_sword'), count: 1, durabilityKnown: true, durabilityRemaining: 122 },
+  ...[9, 16, 17, 20, 21, 28].map(slot => ({ slot, name: full('stone_pickaxe'), count: 1, durabilityKnown: true, durabilityRemaining: 2 })),
+  { slot: 27, name: full('stone_pickaxe'), count: 1, durabilityKnown: true, durabilityRemaining: 24 },
+  { slot: 1, name: full('cobblestone'), count: 49 }
+]
+const ROCK = { feet: { x: 9904.5, y: 62, z: 10142.5 }, surface: 61, rock: 61 }
+
+test('as at 17:52:56 JST: on stone with the sword in the hand: the working stone pickaxe is held first and the pit is dug', async t => {
+  const g = ground({ ...ROCK, bag: WORN() }), w = await expedition(t, g)
+  await w.look()
+  assert.deepEqual(w.said(/回復の穴を作れませんでした/), [])
+  assert.deepEqual(g.equips[0], 'stone_pickaxe')
+  assert.equal(g.bag.find(item => item.name === full('stone_pickaxe') && item.durabilityRemaining === 24).slot <= 8, true, 'the pickaxe with 24 uses, not one with 2')
+  assert.equal(g.equips.filter(name => name === 'stone_pickaxe').length, 1, 'held once for the three cells')
+  assert.deepEqual(g.mined, [61, 60, 59].map(y => ({ x: 9904, y, z: 10142 })))
+  assert.deepEqual(g.placed, [{ x: 9904, y: 61, z: 10142 }], 'the lid')
+  assert.equal(resting(w.shared), true)
+})
+
+test('only worn pickaxes: the pit is not begun (no half-dug hole), and the line says why', async t => {
+  const g = ground({ ...ROCK, bag: WORN().filter(item => item.durabilityRemaining !== 24) }), w = await expedition(t, g)
+  await w.look()
+  assert.deepEqual(g.mined, [])
+  assert.deepEqual(g.equips, [])
+  assert.equal(w.said(/回復の穴を作れませんでした（NO_WORKING_PICKAXE:stone）/).length, 1)
+  assert.equal(resting(w.shared), false)
+})
+
+test('dirt and grass leave the hand as it is: the sword stays, as before', async t => {
+  const g = ground({ bag: WORN() }), w = await expedition(t, g)
+  await w.look()
+  assert.deepEqual(g.mined, [70, 69, 68].map(y => ({ x: 9905, y, z: 10089 })))
+  assert.equal(g.equips.includes('stone_pickaxe'), false)
+  assert.equal(resting(w.shared), true)
 })
