@@ -5,7 +5,7 @@ const { held, bare, solid, air, confirmed } = require('./mine-observed')
 const { createOpenStand } = require('../open-stand')
 const { insideMine, reservedShaftCell } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
-const { supplyNeeds, ladderBatches } = require('./mine-needs')
+const { supplyNeeds, ladderBatches, builtWork } = require('./mine-needs')
 const { occupied } = require('./mine-carry')
 const { count } = require('../dragon-supply-kit')
 const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
@@ -183,7 +183,7 @@ function createMineSupplies (ctx, actions, storage) {
     const branch = ctx.memory.early.mine.branch
     const needs = supplyNeeds(plan, id, {
       inventory: actions.inventory(), getBlock: actions.block,
-      refillCobblestone: branch.refillCobblestone === true, refillTorches: branch.refillTorches === true
+      refillCobblestone: branch.refillCobblestone === true, refillTorches: branch.refillTorches === true, built: builtWork(branch)
     })
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')
     if (shaftOnly) needs.chest = 0
