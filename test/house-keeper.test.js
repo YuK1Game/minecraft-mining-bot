@@ -195,3 +195,24 @@ test('the repair record of the code before (shared.playerHouseRepair) is read on
   assert.equal(f.house().repair.since, f.clock - GIVE_UP_MS + 60000)
   assert.equal(f.pass(60000), 'held')
 })
+
+test('a repair looked at again only because its time was up, and held with the same count, waits twice as long each time (live 2026-11-24 05:11-07:45 JST)', () => {
+  const { hold, resume, review, AGAIN_MS } = require('../src/modes/house/house-repair')
+  const getBlock = () => null
+  let house = { origin: { x: 0, y: 64, z: 0 }, done: false, built: true, repair: { state: 'running', since: 0 } }
+  const waits = []
+  let now = 0
+  for (let round = 0; round < 4; round++) {
+    house = hold(house, { now, missing: 1, short: { logs: 0 } })
+    waits.push(house.repair.until - now)
+    now = house.repair.until
+    assert.equal(review(house.repair, { now, sight: { missing: 1 }, short: { logs: 0 } }), 'TIME')
+    house = resume(house, { now, getBlock, why: 'TIME' })
+  }
+  assert.deepEqual(waits, [AGAIN_MS, 2 * AGAIN_MS, 4 * AGAIN_MS, 4 * AGAIN_MS])
+  // A different count, or a look for another reason, starts from the first wait again.
+  const other = hold(house, { now, missing: 3, short: { logs: 0 } })
+  assert.equal(other.repair.until - now, AGAIN_MS)
+  const seen = hold(resume(hold(house, { now, missing: 1 }), { now, getBlock, why: 'OBSERVED' }), { now, missing: 1 })
+  assert.equal(seen.repair.until - now, AGAIN_MS)
+})

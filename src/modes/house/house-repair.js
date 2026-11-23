@@ -24,7 +24,7 @@
 // gathering of materials, the build, the night at home).
 const { facility, repairSteps, LABEL } = require('./house-facilities')
 
-const GIVE_UP_MS = 20 * 60000, AGAIN_MS = 60 * 60000
+const GIVE_UP_MS = 20 * 60000, AGAIN_MS = 60 * 60000, MAX_ROUNDS = 2
 
 // 'build' (no finished house yet), 'repair' (a repair is running) or null (whole, or the repair is held).
 function houseDuty (house) {
@@ -67,11 +67,18 @@ function needHouse (shared, getBlock, name, { now = Date.now(), log = () => {} }
 // `missing`: the steps not standing as received now (null when the house is not received whole); `short`: the raw
 // materials short for them ({ logs, … }, null while the inventory is not received); `met`: the thing a job asked
 // for stands again, so nothing was tried in vain.
-function hold (house, { now, missing = null, short = null, met = false, again = AGAIN_MS }) {
+// A repair looked at again only because its time was up, and held again with the same count of missing steps, waits
+// twice as long each time (60, 120, 240 minutes): nothing it can see has changed, and each look takes the body out
+// of its work and back (live 2026-11-24 05:11, 06:25 and 07:45 JST: one roof slab out of sight from every stand;
+// each look walked from the mine to the house and back). A changed count or material looks again as before, and
+// so does a repair a job asked for (`need`).
+function hold (house, { now, missing = null, short = null, met = false, again = null }) {
   const repair = house.repair ?? {}
+  const rounds = !met && missing !== null && repair.again?.missing === missing ? Math.min((repair.again.rounds ?? 0) + 1, MAX_ROUNDS) : 0
+  again = again ?? AGAIN_MS * 2 ** rounds
   const keep = !met && repair.need ? { need: repair.need, ...(repair.focus ? { focus: [...repair.focus] } : {}) } : {}
   const tried = { ...(repair.tried ?? {}), ...(!met && repair.need ? { [repair.need]: now } : {}) }
-  return { ...house, repair: { state: 'held', since: repair.since ?? now, heldAt: now, until: now + again, ...keep, tried, basis: { missing, short: short ? { ...short } : null, seen: missing !== null } } }
+  return { ...house, repair: { state: 'held', since: repair.since ?? now, heldAt: now, until: now + again, ...keep, tried, basis: { missing, short: short ? { ...short } : null, seen: missing !== null, ...(rounds ? { rounds } : {}) } } }
 }
 
 // Why a held repair is looked at again now, or null. `sight`: the confirmed observation ({ missing }) or null;
@@ -87,12 +94,15 @@ function review (repair, { now, sight = null, short = null }) {
 }
 
 // The held repair runs again. The thing a job asked for stays first until it is received standing.
-function resume (house, { now, getBlock }) {
+// `why`: the reason of the look ('TIME' keeps what the hold was measured by, so the next hold can tell a look that
+// found nothing new).
+function resume (house, { now, getBlock, why = null }) {
   const repair = house.repair ?? {}
+  const again = why === 'TIME' && !repair.need && Number.isFinite(repair.basis?.missing) ? { again: { missing: repair.basis.missing, rounds: repair.basis.rounds ?? 0 } } : {}
   const state = repair.need ? facility(getBlock, house.origin, repair.need).state : null
   const need = state === 'broken' || state === 'unknown' ? repair.need : null
   const focus = state === 'broken' ? repairSteps(getBlock, house.origin, need) : need ? repair.focus ?? [] : []
-  return { ...house, repair: running(now, need ? { need, ...(focus.length ? { focus: [...focus] } : {}) } : {}) }
+  return { ...house, repair: running(now, { ...(need ? { need, ...(focus.length ? { focus: [...focus] } : {}) } : {}), ...again }) }
 }
 
-module.exports = { houseDuty, focusOf, needHouse, hold, review, resume, running, GIVE_UP_MS, AGAIN_MS }
+module.exports = { houseDuty, focusOf, needHouse, hold, review, resume, running, GIVE_UP_MS, AGAIN_MS, MAX_ROUNDS }
