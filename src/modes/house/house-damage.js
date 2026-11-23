@@ -102,17 +102,23 @@ function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => nu
     }
     if (repair.state === 'running') {
       const met = !!repair.need && facility(getBlock, house.origin, repair.need).state === 'standing'
-      if (!met && now() - repair.since < GIVE_UP_MS) return null
+      // A run of this repair failed on every step it could still work on, with no raw material short: nothing it waits
+      // for will change, so it is held now and the other work goes on (live 2026-11-23 22:45-23:05 and
+      // 2026-11-24 00:05 JST: one roof slab out of sight from every stand; the work stood still 20 minutes an hour).
+      const tried = shared.playerHouseTried, short = shortNow(house, left)
+      const spent = !met && tried?.since === repair.since && !!short && !Object.values(short).some(count => count > 0)
+      if (!met && !spent && now() - repair.since < GIVE_UP_MS) return null
       // Out of sight at this moment: what this life last observed of the house is what the hold is measured by.
       // (A hold taken blind is looked at again at the first sight of the house. Three holds taken a few steps
       // outside NEAR_M were each looked at again within two minutes, with the count they had already seen.)
       const last = shared.playerHouseSeen?.state === 'damaged' ? shared.playerHouseSeen.missing : null
       const missing = left ? left.length : last
-      const next = hold(house, { now: now(), missing, short: shortNow(house, left), met })
+      const next = hold(house, { now: now(), missing, short, met })
       write(next)
       const seen = left ? `残り ${left.length} 手` : missing !== null ? `最後に見た時は残り ${missing} 手` : '家は未確認'
       const thing = repair.need ? `家の${LABEL[repair.need]}` : '家'
       say(met ? `${thing}が直ったため、残りの修理は保留して作業に戻ります（${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`
+        : spent ? `${thing}の修理で、いま置ける手がないため保留します（観測は破損のまま: ${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`
         : `${thing}の修理が ${minutes(GIVE_UP_MS)} 分で終わらないため保留します（観測は破損のまま: ${seen}。見直し: ${minutes(AGAIN_MS)} 分後、または材料・家の様子が変わった時）`)
       return 'held'
     }

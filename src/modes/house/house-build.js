@@ -81,7 +81,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
   const held = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
   const stackOf = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).sort((a, b) => b.count - a.count)[0] ?? null
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-  let hunts = 0, unreached = 0, soon = false, unsettled = false, unreachedWhy = null
+  let hunts = 0, unreached = 0, soon = false, unsettled = false, unreachedWhy = null, vain = false
   // Unconfirmed transfers per step, across runs: a step that leaves the
   // inventory unconfirmed twice is counted as a failure from then on (live
   // 2026-11-17 07:52-07:57 JST: one out-of-sight corner block timed out first
@@ -426,7 +426,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
       await enterForChests(origin, aborted)
     } else if (await openDoorway(origin, todo()) && focus) focus.add(DOOR)
     const fails = new Map(), started = now()
-    let placed = 0
+    let placed = 0, closing = false
     let largeChests = []
     const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, build, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
     const reasons = new Map()
@@ -439,7 +439,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
         if ((fails.get(step.id) ?? 0) >= TRIES) continue
         // The door only once nothing else is left: placed while slabs or glass
         // wait it is taken down again on the next run (live 07:22-07:23 JST).
-        if (step.id === DOOR && todo().some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
+        if (step.id === DOOR && !closing && todo().some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
+        if (closing && step.id !== DOOR) continue
         if (step.id === DOOR && !await verifyChests()) continue
         const left = todo()
         ports.reset?.()
@@ -458,8 +459,15 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
         note(step, String(walkWhy ?? ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
         if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を (${step.position.x}, ${step.position.y}, ${step.position.z}) に置けません（${ports.why() ?? hands.why?.() ?? '不明'}）`)
       }
-      if (!progress || unsettled) break
+      if (unsettled) break
+      // Nothing more goes up in this run of a repair: the door is put back before the run ends, so the house is not left open
+      // for the hour until the rest is looked at again (live 2026-11-23 23:05-2026-11-24 00:08 JST: one roof slab
+      // out of sight from every stand, the door down since 22:57).
+      if (!progress) { if (closing || !stood || aborted() || !todo().some(step => step.id === DOOR)) break; closing = true }
     }
+    // A run that failed on every step it could still work on: the keeper holds the repair on it (house-damage.js).
+    const rest = todo().filter(step => step.id !== DOOR && workable(step))
+    vain = !aborted() && !unsettled && rest.length > 0 && rest.every(step => (fails.get(step.id) ?? 0) > 0)
     // Cut short by an enemy or a pause before or between the steps: say so and
     // come back in 2 minutes, not 10 (live 2026-11-17 14:19 JST: a witch and two
     // skeletons by the house, 「0 個置きました」 with no reason at all).
@@ -496,7 +504,10 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     try {
       agent.stop('拠点の家を建てます。')
       await settle()
+      vain = false
       placed = await run()
+      const repair = shared.playerHouse?.repair
+      if (vain && repair?.state === 'running') shared.playerHouseTried = { since: repair.since, at: now() }
       placedTotal += placed
       return placed > 0
     } catch (error) {
