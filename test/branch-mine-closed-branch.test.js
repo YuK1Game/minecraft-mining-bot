@@ -151,3 +151,22 @@ test('a search saved under the older planning rules starts over, so its rejected
   await nextMine(g.ctx, 'raw_iron', 1)
   assert.equal(g.ctx.memory.early.mine.search.index, 9); assert.ok(g.ctx.memory.early.mine.search.rejected[0])
 })
+
+test('a saved search that names a centre this centre list lacks drops it instead of throwing', async () => {
+  // 2026-11-23 09:13:52 JST real Realm: a search saved with 17 centres (deferred 10–15) was read by code
+  // holding 9, and the review of a deferred centre threw "undefined is not iterable"; the Bot stood still.
+  const f = observationWorld({ index: 9 }), search = f.ctx.memory.early.mine.search, key = search.requestKey
+  Object.assign(search, { origin: { x: 0.5, y: 64, z: 0.5 }, exhaustedRevision: 1, entranceSurveyed: true,
+    deferred: { 12: { index: 12, requestKey: key, code: 'MINE_SURFACE_OBSERVATION_NEEDED', cells: [] } } })
+  f.advance(10000)
+  const out = await nextMine(f.ctx, 'raw_iron', 1)
+  assert.equal(out.result.code, 'MINE_OBSERVATION_EXHAUSTED')
+  assert.equal(f.ctx.memory.early.mine.search.deferred?.[12], undefined)
+  // A wait on such a centre is dropped the same way.
+  const g = observationWorld({ index: 12 }), saved = g.ctx.memory.early.mine.search
+  Object.assign(saved, { origin: { x: 0.5, y: 64, z: 0.5 }, entranceSurveyed: true, wait: { revision: null, requestKey: saved.requestKey, index: 12, code: 'MINE_TERRAIN_UNKNOWN', cells: [] } })
+  g.advance(10000)
+  const next = await nextMine(g.ctx, 'raw_iron', 1)
+  assert.equal(g.ctx.memory.early.mine.search.wait, undefined)
+  assert.ok(next.result?.code, 'the search answers with a result')
+})

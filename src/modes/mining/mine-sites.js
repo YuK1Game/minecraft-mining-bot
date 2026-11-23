@@ -123,6 +123,9 @@ async function nextMine(ctx,resource,targetHeld){
   const search=mine.search??={index:0},candidateCount=siteOffsets(sites).length
   const requestKey=searchKey(resource,targetHeld,scope(ctx))
   if(search.requestKey!==requestKey){search.requestKey=requestKey;search.index=0;delete search.wait;delete search.deferred;delete search.exhaustedRevision;delete search.origin;delete search.rejected;delete search.entranceSurveyed;delete search.visited}
+  // A search saved with a longer centre list keeps no centre this list lacks.
+  if(search.wait?.index>=candidateCount)delete search.wait
+  for(const [id,wait] of Object.entries(search.deferred??{}))if(!(wait?.index<candidateCount))delete search.deferred[id]
   // Observation moves must not move the nine fixed candidate centres too.
   search.origin??=originAt(ctx,0,sites).origin
   // Reconsider a legacy exhausted search once with measured entrances,
