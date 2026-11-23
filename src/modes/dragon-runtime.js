@@ -11,6 +11,7 @@ const { recoverDragon } = require('./dragon-recovery')
 const { createDragonSupplies } = require('./dragon-supplies')
 const { nightHome } = require('./dragon-night')
 const { heal } = require('./dragon-heal')
+const { createRest } = require('./dragon-rest-pit')
 const { finishTree } = require('./dragon-tree')
 const { createProgress } = require('./dragon-progress')
 const { createGoalLedger } = require('./goal/goal-ledger')
@@ -58,8 +59,11 @@ function createDragonRuntime (ports) {
     Object.assign(ctx, { supplies, memory: record, rt: runtime, ports: ctx.hands, active: () => !ctx.cancelled(), ...opts })
     ctx.saveMine = async () => !ctx.cancelled() && await state.save(record) === true && !ctx.cancelled()
     const stronghold = createDragonStronghold(ctx)
+    // The health wait's covered pit (dragon-rest-pit.js): left as soon as the wait is over, before anything else goes on.
+    const rest = createRest({ ctx, health: () => raw().health, hostileDistance: () => runtime.nearestHostile?.(), dig: runtime.travel?.()?.travelNightPit, climb: ctx.rise, now })
+    if (rest.inside() && !recoverHealth) return rest.leave()
     // From dusk the overworld part before the Nether goes home to its bed (dragon-night.js).
-    if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !(recoverHealth && ports.threatened())) {
+    if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !rest.inside() && !(recoverHealth && ports.threatened())) {
       const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
       if (night) return night
     }
@@ -78,7 +82,7 @@ function createDragonRuntime (ports) {
     if (recoverHealth && dim !== 'end') {
       // Healing is the work now: more health than at any time since the last result is a mark, a hit and a heal in turn is none.
       ledger.mark('health', 20 - Number(raw().health), 2)
-      return heal({ ctx, record, dim, shared, runtime, threatened: ports.threatened, supplies, nether: stepNether, recover: recoverDragon })
+      return heal({ ctx, record, dim, shared, runtime, threatened: ports.threatened, supplies, nether: stepNether, recover: recoverDragon, rest })
     }
     if (record.recovery || record.lootRecovery) {
       const recovery = await recoverDragon(ctx, record)
