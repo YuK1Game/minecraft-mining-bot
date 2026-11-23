@@ -74,12 +74,12 @@ function createMineLighting (ctx, actions) {
     }
     return wait('MINE_FINISH_STAND_UNAVAILABLE')
   }
-  async function placementStand (request) {
-    const visible = feet => visibleMinePlacement(block, request, feet)
+  async function placementStand (request, canStand = () => true) {
+    const visible = feet => canStand(feet) && visibleMinePlacement(block, request, feet)
     const reached = await approach(request.position, visible)
     if (!confirmed(reached)) return { result: reached }
     const plan = visible(ctx.getFeet())
-    return plan ? { plan } : { result: wait('MINE_FINISH_STAND_UNAVAILABLE') }
+    return plan ? { plan, reached } : { result: wait('MINE_FINISH_STAND_UNAVAILABLE') }
   }
   function floorVisible (p, feet) {
     if (!feet) return false
@@ -213,7 +213,7 @@ function createMineLighting (ctx, actions) {
     if (!light.safe) return wait('MINE_LIGHTING_UNCONFIRMED', { evidence: light })
     return { ...completed('MINE_FINISH_RECEIVED', { evidence: { serverConfirmed: true, finishConfirmed: true, light, slabs: floors.length, sealed: walls.length } }), serverConfirmed: true }
   }
-  return { finish, ensureSegment: finish, approach, recoverFloorStand, boundary }
+  return { finish, ensureSegment: finish, approach, placementStand, recoverFloorStand, boundary }
 }
 
 module.exports = { createMineLighting, receivedLight, standFor, passable }

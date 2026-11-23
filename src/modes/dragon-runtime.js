@@ -19,7 +19,7 @@ const { goalKey, measure } = require('./dragon-goal-measure')
 const { reserveCounts } = require('./dragon-reserve-seen')
 const { mineWorldScope, sameWorld } = require('./mining/mine-state')
 const { held, receivedInventory } = require('./mining/mine-observed')
-const { constructionSupplies } = require('./mining/mine-needs')
+const { constructionSupplies, builtWork } = require('./mining/mine-needs')
 
 const HELD = '進まない目的を保留しています。場所・持ち物・接続が変わった時か、時間をおいて見直します。'
 const LET_GO_MS = 60000
@@ -201,7 +201,7 @@ function createDragonRuntime (ports) {
     if (!needOre && !branch.segmentTask && !branch.vein && !producingReserve) return null
     const layer = branch.segmentTask?.layer ?? branch.vein?.layer ?? request.layer
     const supplies = constructionSupplies(branch.plan, layer, {
-      inventory, getBlock: p => getBlock(p.x, p.y, p.z), refillCobblestone: branch.refillCobblestone === true
+      inventory, getBlock: p => getBlock(p.x, p.y, p.z), refillCobblestone: branch.refillCobblestone === true, built: builtWork(branch)
     })
     return { ...supplies, [request.resource]: request.targetHeld }
   }

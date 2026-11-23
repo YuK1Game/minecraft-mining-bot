@@ -70,6 +70,14 @@ function constructedUpper (f) {
   return plan
 }
 
+test('a lower extension whose shaft would pass through a received cave is not planned', async () => {
+  const f = plannerWorld(), plan = constructedUpper(f)
+  for (let u = 8; u <= 12; u++) for (let v = 6; v <= 9; v++) f.put(point(plan, u, -20, v), 'diamond_ore')
+  f.put({ ...plan.shaft.columns[2], y: 5 }, 'air')
+  const out = await planMineExtension({ ...f, plan, resource: 'diamond', targetCount: 4 })
+  assert.equal(out.status, 'blocked', JSON.stringify(out)); assert.equal(out.code, 'MINE_NO_SAFE_RESOURCE_PLAN')
+})
+
 test('lower extension surveys only new construction and preserves upper chests, slab floor, shaft identity and progress', async () => {
   const f = plannerWorld(), plan = constructedUpper(f)
   for (let u = 8; u <= 12; u++) for (let v = 6; v <= 9; v++) f.put(point(plan, u, -20, v), 'diamond_ore')

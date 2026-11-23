@@ -3,9 +3,11 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { createMineWorld } = require('./helpers/branch-mine-world')
-const { ensureShaft, shaftFinish, climb } = require('../src/modes/mining/mine-shaft')
+const { ensureShaft, shaftFinish, climb, fillCell } = require('../src/modes/mining/mine-shaft')
 const { leaveMine } = require('../src/modes/mining/mine-route')
 const { shaftBoundary } = require('../src/modes/mining/mine-shaft-boundary')
+const { scopeOf } = require('../src/modes/mining/mine-observed')
+const { visibleMinePlacement } = require('../src/modes/mining/mine-actions')
 const { mineSteps, stepCells } = require('../src/modes/mining/mine-geometry')
 const key = p => `${p.x},${p.y},${p.z}`
 
@@ -26,6 +28,74 @@ test('same-height landing recovery recentres with ordinary walking and sends no 
   assert.equal(out.serverConfirmed, true)
   assert.equal(w.climbs.length, 0)
   assert.deepEqual(w.walks.at(-1), to)
+})
+
+test('a lowered backing face uses its confirmed side bay, including recovery from a held placement', async t => {
+  const w = createMineWorld(t), { shaft } = w.plan, depth = 66
+  const { x, z, face } = shaft.ladder
+  // Received backing and floor geometry, rotated from south to the fixture's east.
+  const rows = [
+    ['.....', '.....', '###..', '###..', '####.'],
+    ['.....', '##...', '##...', '#####', '#####'],
+    ['##...', '###..', '#.L##', '#..##', '#####'],
+    ['##..#', '####.', '#.L##', '#..##', '#####'],
+    ['###.#', '#####', '##L##', '#####', '#####']
+  ]
+  rows.forEach((layer, dy) => layer.forEach((row, dx) => [...row].forEach((symbol, dz) => {
+    const name = { '.': 'air', '#': 'stone', L: 'ladder' }[symbol]
+    w.put({ x: x + dx - 2, y: depth + dy - 2, z: z + 2 - dz }, name, symbol === 'L' ? { facing_direction: face } : {})
+  })))
+  w.branch.shaft = { depth, entry: true, landings: {} }
+  const target = { ...shaft.ladder.support, y: depth - 1 }
+  const front = { x: x + 1.5, y: depth, z: z + 0.5 }
+  const side = { ...front, z: z + 1.5 }
+  const start = { ...front, z: z + 2.5 }
+  for (const y of [depth, depth + 1]) w.put({ x: x + 1, y, z: z + 2 }, 'air')
+  const block = p => w.getBlock(p.x, p.y, p.z)
+  const request = { position: target, name: 'minecraft:cobblestone', supportPurpose: 'ladder_support' }
+  w.setFeet(start)
+  assert.ok(visibleMinePlacement(block, request, side))
+  w.branch.intent = { kind: 'fill', purpose: request.supportPurpose, target, liveScope: scopeOf(w.ctx) }
+  assert.equal(await w.ctx.minePorts.recoverFinishStand(), true, JSON.stringify({ feet: w.feet(), walks: w.walks, side, why: w.ctx.hands.why?.() }))
+  assert.deepEqual(w.walks.at(-1), side)
+  assert.equal(block(target).name, 'minecraft:air')
+
+  w.setFeet(start)
+  const result = await fillCell(w.ctx, w.branch, target, 'ladder_support')
+  assert.equal(result.serverConfirmed, true, JSON.stringify(result))
+  assert.deepEqual(w.walks.at(-1), side)
+  assert.equal(block(target).name, 'minecraft:cobblestone')
+  assert.equal(w.places.length, 1)
+
+  w.put({ x, y: depth - 1, z }, 'ladder', { facing_direction: face })
+  await ensureShaft(w.ctx, w.branch, 'lower')
+  const descent = w.climbs.find(move => move.to.y === depth - 1)
+  assert.ok(descent, JSON.stringify({ feet: w.feet(), walks: w.walks, climbs: w.climbs }))
+  assert.equal(Math.floor(descent.from.x), Math.floor(front.x))
+  assert.equal(Math.floor(descent.from.z), Math.floor(front.z))
+})
+
+test('a confirmed void below the rung is resealed before any descent', async t => {
+  const w = createMineWorld(t), { shaft } = w.plan
+  const { x, z, face } = shaft.ladder, depth = 69
+  const front = shaft.columns[1]
+  const bottom = { x, y: depth - 2, z }, next = { x, y: depth - 1, z }
+  for (const [dx, dy, dz] of [[0, 0, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    w.put({ x: x + dx, y: bottom.y + dy, z: z + dz }, 'air')
+  }
+  w.put(next, 'air')
+  w.put({ ...front, y: depth }, 'air')
+  w.put({ x, y: depth, z }, 'ladder', { facing_direction: face })
+  w.branch.shaft = { depth, entry: true, landings: {} }
+  w.setFeet({ x: front.x + 0.5, y: depth, z: front.z + 0.5 })
+
+  const result = await ensureShaft(w.ctx, w.branch, 'upper')
+  assert.equal(result.code, 'MINE_SHAFT_LANDING_UNSUPPORTED', JSON.stringify(result))
+  assert.equal(w.getBlock(next.x, next.y, next.z).name, 'minecraft:cobblestone')
+  assert.equal(w.getBlock(bottom.x, bottom.y, bottom.z).name, 'minecraft:air')
+  assert.equal(w.branch.shaft.depth, depth)
+  assert.equal(w.climbs.length, 0)
+  assert.equal(w.digs.length, 0)
 })
 
 test('clear a dry surface plant at the planned ladder support and leave nearby plants alone', async t => {

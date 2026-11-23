@@ -2,7 +2,7 @@
 
 const { mineWorldScope, sameWorld } = require('./mine-state')
 const { at, inventory, live } = require('./mine-common')
-const { supplyNeeds } = require('./mine-needs')
+const { supplyNeeds, builtWork } = require('./mine-needs')
 const { count } = require('../dragon-supply-kit')
 
 // Work history is used only to keep the goal watcher informed. It is never a
@@ -40,7 +40,7 @@ function noteMinePreparation (ctx, branch, layer) {
   if (!level || branch.shaft?.depth <= level.y) return false
   const stock = inventory(ctx)
   if (!stock) return false
-  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p), refillTorches: branch.refillTorches === true })
+  const needs = supplyNeeds(plan, layer, { inventory: stock, getBlock: p => at(ctx, p), refillTorches: branch.refillTorches === true, built: builtWork(branch) })
   if (!needs) return false
 
   const have = name => count(name, stock.items)

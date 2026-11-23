@@ -5,7 +5,7 @@ const { digCell, walkCell } = require('./mine-excavate')
 const { value, fillMaterial } = require('./mine-observed')
 const { noteMineProgress } = require('./mine-progress')
 const { clearableSitePlant } = require('../../quarry/storage/storage-site-terrain')
-const { shaftEntryBackingUsable } = require('./mine-shaft-boundary')
+const { shaftEntryBackingUsable, shaftLandingHasAnchor } = require('./mine-shaft-boundary')
 
 const here = (column,y) => ({ x:column.x,y,z:column.z })
 const ladder = b => b?.known === true && b.name === 'minecraft:ladder' && !b.extra?.length
@@ -23,7 +23,12 @@ async function fillCell (ctx,branch,target,purpose = 'shaft') {
   if(!air(b))return blocked('MINE_FILL_OCCUPIED','縦坑の埋戻し先を確認します。')
   const name=fillMaterial(inventory(ctx))
   if(!name)return blocked('MINE_FILL_SUPPLY','縦坑の足場と埋戻し用ブロックを補給します。','supplies_changed')
-  return action(ctx,branch,{kind:'fill',purpose,target},()=>ctx.minePorts.place({position:target,name,supportPurpose:purpose}),()=>solid(at(ctx,target)))
+  return action(ctx,branch,{kind:'fill',purpose,target},async()=>{
+    const request={position:target,name,supportPurpose:purpose}
+    if(purpose!=='ladder_support' || !ctx.minePorts.approachLadderSupport || branch.pendingAction)return ctx.minePorts.place(request)
+    const access=await ctx.minePorts.approachLadderSupport(request)
+    return access.result??ctx.minePorts.place(access.plan)
+  },()=>solid(at(ctx,target)))
 }
 
 async function rung (ctx,branch,y) {
@@ -211,13 +216,29 @@ async function ensureShaft (ctx,branch,layer) {
   if(!resumedDown){
     const toWork=Math.abs(ctx.getFeet().y-from.y)>0.6 ? await climb(ctx,branch,from) : await walkCell(ctx,branch,from,'shaft_work')
     if(!received(toWork))return toWork
-    if(at(ctx,bottom)?.known !== true)return observe(ctx,[bottom],'縦坑の次の着地点を受信します。')
+    const floor=at(ctx,bottom)
+    if(floor?.known !== true)return observe(ctx,[bottom],'縦坑の次の着地点を受信します。')
+    if(air(floor) && shaftLandingHasAnchor(p=>at(ctx,p),bottom)===false){
+      const pending=branch.pendingAction
+      if(!solid(at(ctx,nextLadder)) || pending?.supportFill && key(pending.position)===key(nextLadder)){
+        const sealed=await fillCell(ctx,branch,nextLadder,'shaft_landing')
+        if(!received(sealed))return sealed
+      }
+      return blocked('MINE_SHAFT_LANDING_UNSUPPORTED','足場を取り付ける面がない空洞のため、縦坑を塞いで戻ります。')
+    }
     const dug=await digCell(ctx,branch,nextLadder,'shaft')
     if(!received(dug))return dug
     if(!solid(at(ctx,bottom))){const support=await fillCell(ctx,branch,bottom,'shaft_landing');if(!received(support))return support}
   }
   const installed = await rung(ctx, branch, next)
   if (!received(installed)) return installed
+  // The backing may be visible from the diagonal work bay only. Mount from
+  // the supported front bay, which is adjacent to the ladder column.
+  const feet=ctx.getFeet()
+  if(from && feet && !besideLadder(feet,shaft.ladder) && Math.abs(feet.y-from.y)<=0.6){
+    const moved=await walkCell(ctx,branch,from,'shaft_mount')
+    if(!received(moved))return moved
+  }
   const down=await climb(ctx,branch,centre(nextLadder))
   if(!received(down))return down
   for(const column of shaft.fillColumns){

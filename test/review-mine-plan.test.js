@@ -286,6 +286,22 @@ test('a shaft with protected leaf litter in its first backing cell cannot be pla
   assert.ok(result.unsafe.blocks.some(block => block.at === key(backing) && block.name === 'minecraft:leaf_litter'))
 })
 
+test('a shaft floor without any lower or side anchor is rejected before construction', async () => {
+  const f = fixture({ full: true }), plan = geometry({ width: 16, length: 16 })
+  const { x, z } = plan.shaft.ladder, y = 50
+  for (const [dx, dy, dz] of [[0, 0, 0], [0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    f.put({ x: x + dx, y: y + dy, z: z + dz }, 'air')
+  }
+  f.put(point(plan, 9, 32, 7), 'iron_ore')
+  const survey = await surveyMine({ ...f, bounds: { min: { x: -4, y: -60, z: -4 }, max: { x: 36, y: 67, z: 36 } } })
+  const result = await evaluateMineGeometry(plan, survey, {
+    origin: plan.shaft.approach, resource: 'raw_iron', checkpoint: async () => {}, read: p => survey.at(p)
+  })
+  assert.equal(result.eligible, false)
+  assert.equal(result.unsafe.stage, 'shaft_void')
+  assert.ok(result.unsafe.blocks.some(block => block.at === key({ x, y, z })))
+})
+
 test('a low chest foundation is rejected even though its received bounding box is block', async () => {
   const f = fixture({ full: true }), plan = geometry({ width: 16, length: 16 }), chest = plan.storage[0].pairs[0].positions[0]
   const foundation = { ...chest, y: chest.y - 1 }

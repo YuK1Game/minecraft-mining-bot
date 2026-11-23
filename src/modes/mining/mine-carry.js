@@ -1,7 +1,7 @@
 'use strict'
 
 const {matches}=require('../dragon-supply-kit')
-const {constructionSupplies}=require('./mine-needs')
+const {constructionSupplies,builtWork}=require('./mine-needs')
 const {isSpentPickaxe}=require('../dig-tool')
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 const CARGO=/^(?:cobblestone|cobbled_deepslate|stone|deepslate|granite|diorite|andesite|tuff|calcite|dirt|gravel|flint|raw_iron|raw_gold|raw_copper|coal|diamond|redstone|lapis_lazuli|emerald)$/
@@ -42,7 +42,7 @@ function offered(inventory,keep,capacity){
 const cargo=(inventory,keep={})=>offered(inventory,keep,false)
 const capacityCargo=(inventory,keep={})=>offered(inventory,keep,true)
 function constructionKeep(ctx,branch,layer){
-  const needs=constructionSupplies(branch.plan,layer,{inventory:ctx.runtime.inventory(),getBlock:p=>ctx.getBlock(p.x,p.y,p.z)})??{}
+  const needs=constructionSupplies(branch.plan,layer,{inventory:ctx.runtime.inventory(),getBlock:p=>ctx.getBlock(p.x,p.y,p.z),built:builtWork(branch)})??{}
   return {...RETAIN,...Object.fromEntries(Object.entries(needs).map(([name,n])=>[name,Math.max(n,RETAIN[name]??0)]))}
 }
 module.exports={cargo,capacityCargo,occupied,isCargo,constructionKeep,RETAIN}

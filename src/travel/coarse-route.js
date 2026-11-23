@@ -12,6 +12,9 @@
 const PASS = /^minecraft:(?:air|cave_air|void_air|short_grass|tall_grass|grass|fern|large_fern|dead_bush|deadbush|dandelion|poppy|blue_orchid|allium|azure_bluet|red_tulip|orange_tulip|white_tulip|pink_tulip|oxeye_daisy|cornflower|lily_of_the_valley|sweet_berry_bush|snow_layer|wildflowers|leaf_litter|short_dry_grass|tall_dry_grass|bush|firefly_bush)$/
 const WATER = /^minecraft:(?:flowing_)?water$/
 const HAZARD = /lava|fire|magma|cactus|campfire|powder_snow|cobweb|wither_rose|dripstone|sweet_berry/
+const { skyOver } = require('./open-sky')
+// Cover over a stand: a solid block that is not a tree's.
+const covers = b => b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')
 
 function classify (b) {
   if (!b || b.known !== true) return 'unknown'
@@ -74,12 +77,12 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
   const ensure = () => checkCancelled({ signal, cancelled })
   ensure()
   // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
-  // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs
-  // within 40 blocks); covered stands cost five times and may only be entered
-  // upward or level, so an underground start climbs back out; the goal counts
-  // only on a sky-open stand.
+  // surfaceOnly a stand must see the sky (nothing solid above but leaves/logs);
+  // covered stands cost five times and may only be entered upward or level, so
+  // an underground start climbs back out; the goal counts only on a sky-open
+  // stand. How unreceived cells above are read: open-sky.js skyOver.
   const skyCache = new Map()
-  const sky = (x, y, z) => { const k = `${x},${y},${z}`; if (skyCache.has(k)) return skyCache.get(k); let open = true; for (let yy = y + 2; yy < 320; yy++) { const b = getBlock(x, yy, z); if (!b || b.known !== true) { if (yy >= 128) break; open = false; break } if (b.boundingBox === 'block' && !/leaves|log|wood/.test(b.name ?? '')) { open = false; break } } skyCache.set(k, open); return open }
+  const sky = (x, y, z) => { const k = `${x},${y},${z}`; if (skyCache.has(k)) return skyCache.get(k); const open = skyOver(getBlock, x, y, z, covers); skyCache.set(k, open); return open }
   const surface = createSurface(getBlock)
   // A bot already on a canopy may keep walking on leaves until it can get down;
   // a route on the ground never climbs onto leaves.

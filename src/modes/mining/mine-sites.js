@@ -251,7 +251,11 @@ async function retireMine(ctx,branch,reason=null){
   // move through the eight fixed neighbouring survey centres if it is full.
   mine.search={index:0}
   if(!await save(ctx,null)){mine.branch=branch;mine.sites=sites;mine.search=search;return blocked('MINE_CHECKPOINT','採掘場の保存を確認します。','owner_released')}
-  const detail=archived.retireReason==='MINE_SHAFT_ENTRY_BACKING_BLOCKED'?'入口の支持位置を使えないため':'採掘範囲を使い終えたため'
+  const reasonText={
+    MINE_SHAFT_ENTRY_BACKING_BLOCKED:'入口の支持位置を使えないため',
+    MINE_SHAFT_LANDING_UNSUPPORTED:'次の足場を設置できない空洞を確認したため'
+  }
+  const detail=reasonText[archived.retireReason]??'採掘範囲を使い終えたため'
   ctx.log?.(`プレイヤーモード: ${detail}、確認済みの施工を残して次の採掘場を調べます（保存済み${next.length}か所）`)
   return {...results.partial('MINE_SITE_RETIRED',{progress:{sites:next.length}}),serverConfirmed:true}
 }

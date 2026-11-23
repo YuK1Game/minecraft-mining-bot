@@ -5,7 +5,7 @@ const { surveyMine, oreResource } = require('./mine-survey')
 const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, shaftSurfaceLayout, key } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope } = require('./mine-state')
 const { pocketOf, isMineNaturalBlock } = require('./mine-vein-geometry')
-const { shaftBoundary, shaftEntryBackingUsable } = require('./mine-shaft-boundary')
+const { shaftBoundary, shaftEntryBackingUsable, shaftVoids } = require('./mine-shaft-boundary')
 const FULL_GROUND = new Set(require('../../common/standing-ground').STANDING_GROUND.map(name => `minecraft:${name}`))
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -124,6 +124,9 @@ async function evaluateOpenSteps (plan, survey, { origin, resource, targetCount 
     if (block.known && !shaftEntryBackingUsable(block)) blocked.add(key(backing))
   }
   if (missing.size || blocked.size) return failure('surface', { surfaceBlocked: true })
+  // The part of the shaft that is still to be dug stands in rock only (mine-shaft-boundary.js, shaftVoids).
+  for (const p of shaftVoids(plan, get, { maxY: Math.min(plan.shaft.topY - 2, shaftTop - 1) })) blocked.add(key(p))
+  if (blocked.size) return failure('shaft_void')
   // Storage keeps full foundations beneath its chests. These cells are not
   // slab replacements, so an existing cave floor cannot promise a usable room.
   for (const storage of rooms) for (const pair of storage.pairs) for (const chest of pair.positions) {
@@ -412,6 +415,7 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
 // What the planner accepts. A saved site search keeps the rejections of the rules that made them, so a search
 // judged under an older number starts over (mine-sites.js). Raise it when a rule here accepts more or less.
 // 2: a hazard beside a branch closes that branch instead of rejecting the geometry.
-const PLAN_RULES = 2
+// 3: a received void in the shaft's columns or under their bottom rejects the geometry.
+const PLAN_RULES = 3
 
 module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed, PLAN_RULES }
