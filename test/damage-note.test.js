@@ -28,3 +28,20 @@ test('a hit logs the body cells and the entities around it once per hit, at most
   shared.travelLastDamageAt = 20000
   assert.match(noteDamage({ ...input(20000), why: () => '離れる no_threat・射線 bow' }), /^被弾のまわり: 体力 9\.5、離れる no_threat・射線 bow、足 /)
 })
+
+test('a hit that threw the body far away (death and respawn) is noted where it stood, with the heights before it (live 2026-11-24 05:56:15 JST)', () => {
+  const shared = {}, lines = []
+  const getBlock = () => ({ known: true, name: 'minecraft:air' })
+  const input = (now, position, health) => ({ shared, health, position, actors: [], getBlock, log: line => lines.push(line), now })
+  noteDamage(input(1000, { x: 9852.5, y: 72.62, z: 10155.5 }, 7.9))
+  noteDamage(input(1500, { x: 9853.5, y: 72.62, z: 10155.5 }, 7.9))
+  noteDamage(input(2000, { x: 9854.5, y: 68.12, z: 10155.5 }, 7.9))
+  shared.damageNoteAt = 1900 // a note just before: the gap does not hide a death
+  shared.travelLastDamageAt = 2100
+  const text = noteDamage(input(2500, { x: 9879.5, y: 66.62, z: 10140.5 }, 20))
+  assert.match(text, /直前の足 \(9854, 66, 10155\)・高さ 71\.0→71\.0→66\.5、/)
+  // An ordinary hit carries the heights and keeps the present feet.
+  shared.travelLastDamageAt = 9000
+  assert.match(noteDamage(input(9000, { x: 9879.5, y: 66.62, z: 10140.5 }, 15)), /、足 \(9879, 65, 10140\)・高さ 71\.0→71\.0→66\.5→65\.0、/)
+  assert.equal(shared.damageTrail.length <= 6, true)
+})
