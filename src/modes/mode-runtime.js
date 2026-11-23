@@ -221,11 +221,13 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
-  const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), memory: shared.playerChestMemory ??= { seen: new Map() } })
+  // The chest work reads its inventory as the chest operation does: not received while a main slot is missing (chest-pack.js).
+  const chestPack = require('./chest-pack').createChestPack({ uncertain: () => !!shared.inventoryUncertain, rawItem: slot => runtime.mainSlot(slot), inventory: () => runtime.inventory() })
+  const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: chestPack, memory: shared.playerChestMemory ??= { seen: new Map() } })
   const storage = createPlayerStorage({
     file: path.join(root, '.local', 'player-chest-pairs.json'), write: writeDurableJson, worldScope: () => stationWorldScope(runtime.raw()),
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick(cell)) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
-    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: chestPack,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active || quarry.travelStatus().busy === true || danger(),
     hands: storagePorts
@@ -240,7 +242,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const ahead = () => flee.status().active ? '敵から離れる' : cover.status().active ? '射線から外れる' : shelter.status().active ? '避難' : runtime.combatOwns?.() === true ? '戦闘' : eating() ? '食事' : jobs() ? 'ほかの作業' : null
   const base = createPlayerBase({
     getMode: control.get, shared, log, disposed, getFeet: feetNow, getPosition: where, file: baseFile(root), returnFile: returnFile(root), getWorn: () => { try { return runtime.armor?.() ?? null } catch { return null } },
-    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: chestPack,
     getMineKeep: inventory => expedition?.mineKeep(inventory),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle, running: () => agentStatus().running === true || shared.autoWanted === true },
     hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => !!shared.playerHouse?.origin && require('./house/house-repair').houseDuty(shared.playerHouse) === null && storage.canMakeChest(), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
