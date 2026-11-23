@@ -4,7 +4,7 @@ const {createMineWorld}=require('./helpers/branch-mine-world')
 const {requestMine,stepLayer}=require('../src/modes/mining/mine-controller')
 const {mineSteps,stepCells}=require('../src/modes/mining/mine-geometry')
 const {depositMine}=require('../src/modes/mining/mine-stock')
-const {protectedBySites,MAX_BYTES}=require('../src/modes/mining/mine-sites')
+const {protectedBySites,MAX_BYTES,MAX_SITES}=require('../src/modes/mining/mine-sites')
 const {workVein}=require('../src/modes/mining/mine-veins')
 
 async function upper(t){
@@ -52,7 +52,7 @@ test('exhausted requests archive protected geometry and storage, then wait on ne
   const protectedAt=protectedBySites(mine.sites,w.plan.scope)
   assert.equal(protectedAt({x:4,y:66,z:5}),true)
   assert.equal(protectedAt({x:200,y:66,z:200}),false)
-  assert.ok(Buffer.byteLength(JSON.stringify(Array(8).fill(site)))<MAX_BYTES)
+  assert.ok(Buffer.byteLength(JSON.stringify(Array(MAX_SITES).fill(site)))<MAX_BYTES)
   const world=w.ctx.runtime.host().world,read=world.getBlock;let reads=0,missing=true
   world.getBlock=(x,y,z)=>{reads++;return missing && x===0 && y===32 && z===0?{known:false}:read(x,y,z)}
   w.ctx.getBlock=(...args)=>world.getBlock(...args)
