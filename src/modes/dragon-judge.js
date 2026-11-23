@@ -37,6 +37,7 @@ module.exports = {
   recover: record => ['recover', '死亡後の復帰・回収を先にします', record.recovery ? '復帰の記録が残っている' : '落とした物の回収の記録が残っている'],
   weapon: () => ['weapon', '石の剣を作ります', '持ち物に武器がない'],
   tree: logs => ['tree', '伐り始めた木を最後まで伐ります', Number.isFinite(logs) ? `記録した木の原木 ${logs} 個` : '足場の片付けが残っている'],
+  mineExit: label => ['mine.exit', '採掘場からはしごで地上へ出ます', `通常の作業の番（${String(label ?? '').replace(/。$/, '')}）で、採掘場の中にいる`],
   mineMend: reached => ['mine.mend', reached ? '採掘場の仕上げの足場へ着いたので、仕上げを続けます' : '採掘場の設置の受信を確かめたので、作業を続けます', null],
   held: (hold, now) => ['held:' + hold.code, '進まない目的を保留して、見直しを待ちます', `保留の理由 ${hold.code}・見直しは遅くとも ${minutes(hold.until - now)} 分後`],
   stage: (name, dim) => ['stage.' + name, ({ end: 'エンドの工程を進めます', endReturn: 'エンドへの出撃・帰還の工程を進めます', nether: 'ネザーの工程を進めます', stronghold: '要塞の工程を進めます', dimension: '次元の受信を待ちます' })[name], `段階 ${name}・いまの次元 ${dim ?? '?'}`]
