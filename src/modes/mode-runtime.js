@@ -313,6 +313,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     }
   })
   const crew = [recovery, shelter, flee, cover, scaffold, torch, storage, base, wool, sand, food, water, house]
+  const CREW = ['立て直し', '避難', '敵から離れる', '射線から外れる', '足場', '松明', '収納', '拠点への帰還', '羊毛', '砂', '食料', '水から上がる', '家の建築']
+  // Who has the player, said to the log when it changes (decision-journal.js).
+  const journal = require('./decision-journal'), book = journal.createJournal({ shared, log })
+  const whoOwns = owned => { try { if (shared.playerWanted === true) journal.owner(book, { expedition: owned, label: expedition.objective()?.label, ahead: owned && expedition.runState().wait?.code === 'OWNER' ? require('./crew-busy').crewBusyName(crew, CREW) ?? (owner.held() ? '戦闘か退避' : 'ほかの操作') : null }) } catch { /* A log line only. */ } }
   const lifeKey = () => require('../common/life-key').lifeKey(runtime.host(), () => runtime.raw())
   const active = () => !disposed() && control.get() === 'player' && shared.playerWanted === true
   const getBlock = (x, y, z) => runtime.host().world.getBlock(x, y, z)
@@ -360,7 +364,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) houseDamage.tick() } catch { /* The next tick looks again. */ }
-    if (expedition.tick()) {
+    const owned = expedition.tick()
+    whoOwns(owned)
+    if (owned) {
       if (shared.travelNight?.cover && !require('./dragon-rest-pit').resting(shared) && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
       return
     }

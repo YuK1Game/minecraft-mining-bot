@@ -10,8 +10,11 @@
 // 戦闘が終わるのを待っています。」 with nothing moving and no line in the log).
 // - A job that reports `working` is busy only while an operation is in flight.
 // - Every other job is busy while it is active, as before.
+const busy = task => { const s = task.status(); return (typeof s?.working === 'boolean' ? s.working : s?.active) === true }
 function crewBusy (crew) {
-  return crew.some(task => { const s = task.status(); return (typeof s?.working === 'boolean' ? s.working : s?.active) === true })
+  return crew.some(busy)
 }
+// Which one, by the name the log gives it (decision-journal.js `owner`); null with none busy.
+const crewBusyName = (crew, names) => { const at = crew.findIndex(busy); return at < 0 ? null : names[at] ?? 'ほかの作業' }
 
-module.exports = { crewBusy }
+module.exports = { crewBusy, crewBusyName }
