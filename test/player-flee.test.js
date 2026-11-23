@@ -320,3 +320,22 @@ test('"cannot heal, so stay" does not hold while being hit with no fight on (liv
   assert.ok(struck.steps >= 1)
   assert.match(struck.logs[0], /体力が少ないため敵から離れます（体力 5、skeleton 6\.9m）/)
 })
+
+test('hurt and just hit, a shooter out to 20 m is run from; a walker and an unhit Bot keep the 12 m (live 2026-11-24 04:06 JST)', async () => {
+  const skeleton = x => ({ entityType: 'minecraft:skeleton', hostile: true, position: { x, y: 64, z: 0 } })
+  assert.equal(fleeWanted({ health: 7, hostiles: [skeleton(14.5)], position: here }), null)
+  assert.equal(fleeWanted({ health: 7, struck: true, hostiles: [skeleton(14.5)], position: here })?.name, 'skeleton')
+  assert.equal(fleeWanted({ health: 7, struck: true, hostiles: [skeleton(21)], position: here }), null)
+  assert.equal(fleeWanted({ health: 7, struck: true, hostiles: [zombie(14.5)], position: here }), null)
+  assert.equal(fleeWanted({ health: 12, struck: true, hostiles: [skeleton(14.5)], position: here }), null)
+  // The run itself: health 7 with a sword, the skeleton 14.5 m away, an arrow one second ago.
+  const s = scene({ health: 7, retreat: s => { s.position.x -= 6; return true } })
+  s.enemies = [skeleton(14.5)]
+  s.clock = 100000
+  assert.equal(await s.flee.tick(), false)
+  assert.equal(s.flee.status().skip, 'no_threat')
+  s.shared.recentDamageNoPrimary = { at: s.clock - 1000 }
+  assert.equal(await s.flee.tick(), true)
+  assert.match(s.logs[0], /体力が少ないため敵から離れます（体力 7、skeleton 14\.5m）/)
+  assert.ok(Math.abs(s.position.x - 14.5) > 16)
+})

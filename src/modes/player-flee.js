@@ -48,6 +48,13 @@ const FLEE_AT = 8, UNARMED_FLEE_AT = 10, CREEPER_M = 8, GAIN_M = 2
 // waited for health 10, the potions took it from 19 to 4 in six seconds, and
 // the run that started then was too late).
 const RANGED = /skeleton|stray|bogged|pillager|witch|blaze|ghast/, RANGED_M = 12, STRUCK_MS = 4000
+// Hurt and just hit: a shooter with a line to the Bot (the caller passes only
+// those, player-flee-threats.js) is run from out to its shooting range, not
+// the 12 m of a walker (live 2026-11-24 04:06:53-04:07:06 JST: health 7, no
+// armour, a skeleton 14.5-16.2 m away on open grass; this said "no threat",
+// there was no cover and no fight, and three arrows in 12 s took 11 health
+// while the Bot stood still).
+const SHOT_M = 20
 // One step: 1.5 s of planning and at most 8 s of walking (long-travel-runtime.js retreatStep).
 const STEP_MS = 12000
 const WEAPON = /_sword$|_axe$|^minecraft:(?:bow|crossbow|trident|mace)$/
@@ -56,7 +63,7 @@ const unarmed = inventory => !(inventory?.items ?? []).some(item => item?.count 
 const text = value => String(value ?? '').replace(/^minecraft:/, '').replace(/[\p{C}§]/gu, ' ').slice(0, 40)
 const idOf = actor => actor?.runtimeId ?? actor?.uniqueId ?? null
 
-function fleeWanted ({ health, totem, hostiles, position, weaponless = false, healing = null }) {
+function fleeWanted ({ health, totem, hostiles, position, weaponless = false, healing = null, struck = false }) {
   if (!Number.isFinite(health) || health <= 0 || !position) return null
   const hurt = health <= (weaponless ? UNARMED_FLEE_AT : FLEE_AT)
   if (!hurt && !weaponless) return null
@@ -65,7 +72,8 @@ function fleeWanted ({ health, totem, hostiles, position, weaponless = false, he
     if (!actor?.position) continue
     const distance = Math.hypot(actor.position.x - position.x, actor.position.y - (position.y - 1.62), actor.position.z - position.z)
     const type = String(actor.entityType ?? actor.name ?? '')
-    if (distance <= (hurt ? 12 : /creeper/.test(type) ? CREEPER_M : RANGED.test(type) || actor.tridentThrower === true ? RANGED_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name), ...(idOf(actor) != null ? { id: String(idOf(actor)) } : {}) }
+    const shooter = RANGED.test(type) || actor.tridentThrower === true
+    if (distance <= (hurt ? (struck && shooter ? SHOT_M : 12) : /creeper/.test(type) ? CREEPER_M : shooter ? RANGED_M : -1) && (!nearest || distance < nearest.distance)) nearest = { distance, name: text(actor.entityType ?? actor.name), ...(idOf(actor) != null ? { id: String(idOf(actor)) } : {}) }
   }
   // Armed and already in melee contact: turning away only gives free hits
   // (live 2026-11-16 10:00 JST: with a stone sword at 6.4 health and a drowned
@@ -115,7 +123,7 @@ function createPlayerFlee ({ getMode, shared, agent, travel = null, motion = nul
     // skeleton 7 m away took the last 5 health in nine seconds).
     const struck = now() - Number(shared.recentDamageNoPrimary?.at ?? NaN) <= STRUCK_MS
     const healing = struck ? null : state.healing
-    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory), healing })
+    const threat = fleeWanted({ health: state.health, totem: state.totem, hostiles: resting ? others() : hostiles(), position: state.position, weaponless: unarmed(state.inventory), healing, struck })
     if (!threat) { skip = resting && kept.size ? 'kept_up_rest' : 'no_threat'; return false }
     // So is it when a hostile has come 2 m closer than the one it was stuck on
     // (live 2026-11-16 13:08 JST: during the wait a creeper walked up to 3.8 m
