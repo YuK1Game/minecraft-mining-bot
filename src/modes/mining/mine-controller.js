@@ -146,7 +146,15 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   const progress=branch.progress[layer],steps=mineSteps(branch.plan,{layer})
   const observedVein=observedVeinStep(ctx,branch,steps,progress)
   if(!observedVein && progress.cursor===steps.length && stockIsChecked(ctx,branch,layer))return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
-  if(branch.lobbyReady?.[layer]){
+  // The stored ore is read once per stock key (mine-stock.js). With it read, nothing here needs the mine: the
+  // supplies come first, from wherever the Bot stands, and the entry follows them. Entering here on every tick
+  // walked the Bot back to the entrance from the tree its supply trip had just reached.
+  // Real Realm 2026-11-23 21:46-22:00 JST, mine anchor (9853,10114), upper lobby ready, torch refill 31/32 →
+  // 「採掘場の資材を準備しています（log 0/1）」: seven trips 「受信済みの原木へ向かいます」 to trees 21-28 m from the
+  // entrance each ended 「探していたものが見つかったため、長距離移動を取り消します」, the next tick answered
+  // 「採掘場の確認を続けます（MINE_POSITION_UNCONFIRMED）」 (this entry), and the search began again at the entrance,
+  // where no log is within its 12 cells. No log was taken in 14 minutes.
+  if(branch.lobbyReady?.[layer] && !stockIsChecked(ctx,branch,layer)){
     const entered=await entry(ctx,branch)
     if(!received(entered))return outcome(entered)
     const stocked=await checkStock(ctx,branch,layer)
