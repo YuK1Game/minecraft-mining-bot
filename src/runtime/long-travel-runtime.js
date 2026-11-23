@@ -32,8 +32,15 @@ function createLongTravelRuntime (rt) {
     const plan = NS.planPit((x, y, z) => rt.host.world.getBlock(x, y, z), feet())
     if (!plan.ready) return { ok: false, reason: plan.reason + (plan.name ? `:${plan.name}` : '') }
     const isAir = c => { const b = rt.host.world.getBlock(c.x, c.y, c.z); return b?.known === true && /^minecraft:(?:air|cave_air)$/.test(b.name ?? '') }
+    const items = () => rt.working().inventory?.items ?? []
+    // The pickaxe for each rock cell goes into the hand first (travel/pit-tool.js); with none, nothing is dug.
+    const PT = rt.require('./travel/pit-tool'), nameAt = c => rt.host.world.getBlock(c.x, c.y, c.z)?.name
+    const lacking = PT.unmined(items(), plan.dig.filter(c => !isAir(c)).map(nameAt))
+    if (lacking) return { ok: false, reason: `NO_WORKING_PICKAXE:${lacking}` }
     for (const cell of plan.dig) {
       if (!isAir(cell)) {
+        const hand = await PT.holdPitTool({ name: nameAt(cell), items: items(), hand: rt.working().heldItem, equip: slot => rt.operations.inventory.equip(slot), sleep })
+        if (!hand.ok) return { ok: false, reason: hand.reason }
         rt.host.shared.travelDownUntil = Date.now() + 40000
         try { rt.operations.mining.start([{ ...cell, accessPreparation: 'travel_down' }]) } catch (error) { return { ok: false, reason: `DIG_REFUSED:${String(error.message ?? error).slice(0, 60)}` } }
         if (!(await wait(() => isAir(cell), 35000))) return { ok: false, reason: 'DIG_UNCONFIRMED' }
@@ -41,7 +48,6 @@ function createLongTravelRuntime (rt) {
       if (!(await wait(() => { const f = feet(); return !!f && f.y <= cell.y + 0.05 }, 5000))) return { ok: false, reason: 'FALL_UNCONFIRMED' }
     }
     const PLACEABLE = /^minecraft:(?:dirt|coarse_dirt|cobblestone|cobbled_deepslate|stone|andesite|diorite|granite|deepslate|netherrack)$/
-    const items = () => rt.working().inventory?.items ?? []
     let item = items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0 && i.slot <= 8) ?? items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0)
     if (!item) return { ok: false, reason: 'NO_COVER_BLOCK' }
     if (item.slot > 8) { try { await rt.operations.inventory.equip(item.slot) } catch {} item = items().find(i => PLACEABLE.test(i.name ?? '') && i.count > 0 && i.slot <= 8) }
@@ -180,6 +186,8 @@ function createLongTravelRuntime (rt) {
       const c = night.cover
       const air = () => { const v = rt.host.world.getBlock(c.x, c.y, c.z); return v?.known === true && /^minecraft:(?:air|cave_air)$/.test(v.name ?? '') }
       if (!air()) {
+        // The lid may be cobblestone: its pickaxe into the hand (a hand that cannot be changed is left; the check decides).
+        await rt.require('./travel/pit-tool').holdPitTool({ name: rt.host.world.getBlock(c.x, c.y, c.z)?.name, items: rt.working().inventory?.items ?? [], hand: rt.working().heldItem, equip: slot => rt.operations.inventory.equip(slot) })
         try { rt.operations.mining.start([c]) } catch (error) { return { hold: true, phase: 'morning', message: `朝です。穴のふたを掘れません: ${String(error.message ?? error).slice(0, 60)}`, waitMs: 3000 } }
         const until = Date.now() + 35000
         while (Date.now() < until && !signal?.aborted && !air()) await new Promise(r => setTimeout(r, 200))
