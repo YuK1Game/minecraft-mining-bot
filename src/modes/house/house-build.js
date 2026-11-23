@@ -33,8 +33,9 @@ const { clicks, stands, standable } = require('./house-steps')
 const { underCover } = require('../player-surface')
 const { chestPairs, neededChests, verifyHouseChests } = require('./house-large-chests')
 const { focusOf } = require('./house-repair')
-const { doorOf, doorStands } = require('./house-door')
+const { doorOf } = require('./house-door')
 const { inside } = require('./house-exit')
+const { toEntrance, below } = require('./house-entry')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const BLIND = /視線/
@@ -80,7 +81,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
   const held = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
   const stackOf = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).sort((a, b) => b.count - a.count)[0] ?? null
   const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
-  let hunts = 0, unreached = 0, soon = false, unsettled = false
+  let hunts = 0, unreached = 0, soon = false, unsettled = false, unreachedWhy = null
   // Unconfirmed transfers per step, across runs: a step that leaves the
   // inventory unconfirmed twice is counted as a failure from then on (live
   // 2026-11-17 07:52-07:57 JST: one out-of-sight corner block timed out first
@@ -178,16 +179,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
 
   async function enterForChests (origin, aborted) {
     if (aborted() || inside(origin, getFeet())) return
-    const at = doorOf(origin)
-    if (!at) return
-    const stands = doorStands(getBlock, at)
-    const outside = stands.find(pos => !inside(origin, pos))
-    const entry = stands.find(pos => inside(origin, pos))
-    if (outside && entry && !await hands.walk(outside) && build && !aborted()) {
-      const cell = { x: Math.floor(outside.x), y: outside.y, z: Math.floor(outside.z) }
-      await build(cell, { done: pos => pos.x === cell.x && pos.y === cell.y && pos.z === cell.z,
-        aborted, limits: { pad: 6, rise: 5, greed: 3 } })
-    }
+    const { entry } = await toEntrance({ origin, getBlock, getFeet, hands, build, aborted })
     if (!aborted() && await openEntrance() && entry && !aborted()) await hands.walk(entry)
   }
 
@@ -314,7 +306,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
   // any height between the Bot's and the house's (a walk plans 16 m at most;
   // live 04:59 JST: 18 m away and 15 blocks up the hill, 「Target lies outside
   // the bounded search area」, then 170 steps tried in vain for 1.5 s).
-  async function closeIn (origin) {
+  async function closeIn (origin, { quiet = false } = {}) {
     const porch = { x: origin.x + 3.5, z: origin.z + 8.5 }
     // Height counts too (live 05:14 JST: out of a 43-step climb onto a hill
     // 23 blocks above the house, every step was 「操作対象が手の届く範囲外です」).
@@ -349,7 +341,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
       if (!moved) break
     }
     if (away() <= 8) return true
-    say(`拠点の家の前まで歩けません（あと ${Math.round(away())}m、${String(hands.why?.() ?? '不明').slice(0, 80)}）`)
+    unreachedWhy = `拠点の家の前まで歩けません（あと ${Math.round(away())}m、${String(hands.why?.() ?? '不明').slice(0, 80)}）`
+    if (!quiet) say(unreachedWhy)
     return false
   }
 
@@ -399,7 +392,17 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     const verificationOnly = remaining(getBlock, origin).length === 0
     const feet = getFeet(), entrance = verificationOnly ? doorOf(origin) : null
     const nearEntrance = entrance && feet && eyeTo(entrance, feet) <= 16 && Math.abs(feet.y - entrance.y) <= 6
-    if (!nearEntrance && !await closeIn(origin)) {
+    // A house that has stood, from a place the plain walk does not lead to it (the ground round it dug away) or from
+    // under its ground: on to the stand outside its door, by the way that digs and stacks where there is no walk
+    // (house-entry.js; live 2026-11-23 20:05-20:16 JST: four runs of 「拠点の家の前まで歩けません」, nothing placed).
+    const stood = !verificationOnly && shared.playerHouse?.built === true
+    let reached = nearEntrance || await closeIn(origin, { quiet: stood && !!build })
+    if (stood && !aborted() && !inside(origin, getFeet()) && (!reached || below(origin, getFeet()))) {
+      const entered = await toEntrance({ origin, getBlock, getFeet, hands, build, aborted })
+      if (entered.ok) reached = true
+      else if (!reached && !aborted()) say(`${unreachedWhy ?? '拠点の家の前まで歩けません'}。入口の前へ掘る・積む道でも行けませんでした（${entered.code}）`)
+    }
+    if (!reached) {
       // A site the Bot cannot walk to twice running, with little built yet, is
       // given up for one near the Bot (live 2026-11-17 05:28-05:36 JST: the
       // site lay 9-23 blocks below a steep slope, 「No safe route found」).
