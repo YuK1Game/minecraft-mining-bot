@@ -16,6 +16,7 @@
 // Nothing here moves the bot by command or marks terrain as received.
 
 const { randomUUID } = require('node:crypto')
+const { createTripCircle } = require('./trip-circle')
 const copy = value => structuredClone(value)
 const finite = p => p && ['x', 'z'].every(k => Number.isFinite(p[k]))
 const feetOf = s => s?.position && Number.isFinite(s.position.x) ? { x: s.position.x, y: s.position.y - 1.62, z: s.position.z } : null
@@ -86,7 +87,7 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
   async function loop (signal) {
     let stuckAt = null, stuckCount = 0, lastLife = null
     let candidateScope = null
-    const tried = new Set()
+    const tried = new Set(), circle = createTripCircle()
     function observeLife (state) {
       const life = state.lifecycle?.deathId ?? null
       if (lastLife !== null && life !== null && life !== lastLife) { run.deaths = (run.deaths ?? 0) + 1; say(`死亡しました（${run.deaths}回目）。リスポーンのあと続けます`); if (run.deaths > 5) throw fail('LONG_TRAVEL_DEATH_LIMIT', '死亡が5回を超えたため停止しました') }
@@ -161,11 +162,17 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
           const changedColumn = reached && (Math.floor(reached.x) !== Math.floor(feet.x) || Math.floor(reached.z) !== Math.floor(feet.z))
           const arrivedInColumn = reached && Math.round(horizontal(reached, run.destination)) <= arriveM &&
             (typeof onSurface !== 'function' || onSurface(reached) === true)
+          // A walk that ends in a column for the third time has gone round (trip-circle.js): it did not advance the trip.
+          const times = changedColumn && !arrivedInColumn ? circle.arrived(reached) : 0
           // Moving up and down inside one column does not advance the trip.
           // Reuse the chunk and detour search from the newly received pose.
-          moved = !!(changedColumn || arrivedInColumn)
+          moved = !!(changedColumn || arrivedInColumn) && !circle.round(times)
           add(moved ? 'walk' : 'walk_fail', now() - tw)
-          if (!moved) {
+          if (circle.round(times)) {
+            last = { ok: false, code: 'POINT_LOOP' }
+            say(`歩きが同じ場所 (${Math.floor(reached.x)}, ${Math.floor(reached.z)}) へ ${times} 回戻りました。歩く道では近づけないため、ほかの道を試します（残り ${Math.round(horizontal(reached, run.destination))}m）`)
+            if (circle.spent(horizontal(reached, run.destination)) && stops()) throw fail('LONG_TRAVEL_NO_PROGRESS')
+          } else if (!moved) {
             last = result?.ok ? { ok: false, code: 'POINT_SAME_COLUMN' } : result ?? { ok: false, code: 'POINT_WALK_FAILED' }
             say(`中継点 (${point.x},${point.y},${point.z}) へ歩けませんでした（${last.code}${last.message ? ': ' + last.message : ''}）`)
           }
@@ -174,7 +181,8 @@ function createLongTravel ({ getState, chunkTravel, requestTerrain = null, terra
       // Coordinator 2026-11-14: chunk fallbacks took 21.7 of 60 minutes; at most
       // chunkTries of them per pass, then back to the relay-point search.
       let chunkTried = 0
-      if (!moved && last?.code !== 'POINT_REPLAN') for (const [key, area] of candidates) {
+      // A walk that went round needs another kind of way, not one more walk: straight to the detour.
+      if (!moved && last?.code !== 'POINT_REPLAN' && last?.code !== 'POINT_LOOP') for (const [key, area] of candidates) {
         if (chunkTried >= chunkTries) break
         if (tried.has(key)) continue
         tried.add(key)
