@@ -31,6 +31,7 @@ const { scaffoldTree, settleDebt, debtDue } = require('./player-scaffold')
 const { cellRest } = require('./supply-cell-rest')
 const { standable } = require('./house/house-steps')
 const { createBuildWalk } = require('./player-build-walk')
+const { indoors } = require('./house/house-outdoors')
 
 const MAX = 128, TALL = 24, WIDE = 12, FAR_M = 48, REACH_UP = 6, TRIES_A_STEP = 3
 const LOG = /^(?:minecraft:)?(?!stripped_)[a-z_]+_(?:log|stem)$/
@@ -142,7 +143,7 @@ async function finishTree (ctx, { now = Date.now, sleep = ms => new Promise(reso
     const before = far(cell)
     // From here; from under it where the trunk stood; from beside the trunk's foot; from the trunk's column entered lower.
     if (!can(cell)) { const stand = under(ctx.getBlock, cell); if (stand) await ctx.hands.walk(stand) }
-    if (!can(cell) && !ctx.cancelled()) await ctx.hands.approach({ x: cell.x + 0.5, y: foot.y, z: cell.z + 0.5 }, 2.7)
+    if (!can(cell) && !ctx.cancelled()) await ctx.hands.approach({ x: cell.x + 0.5, y: foot.y, z: cell.z + 0.5 }, 2.7, { avoid: indoors(ctx) })
     if (!can(cell) && !ctx.cancelled()) await burrow(ctx, tree, cell)
     if (ctx.cancelled()) return WORKING
     if (can(cell) && await ctx.hands.mine(cell)) {

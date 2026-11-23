@@ -8,7 +8,8 @@ const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
 const { treeAt, beginTree } = require('./dragon-tree')
 const { inside, leaveHouse } = require('./house/house-exit')
-const { doorOf, openDoor } = require('./house/house-door')
+const { openDoor } = require('./house/house-door')
+const { enclosedHome, indoors } = require('./house/house-outdoors')
 const { createBuildWalk } = require('./player-build-walk')
 const { inYard } = require('../safety/house-protection')
 const { sightPassable } = require('../actions/interaction-sight')
@@ -46,24 +47,12 @@ function inView (ctx, name) {
     (name !== 'cobblestone' || exposedStone(ctx, p)))
 }
 
-async function approach (ctx, target) {
+// `avoid`: cells no hop of the walk ends in (the inside of the house, for wood: house/house-outdoors.js).
+async function approach (ctx, target, avoid = null) {
   const feet = ctx.getFeet()
   if (!feet || ctx.cancelled()) return false
   if (Math.hypot(target.x + 0.5 - feet.x, target.y - feet.y, target.z + 0.5 - feet.z) <= 2.8) return true
-  return ctx.hands.approach(target, 2.7)
-}
-
-function enclosedHome (ctx) {
-  const house = ctx.shared.playerHouse
-  if (!house?.origin || ctx.runtime.raw()?.dimension !== 'overworld') return null
-  const door = doorOf(house.origin)
-  if (!door) return null
-  // Only points around an actual doorway should require the route through
-  // it. An open foundation or a site with these walls missing has no exit to use.
-  return [-1, 0, 1].some(dx => {
-    const block = ctx.getBlock(door.x + dx, door.y, door.z)
-    return block?.known === true && (block.boundingBox === 'block' || /_door$/.test(block.name))
-  }) ? house : null
+  return ctx.hands.approach(target, 2.7, { avoid })
 }
 
 async function receivedWoodDestination (ctx, feet) {
@@ -109,6 +98,8 @@ async function explore (ctx, resource) {
   const offset = Number(step[resource] ?? 0)
   const options = [[1, 0], [0, 1], [-1, 0], [0, -1]]
   const house = resource === 'log' ? enclosedHome(ctx)?.origin : null
+  // The hops of a search walk do not end inside the house either (house/house-outdoors.js).
+  const avoid = resource === 'log' ? indoors(ctx) : null
   // Spend multiple steps on one heading. A blocked route switches to another
   // heading rather than digging unknown ground or crossing an unseen gap.
   const target = wood ? step['log:roamTarget'] : null
@@ -125,7 +116,7 @@ async function explore (ctx, resource) {
     for (const dy of [0, 1, -1, 2, -2]) {
       const y = Math.floor(feet.y) + dy
       if (inside(house, { x: x + 0.5, y, z: z + 0.5 })) continue
-      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5) && !inside(house, ctx.getFeet())) {
+      if (standable(ctx.getBlock, x, y, z) && await ctx.hands.approach({ x, y, z }, 1.5, { avoid }) && !inside(house, ctx.getFeet())) {
         step[resource] = offset + 1
         step[resource + ':miss'] = 0
         if (wood) step['log:shortWalks'] = (step['log:shortWalks'] ?? 0) + 1
@@ -231,7 +222,7 @@ async function collect (ctx, name) {
         if (!ready()) await walkStoneStand(ctx, target, ready, [0, 1, 2, -1], { forPickup: true })
         if (!ready()) { left(); continue }
       } else {
-        await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target)
+        await approach(ctx, trunk ? { x: target.x, y: trunk[0].y, z: target.z } : target, house ? indoors(ctx) : null)
       }
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
