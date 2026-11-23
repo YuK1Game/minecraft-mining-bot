@@ -37,7 +37,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     placementRetrySafe = true
     const slot = await inHand(name)
     if (slot == null || slot === false) { why ??= `${name} を手に持てません`; return false }
-    const options = { position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, head: plan.head ?? null, alignFacing: plan.alignFacing === true }
+    const options = { position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, clickAcross: plan.clickAcross ?? null, head: plan.head ?? null, alignFacing: plan.alignFacing === true }
     const preview = operations.interactions.previewHouseBlock(options)
     if (preview?.ready !== true) { why = String(preview?.errors?.[0] ?? '設置できません').slice(0, 160); return false }
     try {
@@ -58,7 +58,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     const item = items().find(stack => stack?.name === name && stack.count > 0)
     if (!item) return false
     const slot = item.slot <= 8 ? item.slot : 0
-    return operations.interactions.previewHouseBlock({ position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, head: plan.head ?? null })?.ready === true || item.slot > 8
+    return operations.interactions.previewHouseBlock({ position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, clickAcross: plan.clickAcross ?? null, head: plan.head ?? null })?.ready === true || item.slot > 8
   }
   async function craft (output, times, table = null, { fitMaterials = false } = {}) {
     const before = count(name => name === output)

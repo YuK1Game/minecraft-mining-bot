@@ -8,7 +8,9 @@
 //   bed the head cell it is given. The clicked block is received and not a
 //   liquid; a slab or a glass block may be clicked.
 // - The click point is on the face (on a side face at `clickY`, 0..1 up the
-//   block); it is within 4.5 of the eye with a received clear line of sight.
+//   block, and at `clickAcross`, 0..1 along it: x on a north/south face, z on
+//   an east/west one; the middle when not given); it is within 4.5 of the eye
+//   with a received clear line of sight.
 // - With `alignFacing` the Bot first turns to the point (chests, furnaces, the
 //   door and the bed face from the turn); the plan can be checked again.
 const WOODS = '(?:oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo|crimson|warped)'
@@ -20,12 +22,13 @@ const FACE = [{ x: 0, y: -1, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: 0, z: -1 }
 const int = point => ({ x: Math.trunc(point?.x), y: Math.trunc(point?.y), z: Math.trunc(point?.z) })
 const valid = point => point && ['x', 'y', 'z'].every(axis => Number.isSafeInteger(point[axis]))
 
-function houseClickGeometry (click, face, clickY) {
+function houseClickGeometry (click, face, clickY, clickAcross = null) {
   const normal = Number.isInteger(face) && FACE[face]
   if (!normal) return null
   const side = normal.y === 0
   const height = side && Number.isFinite(clickY) ? Math.min(0.95, Math.max(0.05, clickY)) : 0.5 + normal.y * 0.5
-  const clickPos = { x: 0.5 + normal.x * 0.5, y: height, z: 0.5 + normal.z * 0.5 }
+  const along = side && Number.isFinite(clickAcross) ? Math.min(0.95, Math.max(0.05, clickAcross)) : 0.5
+  const clickPos = { x: normal.x ? 0.5 + normal.x * 0.5 : along, y: height, z: normal.z ? 0.5 + normal.z * 0.5 : along }
   const point = { x: click.x + clickPos.x, y: click.y + clickPos.y, z: click.z + clickPos.z }
   return { side, clickPos, point }
 }
@@ -33,7 +36,7 @@ function houseClickGeometry (click, face, clickY) {
 function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, players, sightError }) {
   const air = block => block?.known === true && AIR.has(block.name) && !block.extra?.length
   function housePlan (options) {
-    const { position, slot, clicked, face, clickY = null, head = null, alignFacing = false } = options ?? {}
+    const { position, slot, clicked, face, clickY = null, clickAcross = null, head = null, alignFacing = false } = options ?? {}
     if (!valid(position) || !valid(clicked) || !Number.isInteger(face) || face < 0 || face > 5) throw new Error('設置先・クリックするブロック・面を整数で指定してください。')
     const target = int(position), click = int(clicked), normal = FACE[face]
     if (click.x + normal.x !== target.x || click.y + normal.y !== target.y || click.z + normal.z !== target.z) throw new Error('クリック面が設置先に向いていません。')
@@ -52,7 +55,7 @@ function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, 
     for (const player of players.values()) if (overlapsPlayer(target, player.position, true)) throw new Error('他のプレイヤーに重なる可能性があります。')
     const support = world.getBlock(click.x, click.y, click.z)
     if (support?.known !== true || AIR.has(support.name) || LIQUID.test(support.name) || support.boundingBox === 'empty' || support.extra?.length) throw new Error('クリックするブロックは取得済みの通常ブロックである必要があります。')
-    const { side, clickPos, point } = houseClickGeometry(click, face, clickY)
+    const { side, clickPos, point } = houseClickGeometry(click, face, clickY, clickAcross)
     const ladder = expectedBlock === 'minecraft:ladder', bottomSlab = expectedBlock === 'minecraft:cobblestone_slab'
     if (ladder || bottomSlab) {
       if (observed.inventoryKnown !== true || state.inventory?.known !== true || state.inventory.uncertain || description.stackId !== raw.stack_id) throw new Error('坑道の建材は受信済みの持ち物・個数・スタックIDが必要です。')
