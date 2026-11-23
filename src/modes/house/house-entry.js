@@ -13,6 +13,12 @@
 // (9880, 61, 10146) and counts it as "at the house" (within 8 m), three under the door step; from there no walk
 // reaches a stand of the house (the 19:05 JST line 「(9878, 65, 10141) へ歩けません: No safe route found」 may be
 // this; where the Bot stood then was not read).
+// 21:32:19-21:32:36 JST, the same repair (glass 2, oak_slab 3, the door): the Bot stood on the ground left outside the
+// west wall, 7 m from the porch (so "at the house") with no walk to the door, 3 m from the crafting table through the
+// wall. The table was opened from there three times:
+//   拠点の家: 置けなかった理由 oak_slab を用意できません: 作業台への既知の視線がありません。安全な足場から再確認してください。（3回、…
+// On the blocks received at 21:40 (test/fixtures/house-moat-west.json) from (9875, 64, 10141): the same line.
+// So a repair comes here from anywhere outside the walls, however near the house it stands.
 //
 // → { ok, how: 'inside' | 'walk' | 'build' } or { ok: false, code, why }. Nothing is concluded about the house.
 const { doorOf, doorStands } = require('./house-door')
@@ -28,9 +34,6 @@ function entranceStands (getBlock, origin) {
   return { outside: stands.find(pos => !inside(origin, pos)) ?? null, entry: stands.find(pos => inside(origin, pos)) ?? null }
 }
 
-// Standing lower than the ground a house is built on (its floor lies on the highest ground, sites differ by two).
-const below = (origin, feet) => !!feet && Number.isFinite(feet.y) && feet.y < origin.y
-
 async function toEntrance ({ origin, getBlock, getFeet, hands, build = null, aborted = () => false }) {
   const feet = getFeet()
   if (!feet) return { ok: false, code: 'NO_POSITION' }
@@ -45,4 +48,4 @@ async function toEntrance ({ origin, getBlock, getFeet, hands, build = null, abo
   return out?.ok ? { ok: true, how: 'build', outside, entry } : { ok: false, code: out?.code ?? 'ENTRANCE_BUILD_FAILED', why, outside, entry }
 }
 
-module.exports = { toEntrance, entranceStands, below }
+module.exports = { toEntrance, entranceStands }
