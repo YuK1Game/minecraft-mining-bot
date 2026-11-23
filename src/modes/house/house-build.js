@@ -35,7 +35,7 @@ const { chestPairs, neededChests, verifyHouseChests } = require('./house-large-c
 const { focusOf } = require('./house-repair')
 const { doorOf } = require('./house-door')
 const { inside } = require('./house-exit')
-const { toEntrance, below } = require('./house-entry')
+const { toEntrance } = require('./house-entry')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const BLIND = /視線/
@@ -392,15 +392,17 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     const verificationOnly = remaining(getBlock, origin).length === 0
     const feet = getFeet(), entrance = verificationOnly ? doorOf(origin) : null
     const nearEntrance = entrance && feet && eyeTo(entrance, feet) <= 16 && Math.abs(feet.y - entrance.y) <= 6
-    // A house that has stood, from a place the plain walk does not lead to it (the ground round it dug away) or from
-    // under its ground: on to the stand outside its door, by the way that digs and stacks where there is no walk
-    // (house-entry.js; live 2026-11-23 20:05-20:16 JST: four runs of 「拠点の家の前まで歩けません」, nothing placed).
+    // A house that has stood is reached at the stand outside its door, not by distance: 8 m of the porch is also the
+    // far side of a wall or of the ground dug away round it. From outside the walls the run goes on to that stand, by
+    // the plain walk, else by the way that digs and stacks (house-entry.js; live 2026-11-23 20:05-20:16 JST: four runs
+    // of 「拠点の家の前まで歩けません」, nothing placed; 21:32 JST: 7 m from the porch, outside the west wall with no walk
+    // to the door, 3 m from the table through the wall: 「oak_slab を用意できません: 作業台への既知の視線がありません」 x3).
     const stood = !verificationOnly && shared.playerHouse?.built === true
     let reached = nearEntrance || await closeIn(origin, { quiet: stood && !!build })
-    if (stood && !aborted() && !inside(origin, getFeet()) && (!reached || below(origin, getFeet()))) {
+    if (stood && !aborted() && !inside(origin, getFeet())) {
       const entered = await toEntrance({ origin, getBlock, getFeet, hands, build, aborted })
       if (entered.ok) reached = true
-      else if (!reached && !aborted()) say(`${unreachedWhy ?? '拠点の家の前まで歩けません'}。入口の前へ掘る・積む道でも行けませんでした（${entered.code}）`)
+      else if (!aborted()) say(reached ? `拠点の家: 入口の前へ行けませんでした（${entered.code}）。今いる場所から手を試します` : `${unreachedWhy ?? '拠点の家の前まで歩けません'}。入口の前へ掘る・積む道でも行けませんでした（${entered.code}）`)
     }
     if (!reached) {
       // A site the Bot cannot walk to twice running, with little built yet, is
