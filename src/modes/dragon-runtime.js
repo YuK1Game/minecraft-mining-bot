@@ -22,6 +22,7 @@ const { held, receivedInventory } = require('./mining/mine-observed')
 const { constructionSupplies, builtWork } = require('./mining/mine-needs')
 const { createJournal, expeditionJudge } = require('./decision-journal')
 const says = require('./dragon-judge')
+const { inOwnMine, leaveOwnMine } = require('./dragon-mine-exit')
 
 const HELD = '進まない目的を保留しています。場所・持ち物・接続が変わった時か、時間をおいて見直します。'
 const LET_GO_MS = 60000
@@ -32,7 +33,9 @@ function createDragonRuntime (ports) {
   const raw = runtime.raw
   const state = createDragonState({ root, shared, getState: raw, getBlock,
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
-  const legacyNeeded = memory => objectiveNow({ runtime, shared, memory }).legacy === true
+  // The starter jobs get the player at the mine's entrance, not inside the mine (dragon-mine-exit.js).
+  const legacyNeeded = memory => objectiveNow({ runtime, shared, memory }).legacy === true &&
+    !inOwnMine({ runtime, getFeet: ports.getFeet ?? (() => raw()?.position), record: memory })
   let stepRecord = null, unpin = false, triedFinishHold = null
   // The parent goal of the work (goal/goal-ledger.js): its clock, its budget and its hold are in `shared`, and
   // its checkpoint is saved with the record, so neither a reload nor a restart starts them again.
@@ -94,6 +97,11 @@ function createDragonRuntime (ports) {
       judge(...says.recover(record))
       const recovery = await recoverDragon(ctx, record)
       if (!recovery.done) return { phase: 'recovering', reason: recovery.reason }
+    }
+    // Work of the starter jobs is due and the Bot is inside the mine: out by the ladder first (dragon-mine-exit.js).
+    if (dim === 'overworld' && record.stage === 'early' && objectiveNow({ runtime, shared, memory: record }).legacy === true) {
+      const leaving = await leaveOwnMine(ctx)
+      if (leaving) { judge(...says.mineExit(objectiveNow({ runtime, shared, memory: record }).label)); return leaving }
     }
     // No weapon in the bag: a stone sword is made of what is carried before other work (carry-weapon.js).
     if (dim === 'overworld' && record.stage === 'early') {

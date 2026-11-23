@@ -325,7 +325,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     expedition?.cancel()
   }
   expedition = createDragonRuntime({
-    operations, runtime, shared, root, active, log, getBlock, lifeKey, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
+    operations, runtime, shared, root, active, log, getBlock, lifeKey, getFeet: () => feetNow(), loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
     legacyBusy: () => require('./crew-busy').crewBusy(crew) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || owner.held(),
