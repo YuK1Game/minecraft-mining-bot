@@ -41,6 +41,12 @@
 //   fourteen minutes, and nothing else leads out of the house).
 // Never: an unreceived cell, liquid, leaves, logs, a container, a bed, a
 // door, a block a base protects (`natural: false`), a drop of more than one.
+// A door that stands open (door-cell.js: the received open_bit of its lower half) is walked through like an open
+// cell, as the walks do; it is never mined and never a floor. A closed door stays a wall: the callers open the
+// house's door by their own click (house-door.js). Real Realm 2026-11-23 16:14 JST: the ground round the house
+// (origin 9877,64,10138) was dug away on every side, the door step three cobblestones in the air; from a pit two
+// cells north of the wall no walk led in, and this search, which read the open door as a wall, ran to its limit
+// (BUILD_ROUTE_SEARCH_LIMIT, 24000 cells) six times in thirty seconds. The base chest stood three cells away.
 // The search is bounded (a box round the start and the target, a node limit
 // and a time limit) and says why it ended: it does not go on looking.
 // `greed` (1 by default) multiplies the guide toward the target. The guide counts steps; through rock a step costs
@@ -54,6 +60,7 @@
 // -4996) stood four cells away.
 const { classify } = require('../travel/coarse-route')
 const { low } = require('../modes/low-block')
+const { openDoorCell } = require('./door-cell')
 
 const FIXED = /bedrock|obsidian|barrier|command|structure|reinforced|portal|spawner|chest|shulker|barrel|furnace|crafting_table|bed$|_bed$|door|log$|_log|_stem|leaves|wood$|planks|torch|glass|wool|slab|stairs|fence|sign|ladder/
 const SOFT = /dirt|grass_block|gravel|sand|clay|snow|mud|podzol|mycelium|farmland/
@@ -78,7 +85,8 @@ function * search ({ getBlock, start, done, target, blocks = 0, allowShaft = tru
     let cell = seen.get(k)
     if (!cell) {
       const found = getBlock(x, y, z), kind = classify(found), name = found?.name ?? ''
-      cell = { kind, name, open: kind === 'pass', floor: kind === 'solid' && !low(found), leaf: kind === 'leaves' && found.boundingBox === 'block', rock: kind === 'solid' && !low(found) && found.natural !== false && !FIXED.test(name) && !found.extra?.length }
+      const doorway = kind !== 'pass' && kind !== 'unknown' && openDoorCell(getBlock, x, y, z)
+      cell = { kind, name, open: kind === 'pass' || doorway, floor: kind === 'solid' && !low(found) && !doorway, leaf: kind === 'leaves' && found.boundingBox === 'block', rock: kind === 'solid' && !low(found) && found.natural !== false && !FIXED.test(name) && !found.extra?.length }
       seen.set(k, cell)
     }
     return cell

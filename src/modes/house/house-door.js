@@ -7,11 +7,9 @@
 // only when the received door block says open_bit. The door is left open;
 // closing it behind the Bot is not done yet.
 const { placements } = require('./house-blueprint')
-const DOOR = /^minecraft:[a-z_]*door$/
+const { isDoor, isOpen } = require('../../movement/door-cell')
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 
-const isDoor = block => block?.known === true && DOOR.test(block.name ?? '') && !/iron|trapdoor/.test(block.name)
-const isOpen = block => [true, 1].includes(block?.properties?.open_bit)
 const doorOf = origin => placements(origin).find(step => step.item === 'oak_door')?.position ?? null
 
 // Cells to stand in front of and behind the door: across the wall it sits in.
