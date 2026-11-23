@@ -6,17 +6,35 @@
 // is built of (player-surface.js BUILT) are not cover: inside the house the trip
 // has arrived (live 2026-11-17 23:20-23:24 JST: 2 m from the base chest under
 // the slab roof, 111 legs and four minutes without arriving).
-const { BUILT } = require('../modes/player-surface')
+//
+// How an unreceived cell above is read is one rule (skyOver), shared with the
+// route of the trip (coarse-route.js). Terrain is received 16 to 31 cells over
+// the Bot's own height and three chunks wide (host.js); higher sections come only
+// when the trip asks for them, and it asks for its own chunk. So away from the
+// Bot's chunk every column ends unreceived at the next section edge. As in
+// player-surface.js openAbove, SKY_KNOWN received open cells with nothing
+// received above them are the sky; fewer, or cover anywhere in what is received,
+// is not. Live 2026-11-23 14:48-15:30 JST (trip to the mine at (9808, 10178) from
+// (9856, 68, 10164)): the chunk west of x 9856 had nothing received from y 96,
+// no stand in it was "the sky", and every route of the trip ended at x 9856.
+const { BUILT, SKY_KNOWN } = require('../modes/player-surface')
 const TREE = /leaves|log|wood/
 
-function openSky (getBlock, feet) {
-  const x = Math.floor(feet.x), z = Math.floor(feet.z), y = Math.floor(feet.y + 0.2)
+// `covers(block)`: whether a received block is cover. Feet at height y: the scan starts over the head.
+function skyOver (getBlock, x, y, z, covers) {
+  let seen = 0
   for (let yy = y + 2; yy < 320; yy++) {
     const block = getBlock(x, yy, z)
-    if (!block || block.known !== true) return yy >= 128
-    if (block.boundingBox === 'block' && !TREE.test(block.name ?? '') && !BUILT.test(block.name ?? '')) return false
+    if (!block || block.known !== true) return yy >= 128 || seen >= SKY_KNOWN
+    if (covers(block)) return false
+    seen++
   }
   return true
 }
 
-module.exports = { openSky }
+const roofed = block => block.boundingBox === 'block' && !TREE.test(block.name ?? '') && !BUILT.test(block.name ?? '')
+function openSky (getBlock, feet) {
+  return skyOver(getBlock, Math.floor(feet.x), Math.floor(feet.y + 0.2), Math.floor(feet.z), roofed)
+}
+
+module.exports = { openSky, skyOver }
