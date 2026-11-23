@@ -10,6 +10,7 @@ const { treeAt, beginTree } = require('./dragon-tree')
 const { inside, leaveHouse } = require('./house/house-exit')
 const { doorOf, openDoor } = require('./house/house-door')
 const { createBuildWalk } = require('./player-build-walk')
+const { inYard } = require('../safety/house-protection')
 const { sightPassable } = require('../actions/interaction-sight')
 const { uncoverStone, walkStoneStand, canCollectBrokenStone, pickUpStone } = require('./dragon-stone-cover')
 
@@ -148,8 +149,10 @@ function protectedAt (ctx, p) {
   return p.x >= origin.x - 1 && p.x <= origin.x + 10 && p.z >= origin.z - 1 && p.z <= origin.z + 10 && p.y >= origin.y - 1 && p.y <= origin.y + 5
 }
 
+// Also the ground the house stands in (safety/house-protection.js `inYard`): not a source of stone, dirt or sand.
 function unavailableAt (ctx, block, position) {
-  return block.protected || !!block.protectionSource || protectedAt(ctx, position)
+  return block.protected || !!block.protectionSource || protectedAt(ctx, position) ||
+    (ctx.runtime.raw().dimension === 'overworld' && inYard(ctx.shared.playerHouse?.origin, position, block))
 }
 
 async function collect (ctx, name) {

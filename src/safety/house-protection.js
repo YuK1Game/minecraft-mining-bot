@@ -26,4 +26,22 @@ function createHouseProtection (getHouse) {
   }
 }
 
-module.exports = { createHouseProtection }
+// The yard: the ground the house stands in. The gathering takes the nearest stone with an open side, and its own
+// protection was the blueprint's box: the stone under the floor and beside the walls was outside it. Real Realm
+// 2026-11-23 (house origin 9877,64,10138): the cobblestone for the mine's supplies (11:50-12:03 JST 0 -> 63,
+// 16:15-16:18 JST 26 -> 87) came out of the ground north, east and south of the walls, down to y 57; at 16:20 the
+// house stood on an island and the return to its chest found no way in.
+// A cell is in the yard within YARD.around cells of the 7x7 footprint, from YARD.down below the floor to YARD.up
+// above it. Logs are not ground: a tree beside the house is cut whole, as before. Deeper rock is the mine's.
+// Who gathers material from the world asks this (dragon-supply-gather.js `unavailableAt`); the way into and out
+// of the house (the dig-and-stack walk) and the house build do not.
+const YARD = { around: 8, down: 12, up: 3, size: 7 }
+const LOG = /_(?:log|stem)$/
+function inYard (origin, p, block = null) {
+  if (!origin || ![origin.x, origin.y, origin.z].every(Number.isFinite) || LOG.test(block?.name ?? '')) return false
+  return p.x >= origin.x - YARD.around && p.x <= origin.x + YARD.size - 1 + YARD.around &&
+    p.z >= origin.z - YARD.around && p.z <= origin.z + YARD.size - 1 + YARD.around &&
+    p.y >= origin.y - YARD.down && p.y <= origin.y + YARD.up
+}
+
+module.exports = { createHouseProtection, inYard, YARD }
