@@ -298,7 +298,7 @@ function createAutonomyRuntime (rt) {
       const tree = rt.require('./modes/player-tree').withPlayerTree({ mode: rt.host.shared.botMode, shared: rt.host.shared, decision: wooded, position: state.position, log: text => rt.host.log(text), readBlock: point => rt.planningWorld.getBlock(point.x, point.y, point.z), planTree: left => { const tree = rt.require('./modes/player-tree').treePlanInput(state, options, left); return rt.require('./survival/planner').nextBootstrapAction(tree.state, observations, tree.options) } })
       return rt.require('./modes/player-mining-policy').withPlannedMine({ mode: rt.host.shared.botMode, playing: rt.host.shared.playerWanted, decision: rt.require('./modes/player-workstations').withWorkstationCleanup({ mode: rt.host.shared.botMode, decision: tree, observation: observations.playerWorkstations }) })
     },
-    onDecision: decision => rt.host.log(`次の行動: ${decision.reason}`),
+    onDecision: decision => rt.host.log(rt.require('./modes/decision-journal').nextAction(decision)),
     onProgress: progress => {
       rt.host.shared.autonomyProgress = progress.progress
       rt.host.noteProgress(progress)

@@ -20,6 +20,8 @@ const { reserveCounts } = require('./dragon-reserve-seen')
 const { mineWorldScope, sameWorld } = require('./mining/mine-state')
 const { held, receivedInventory } = require('./mining/mine-observed')
 const { constructionSupplies, builtWork } = require('./mining/mine-needs')
+const { createJournal, expeditionJudge } = require('./decision-journal')
+const says = require('./dragon-judge')
 
 const HELD = '進まない目的を保留しています。場所・持ち物・接続が変わった時か、時間をおいて見直します。'
 const LET_GO_MS = 60000
@@ -37,6 +39,8 @@ function createDragonRuntime (ports) {
   const now = ports.now ?? Date.now
   const ledger = createGoalLedger({ shared, now, world: () => state.scope(), restore: () => { try { return state.snapshot()?.goal ?? null } catch { return null } } })
   // What a step may tell its goal: a confirmed step, a mark, a failure of one way (`spent` after three), a wait on purpose.
+  // What the step chose and why, for the log (decision-journal.js); nothing reads it back.
+  const journal = createJournal({ shared, log: ports.log, now })
   const goal = { step: key => ledger.step(key), mark: (key, value, by) => ledger.mark(key, value, by), fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure),
     reached: kind => ledger.step(kind + '@' + cell16(raw()?.position)) }
   async function run (record, signal, recoverHealth, live = {}) {
@@ -52,6 +56,7 @@ function createDragonRuntime (ports) {
   async function step (record, signal, recoverHealth, live) {
     const ctx = ports.stepPorts(signal)
     ctx.goal = { ...goal, wait: code => live.wait?.(code) }
+    const judge = ctx.judge = expeditionJudge({ journal, goal: () => ledger.goal() })
     const dim = raw().dimension
     if (record.stage !== 'early') shared.dragonGoldBoots = dim === 'nether' || record.stage === 'nether'
     const opts = { signal, aborted: ctx.cancelled }
@@ -61,11 +66,11 @@ function createDragonRuntime (ports) {
     const stronghold = createDragonStronghold(ctx)
     // The health wait's covered pit (dragon-rest-pit.js): left as soon as the wait is over, before anything else goes on.
     const rest = createRest({ ctx, health: () => raw().health, hostileDistance: () => runtime.nearestHostile?.(), dig: runtime.travel?.()?.travelNightPit, climb: ctx.rise, now })
-    if (rest.inside() && !recoverHealth) return rest.leave()
+    if (rest.inside() && !recoverHealth) { judge(...says.restLeave(raw().health)); return rest.leave() }
     // From dusk the overworld part before the Nether goes home to its bed (dragon-night.js).
     if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !rest.inside() && !(recoverHealth && ports.threatened())) {
       const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
-      if (night) return night
+      if (night) { judge(...says.night(runtime.travel?.()?.travelClock?.())); return night }
     }
     // Planned mining stores its cargo in confirmed chests. Other expedition work retains its pack-room policy.
     const mine = record.early?.mine?.branch
@@ -74,29 +79,31 @@ function createDragonRuntime (ports) {
         (capacityPending || crowded(shared.inventoryUncertain ? null : runtime.inventory())) && !ports.threatened()) {
       const returningToMine = record.stage === 'early' && ['early.diamond', 'early.home_reserve'].includes(ledger.goal()?.key)
       const stored = await require('./mining/mine-controller').minePackRoom(ctx, { returningToMine })
-      if (stored) return stored
+      if (stored) { judge(...says.mineCargo(runtime.inventory(), capacityPending)); return stored }
       const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
-      if (packed) return packed
+      if (packed) { judge(...says.pack(runtime.inventory())); return packed }
     }
     // The wait for health: a meal, the regeneration, or the way to food (dragon-heal.js).
     if (recoverHealth && dim !== 'end') {
       // Healing is the work now: more health than at any time since the last result is a mark, a hit and a heal in turn is none.
       ledger.mark('health', 20 - Number(raw().health), 2)
+      judge(...says.heal(raw().health, ctx.operations.food?.snapshot?.()?.hunger))
       return heal({ ctx, record, dim, shared, runtime, threatened: ports.threatened, supplies, nether: stepNether, recover: recoverDragon, rest })
     }
     if (record.recovery || record.lootRecovery) {
+      judge(...says.recover(record))
       const recovery = await recoverDragon(ctx, record)
       if (!recovery.done) return { phase: 'recovering', reason: recovery.reason }
     }
     // No weapon in the bag: a stone sword is made of what is carried before other work (carry-weapon.js).
     if (dim === 'overworld' && record.stage === 'early') {
       const way = supplies.weapon()
-      if (way && !ports.threatened()) return supplies.arm(way)
+      if (way && !ports.threatened()) { judge(...says.weapon()); return supplies.arm(way) }
     }
     // A tree that was begun is cut down to its last log before other work (dragon-tree.js).
     if (dim === 'overworld' && (shared.playerTree || shared.playerScaffoldDebt) && !ports.threatened()) {
-      const felling = await finishTree(ctx)
-      if (felling) return felling
+      const logs = shared.playerTree?.logs?.length, felling = await finishTree(ctx)
+      if (felling) { judge(...says.tree(logs)); return felling }
     }
     const currentGoal = ledger.goal(), hold = currentGoal?.hold
     if (dim === 'overworld') {
@@ -116,17 +123,20 @@ function createDragonRuntime (ports) {
           }
           const reason = reached ? '床の設置面が見える足場への到着を確認しました。仕上げを続けます。'
             : '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。'
+          judge(...says.mineMend(reached))
           return { phase: 'waiting', reason }
         }
       }
-      if (hold) return { phase: 'waiting', reason: HELD }
+      if (hold) { judge(...says.held(hold, now())); return { phase: 'waiting', reason: HELD } }
     }
     if (dim === 'end') {
+      judge(...says.stage('end', dim))
       const result = await runDragonEndStep(ctx, record.end, opts)
       record.stage = 'end'
       return result
     }
     if (record.stage === 'end') {
+      judge(...says.stage('endReturn', dim))
       if (dim !== 'overworld') return { phase: 'waiting', reason: 'エンド出撃所のある現世への復帰を待ちます。', wait: { code: 'DIMENSION' } }
       const result = record.end.returnAttempt ? await runDragonEndStep(ctx, record.end, opts) : {}
       if (result.phase === 'complete') {
@@ -136,17 +146,20 @@ function createDragonRuntime (ports) {
       return stronghold.enter(record, opts)
     }
     if (dim === 'nether' || record.stage === 'nether') {
+      judge(...says.stage('nether', dim))
       const result = await stepNether(ctx)
       if (result.done && raw().dimension === 'overworld') { record.nether.finished = true; record.stage = 'stronghold'; shared.dragonGoldBoots = false }
       return result
     }
-    if (dim !== 'overworld') return { phase: 'waiting', reason: '現在の次元を確認しています。', wait: { code: 'DIMENSION' } }
+    if (dim !== 'overworld') { judge(...says.stage('dimension', dim)); return { phase: 'waiting', reason: '現在の次元を確認しています。', wait: { code: 'DIMENSION' } } }
     if (record.stage === 'stronghold') {
+      judge(...says.stage('stronghold', dim))
       const result = await stronghold.step(record, opts)
       if (result.patch) Object.assign(record, result.patch)
       if (result.ready) { record.stronghold.prepared = true; record.stage = 'end' }
       return result
     }
+    judge(...says.early(objectiveNow({ runtime, shared, memory: record }), record))
     const result = await (ports.early ?? runDragonEarly)(ctx)
     if (result.done) { record.early.finished = true; record.stage = 'nether' }
     return result
@@ -205,6 +218,8 @@ function createDragonRuntime (ports) {
     })
     return { ...supplies, [request.resource]: request.targetHeld }
   }
-  return { ...expedition, tick, record: state.record, goal, mineKeep }
+  // The early objective as it reads now, for whoever names the owner in the log; null outside the early stage.
+  const objective = () => { const record = keyNow()?.record; return record?.stage === 'early' ? objectiveNow({ runtime, shared, memory: record }) : null }
+  return { ...expedition, tick, record: state.record, goal, mineKeep, objective }
 }
 module.exports = { createDragonRuntime }

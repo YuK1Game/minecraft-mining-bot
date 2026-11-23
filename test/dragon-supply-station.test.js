@@ -78,10 +78,10 @@ function world ({ walled = true, heldFurnace = true } = {}) {
   w.operations = operations
   w.held = name => rows().filter(item => item.name === full(name)).reduce((sum, item) => sum + item.count, 0)
   // One look of the expedition's two-second timer: a new step with the same goal.
-  w.look = async () => {
+  w.look = async (item = 'iron_ingot', count = 1, more = {}) => {
     const ctx = { operations, runtime, getBlock, cancelled: () => false, getFeet: () => w.feet, hands, shared, memory: { early: {} }, log: line => w.lines.push(line),
-      goal: { fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure) }, now: () => w.at, sleep: async ms => { w.at += ms } }
-    const out = await createDragonSupplies(ctx).acquire('iron_ingot', 1)
+      goal: { fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure) }, now: () => w.at, sleep: async ms => { w.at += ms }, ...more }
+    const out = await createDragonSupplies(ctx).acquire(item, count)
     w.at += 2000
     return out
   }
@@ -166,4 +166,19 @@ test('a received fuel shortage keeps gathering instead of reopening the empty fu
   w.items.push({ slot: 2, name: full('oak_planks'), count: 2 })
   assert.equal((await w.look()).done, true, 'new fuel resumes the cook after a fresh furnace read')
   assert.equal(w.opened.length, 2)
+})
+
+// What the kit step is after is said to the decision journal (decision-journal.js): the helmet asked for, the
+// ingots it is made of asked for inside it, as one line; the smelt that follows is the step's own answer.
+test('the things acquire asks for, one inside the other, are one line of the decision journal', async () => {
+  const { createJournal, expeditionJudge } = require('../src/modes/decision-journal')
+  const w = world({ walled: false })
+  const judge = expeditionJudge({ journal: createJournal({ shared: {}, log: line => w.lines.push(line), now: () => w.at }), goal: () => ({ id: 'early.home_reserve#4' }) })
+  const out = await w.look('iron_helmet', 1, { judge })
+  assert.equal(out.done, false)
+  assert.deepEqual(w.lines.filter(line => /^判断/.test(line)), ['判断: 遠征［early.home_reserve#4］ いま用意する物: iron_helmet 0/1 ← iron_ingot 0/5（左の物のために、右の物を先に用意します）'], w.lines.join('\n'))
+  assert.deepEqual(w.opened, [[5, 64, 0]], 'the smelt went on as before')
+  // The same asking at the next looks: no further line.
+  await w.look('iron_helmet', 1, { judge })
+  assert.equal(w.lines.filter(line => /^判断/.test(line)).length, 1, w.lines.join('\n'))
 })

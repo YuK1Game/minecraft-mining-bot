@@ -157,7 +157,13 @@ function createDragonSupplies (ctx) {
     else await require('./dragon-supply-gather').explore(ctx, 'water')
   }
 
-  async function acquire (requested, target = 1, { atHome = false } = {}) {
+  // Each thing asked for is said to the decision journal with what is held of it (decision-journal.js `need`):
+  // things asked for inside one another are one line there.
+  async function acquire (requested, target = 1, options = {}) {
+    const leave = ctx.judge?.need?.(bare(requested), getInventory() ? held(bare(requested)) : '?', target)
+    try { return await gain(requested, target, options) } finally { leave?.() }
+  }
+  async function gain (requested, target = 1, { atHome = false } = {}) {
     const name = bare(requested)
     if (cancelled() || !getInventory() || !Number.isSafeInteger(target) || target < 1) return pending('資材を準備するため、現在の所持品を再確認します。')
     if(name!=='food' && !mining.MINERALS.has(name)){
