@@ -31,4 +31,21 @@ function shaftLandingHasAnchor (read, target) {
   return blocks.every(block => block?.known === true) ? false : null
 }
 
-module.exports = { shaftBoundary, shaftEntryBackingUsable, shaftLandingHasAnchor }
+// The shaft is dug straight down, so it is only planned through rock: a received cell of its four columns,
+// or of the floor under their bottom, that is not a full block is a cave (air, a cave plant, a liquid) the
+// shaft would hang in. A cave beside the shaft (its outside wall, the ladder's backing) is sealed as before.
+// User, 2026-11-23 13:51 JST: 「直下ぼりする場所は、下に空洞のない場所を選ぶようにしてください」.
+// Live 2026-11-23 12:03-12:39 JST, plan 0bc096c1f571cda9c1fe: the shaft at (9884..9885, 10126..10127)
+// reached depth 52 above a cave (three of its columns air at y50, all four at y47-49); the landing floor
+// (9885,50,10126) had no face to place against.
+function shaftVoids (plan, read, { maxY = plan?.shaft?.topY - 2 } = {}) {
+  const shaft = plan?.shaft, voids = []
+  if (!shaft?.columns?.length || !Number.isInteger(maxY)) return voids
+  for (let y = shaft.bottomY - 1; y <= maxY; y++) for (const column of shaft.columns) {
+    const p = { x: column.x, y, z: column.z }, b = read(p)
+    if (b?.known === true && b.boundingBox !== 'block') voids.push(p)
+  }
+  return voids
+}
+
+module.exports = { shaftBoundary, shaftEntryBackingUsable, shaftLandingHasAnchor, shaftVoids }

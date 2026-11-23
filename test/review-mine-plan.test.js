@@ -298,7 +298,7 @@ test('a shaft floor without any lower or side anchor is rejected before construc
     origin: plan.shaft.approach, resource: 'raw_iron', checkpoint: async () => {}, read: p => survey.at(p)
   })
   assert.equal(result.eligible, false)
-  assert.equal(result.unsafe.stage, 'shaft_landing')
+  assert.equal(result.unsafe.stage, 'shaft_void')
   assert.ok(result.unsafe.blocks.some(block => block.at === key({ x, y, z })))
 })
 
