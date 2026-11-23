@@ -5,7 +5,7 @@ const { surveyMine, oreResource } = require('./mine-survey')
 const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, shaftSurfaceLayout, key } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope } = require('./mine-state')
 const { pocketOf, isMineNaturalBlock } = require('./mine-vein-geometry')
-const { shaftBoundary, shaftEntryBackingUsable } = require('./mine-shaft-boundary')
+const { shaftBoundary, shaftEntryBackingUsable, shaftLandingHasAnchor } = require('./mine-shaft-boundary')
 const FULL_GROUND = new Set(require('../../common/standing-ground').STANDING_GROUND.map(name => `minecraft:${name}`))
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -124,6 +124,11 @@ async function evaluateOpenSteps (plan, survey, { origin, resource, targetCount 
     if (block.known && !shaftEntryBackingUsable(block)) blocked.add(key(backing))
   }
   if (missing.size || blocked.size) return failure('surface', { surfaceBlocked: true })
+  for (let y = plan.shaft.bottomY - 1; y <= Math.min(plan.shaft.topY - 2, shaftTop - 1); y++) {
+    const p = { x: plan.shaft.ladder.x, y, z: plan.shaft.ladder.z }
+    if (AIR.has(get(p).name) && shaftLandingHasAnchor(get, p) === false) blocked.add(key(p))
+  }
+  if (blocked.size) return failure('shaft_landing')
   // Storage keeps full foundations beneath its chests. These cells are not
   // slab replacements, so an existing cave floor cannot promise a usable room.
   for (const storage of rooms) for (const pair of storage.pairs) for (const chest of pair.positions) {

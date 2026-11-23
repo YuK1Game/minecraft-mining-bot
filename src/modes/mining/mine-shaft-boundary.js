@@ -22,4 +22,13 @@ function shaftBoundary (plan, { minY = plan?.shaft?.bottomY, maxY = plan?.shaft?
   return [...walls.values()]
 }
 
-module.exports = { shaftBoundary, shaftEntryBackingUsable }
+// The cell above this floor is the next rung and will be open. Check the
+// same lower and side attachment faces the placement port can actually use.
+function shaftLandingHasAnchor (read, target) {
+  const blocks = [[0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
+    .map(([dx, dy, dz]) => read({ x: target.x + dx, y: target.y + dy, z: target.z + dz }))
+  if (blocks.some(solid)) return true
+  return blocks.every(block => block?.known === true) ? false : null
+}
+
+module.exports = { shaftBoundary, shaftEntryBackingUsable, shaftLandingHasAnchor }

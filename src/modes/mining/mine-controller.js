@@ -165,8 +165,8 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   const entered=await entry(ctx,branch)
   if(!received(entered))return outcome(entered)
   const shaft=await ensureShaft(ctx,branch,current)
-  if(shaft.code==='MINE_SHAFT_ENTRY_BACKING_BLOCKED'){
-    return outcome(await retireMine(ctx,branch,shaft.code),'入口の支持位置を使えないため、別の採掘場へ移ります。')
+  if(['MINE_SHAFT_ENTRY_BACKING_BLOCKED','MINE_SHAFT_LANDING_UNSUPPORTED'].includes(shaft.code)){
+    return outcome(await retireMine(ctx,branch,shaft.code),shaft.detail)
   }
   if(!received(shaft)){await save(ctx,branch);return outcome(shaft,`採掘場の${current==='upper'?'上層':'下層'}へ、足場とはしごを確認しながら縦坑を施工します。`)}
   if(shaftOnly)return outcome({...results.partial('MINE_LANDING_READY'),serverConfirmed:true},'縦坑と踊り場を確認し、収納室に必要な資材を整えます。')
