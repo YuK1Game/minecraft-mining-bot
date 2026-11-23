@@ -147,7 +147,8 @@ function createMineLighting (ctx, actions) {
     const targets = [...new Map([...floors.map(p => ({ ...p, y: p.y + 1 })), ...ground.values(), ...(cells.lightTargets ?? [])].filter(p => block(p)?.name !== 'minecraft:chest').map(p => [key(p), p])).values()]
     const unknown = [...floors, ...walls, ...targets, ...targets.map(p => ({ ...p, y: p.y + 1 }))].filter(p => block(p)?.known !== true)
     if (unknown.length) { await actions.observe({ cells: unknown, reason: 'mine_finish' }); return wait('MINE_FINISH_TERRAIN_UNKNOWN') }
-    let changed = 0
+    let changed = 0, later = null
+    const open = []
     const pause = () => partial('MINE_FINISH_IN_PROGRESS', { progress: { confirmedBlocks: changed } })
     // The opening ends here. An adjoining cave is closed, never treated as
     // part of the mine simply because its first cell was received as air.
@@ -161,7 +162,13 @@ function createMineLighting (ctx, actions) {
         const name = matchingPending ? pending.name : fillMaterial(actions.inventory())
         if (!name) return blocked('MINE_FILL_SUPPLY', { kind: 'supplies_changed' })
         const stand = await placementStand({ position: p, name })
-        if (!stand.plan) return stand.result
+        if (!stand.plan) {
+          // Over a cave the far openings have no stand until the floor reaches them: lay the floor first and
+          // come back (the finish is not confirmed while one stays open).
+          if (stand.result?.code !== 'MINE_FINISH_STAND_UNAVAILABLE') return stand.result
+          open.push(p); later ??= stand.result
+          continue
+        }
         if (classifyMineCell(plan, p).allowedDig || isMineTorchTarget(plan, p)) {
           branch.temporarySeals ??= []
           const seal = branch.temporarySeals.find(at => key(at) === key(p))
@@ -189,6 +196,26 @@ function createMineLighting (ctx, actions) {
       const out = await actions.place({ position: p, name: 'cobblestone_slab', clickY: 0.25 })
       if (!confirmed(out)) return out
       if (++changed >= 12) return pause()
+    }
+    if (later) {
+      // An opening with nothing beside or under it to click (the cave runs on past the floor's end) gets the
+      // planned floor slab under it first, bridged from the floor already laid; the seal then stands on that slab.
+      for (const p of open) {
+        const under = { ...p, y: p.y - 1 }
+        if (stopped()) return interrupted('MINE_INTERRUPTED')
+        if (!air(block(under)) || classifyMineCell(plan, under).role !== 'floor' ||
+          [...SIDE, [0, -1, 0]].some(([dx, dy, dz]) => solid(block({ x: p.x + dx, y: p.y + dy, z: p.z + dz })))) continue
+        if (!(held(actions.inventory(), 'cobblestone_slab') > 0)) return blocked('MINE_FLOOR_MATERIAL_MISSING', { kind: 'supplies_changed' })
+        const stand = await approach(under, feet => floorVisible(under, feet))
+        if (!confirmed(stand)) continue
+        const out = await actions.place({ position: under, name: 'cobblestone_slab', clickY: 0.25 })
+        if (!confirmed(out)) return out
+        changed++
+      }
+      if (changed) return pause()
+      const said = ctx.shared.mineOpenSaid ??= {}, id = open.map(key).join(' ')
+      if (said.id !== id) { said.id = id; ctx.log?.(`採掘場: ${open.slice(0, 4).map(key).join('・')}${open.length > 4 ? ` ほか ${open.length - 4} か所` : ''} を塞ぐ立ち位置がありません（床は置き終えています）`) }
+      return later
     }
     for (const torch of cells.torch ?? []) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
