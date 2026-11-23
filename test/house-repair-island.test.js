@@ -35,6 +35,7 @@ const { createBuildWalk, createMemo } = require('../src/modes/player-build-walk'
 const { createHouseBuild } = require('../src/modes/house/house-build')
 const { placements, remaining } = require('../src/modes/house/house-blueprint')
 const { toEntrance } = require('../src/modes/house/house-entry')
+const { createHouseDamage, GIVE_UP_MS } = require('../src/modes/house/house-damage')
 const { stationVisibleFace } = require('../src/actions/action-access')
 const received = require('./fixtures/house-moat.json')
 const west = require('./fixtures/house-moat-west.json')
@@ -47,7 +48,7 @@ const NORTH = { x: 9879.5, y: 63, z: 10136.5 } // the pit of 16:14 JST, two cell
 const inHouse = cell => cell.x >= origin.x && cell.x <= origin.x + 6 && cell.z >= origin.z && cell.z <= origin.z + 6 && cell.y >= origin.y && cell.y <= origin.y + 4
 const NORMAL = { 0: [0, -1, 0], 1: [0, 1, 0], 2: [0, 0, -1], 3: [0, 0, 1], 4: [-1, 0, 0], 5: [1, 0, 0] }
 
-function scene (feet, { build = true, door = false, from = null } = {}) {
+function scene (feet, { build = true, door = false, from = null, extra = [] } = {}) {
   // As at 20:05: the door down (both halves air), one roof slab gone. `from`: the blocks as they were received, untouched.
   const rows = JSON.parse(JSON.stringify((from ?? received).rows))
   const clear = at => { const row = rows[at.y][at.z - received.z0]; rows[at.y][at.z - received.z0] = `${row.slice(0, at.x - received.x0)}.${row.slice(at.x - received.x0 + 1)}` }
@@ -57,8 +58,10 @@ function scene (feet, { build = true, door = false, from = null } = {}) {
   const items = from
     ? [{ slot: 0, name: 'minecraft:stone_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 35 }, { slot: 1, name: 'minecraft:cobblestone', count: 65 }, { slot: 2, name: 'minecraft:oak_planks', count: 3 }, { slot: 3, name: 'minecraft:oak_log', count: 2 }, { slot: 4, name: 'minecraft:sand', count: 2 }]
     : [{ slot: 0, name: 'minecraft:stone_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 67 }, { slot: 1, name: 'minecraft:cobblestone', count: 37 }, { slot: 2, name: 'minecraft:oak_slab', count: 1 }, { slot: 3, name: 'minecraft:wooden_door', count: 1 }]
+  for (const item of extra) items.push({ slot: items.length, ...item })
   const w = createDigWorld({ ...(from ?? received), rows, states, feet }, { outside: () => null, items })
   w.crafts = []
+  w.pack = () => items.filter(item => item.count > 0)
   w.log = []
   w.put_ = []
   const open = (x, y, z) => { const found = w.getBlock(x, y, z); return found.known === true && found.boundingBox === 'empty' }
@@ -178,4 +181,40 @@ test('21:32 JST: outside the west wall, 7 m from the porch and 3 m from the tabl
   const slabs = w.put_.filter(one => /slab/.test(one.name))
   assert.ok(slabs.length >= 2 && slabs.every(one => inHouse(one.from)), `roof slabs placed from inside the house: ${JSON.stringify(slabs)} / ${w.log.join(' / ')}`)
   houseUntouched(w)
+})
+
+// 2026-11-23 22:45-23:05 and 2026-11-24 00:05-00:16 JST, the same house: one roof slab left, over the south-west
+// corner (9877, 68, 10144), and the door, which the repair had taken down at 22:57:42 for the work inside:
+//   拠点の家: 0 個置きました（残り 2 個）                                                    22:57:47, 23:00:17, 00:08:56
+//   拠点の家: 置けなかった理由 操作対象への視線が遮られているか、未取得です。（1回、oak_slab (9877, 68, 10144)）
+//   家の修理が 20 分で終わらないため保留します（観測は破損のまま: 残り 2 手。…）              23:05:40
+// While the repair ran the ordinary work owned the Bot and waited (the mine is the expedition's): 20 minutes of every
+// hour stood still, and the door stayed down for the hour between. Real here besides the run: the keeper
+// (house-damage.js) on the same record. The blocks are those of 21:40 JST; the corner slab was missing in them too.
+test('00:08 JST: a run that can place nothing puts the door back, and the keeper holds the repair at once', async () => {
+  const w = scene({ x: 9875.5, y: 64, z: 10141.5 }, { from: west, extra: [{ name: 'minecraft:wooden_door', count: 1 }, { name: 'minecraft:glass', count: 2 }] })
+  w.shared.playerHouse.repair = { state: 'running', since: 1e6 }
+  const keeper = createHouseDamage({ shared: w.shared, getBlock: w.getBlock, getFeet: () => w.ctx.hands.feet(), getInventory: () => ({ known: true, items: w.pack() }), now: () => 1e6 + w.at, log: line => w.log.push(line) })
+  assert.equal(keeper.tick(), null, 'the repair runs')
+  await w.house.tick()
+  assert.deepEqual(w.left(), ['p_165'], `the corner slab is all that is left, the door stands again: ${w.log.join(' / ')}`)
+  assert.equal(w.getBlock(DOOR.x, DOOR.y, DOOR.z).name, 'minecraft:wooden_door')
+  assert.ok(w.log.some(line => /視線が遮られている.*oak_slab \(9877, 68, 10144\)/.test(line)), w.log.join(' / '))
+  const began = w.at
+  assert.equal(keeper.tick(), 'held', w.log.join(' / '))
+  assert.ok(w.at - began < GIVE_UP_MS && w.at < GIVE_UP_MS, 'held on the run, not on the twenty minutes')
+  assert.equal(w.shared.playerHouse.done, false, 'the observation stays: damaged')
+  assert.equal(w.shared.playerHouse.repair.basis.missing, 1)
+  assert.ok(w.log.some(line => /いま置ける手がないため保留します（観測は破損のまま: 残り 1 手/.test(line)), w.log.join(' / '))
+  houseUntouched(w)
+})
+
+test('a run that failed with a raw material short is not held early: the materials are still being gathered', async () => {
+  const w = scene({ x: 9875.5, y: 64, z: 10141.5 }, { from: west, extra: [{ name: 'minecraft:wooden_door', count: 1 }] })
+  w.shared.playerHouse.repair = { state: 'running', since: 1e6 }
+  for (const item of w.pack()) if (item.name === 'minecraft:sand') item.count = 0
+  const keeper = createHouseDamage({ shared: w.shared, getBlock: w.getBlock, getFeet: () => w.ctx.hands.feet(), getInventory: () => ({ known: true, items: w.pack() }), now: () => 1e6 + w.at, log: line => w.log.push(line) })
+  await w.house.tick()
+  assert.equal(keeper.tick(), null, w.log.join(' / '))
+  assert.equal(w.shared.playerHouse.repair.state, 'running')
 })
