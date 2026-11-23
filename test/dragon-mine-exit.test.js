@@ -41,7 +41,8 @@ async function scene (t, house) {
     active: () => true, legacyBusy: () => false, legacyIdle: () => true, stopLegacy: () => {}, lifeKey: () => 'a/0', loading: () => false, threatened: () => false,
     stepPorts: signal => ({ ...w.ctx, shared, cancelled: () => signal.aborted, signal, log: line => lines.push(line) }),
     early: async () => { calls.early++; return { done: false, reason: '採掘を続けます。' } } })
-  const run = async n => { let owned; for (let i = 0; i < n; i++) { at += 2000; owned = rt.tick(); await turns(400); if (!owned) break } return owned }
+  // A step saves its record to disk: the looks go on in real time until `until` holds (20 s at most).
+  const run = async until => { let owned; for (const end = Date.now() + 20000; Date.now() < end;) { at += 2000; owned = rt.tick(); await turns(50); await new Promise(resolve => setTimeout(resolve, 5)); if (until(owned)) break } return owned }
   return { w, rt, run, lines, shared, calls }
 }
 const REPAIR = { origin: { x: 40, y: 70, z: 40 }, done: false, built: true, repair: { state: 'running', since: 1e9 - 1000 } }
@@ -50,7 +51,7 @@ test('the house repair falls due inside the mine: the expedition keeps the playe
   const { w, rt, run, lines, calls } = await scene(t, REPAIR)
   assert.equal(rt.objective()?.legacy, true)
   assert.equal(rt.tick(), true, 'inside the mine the player stays with the expedition')
-  const owned = await run(40)
+  const owned = await run(owned => owned === false)
   assert.equal(owned, false, 'at the entrance the starter jobs have the player\n' + lines.join('\n'))
   assert.equal(insideMine(w.ctx, w.branch), false)
   assert.ok(w.feet().y >= w.plan.shaft.topY - 0.2, 'the feet are at the surface: ' + JSON.stringify(w.feet()))
@@ -67,7 +68,7 @@ test('outside the mine the starter jobs have the player at once, as before', asy
 test('no work of the starter jobs is due: the step inside the mine is the early step, not the way out', async t => {
   const { w, run, calls } = await scene(t, { origin: { x: 40, y: 70, z: 40 }, done: true, built: true })
   const before = w.feet(), climbs = w.climbs.length
-  assert.equal(await run(3), true)
+  assert.equal(await run(() => calls.early >= 2), true)
   assert.ok(calls.early >= 1, 'the early step is asked')
   assert.deepEqual(w.feet(), before)
   assert.equal(w.climbs.length, climbs)
