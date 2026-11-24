@@ -33,7 +33,7 @@ const NEXT = Object.freeze({ observe: 'surface', surface: 'travel', travel: 'app
 const DONE_MS = 30000, CLOSE_M = 6
 const brief = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 100)
 
-function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = () => null, settled = () => true, interrupter = () => null, hostile = () => false, travelBusy = () => false, file = null, write = writeDurableJson, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), newId = () => `r${now().toString(36)}` }) {
+function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = () => null, settled = () => true, interrupter = () => null, hostile = () => false, travelBusy = () => false, file = null, write = writeDurableJson, onIncident = null, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), newId = () => `r${now().toString(36)}` }) {
   let goal = restoreGoal(shared.playerReturn), hostileSince = null, running = false, generation = 0, quietUntil = 0, banked = 0, saidUnsaved = false
   const memory = createFailureMemory({ now, saved: shared.playerReturnFailures })
   const laps = createLaps({ now })
@@ -87,6 +87,7 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     goal.state = 'held'; goal.wait = null; goal.interrupt = null
     // Deeper or higher counts as another place only for the way out of a tunnel.
     goal.hold = { code, at: now(), until: now() + BUDGET.HOLD_MS, position: cell(ports.getPosition()), supplies: supplies(), kinds: all, vertical: stage === 'surface', terrainCells: terrainCells(retry?.terrainCells) }
+    try { void onIncident?.({ source: 'return', code, reason: text, stage }) } catch {}
     say(`を保留します: ${text}（${code}・再評価の条件 ${all.join('/')}・遅くとも ${Math.round(BUDGET.HOLD_MS / 60000)} 分後）`)
     commit()
     await restart(mine)

@@ -79,7 +79,7 @@
       row.append(receipt)
       return row
     }))
-    const activity = stage.id === player.current ? player.reason : null
+    const activity = stage.id === player.current ? [player.reason, player.decision && player.decision !== player.reason ? player.decision : null].filter(Boolean).join(' · ') : null
     reason.hidden = !activity
     reason.textContent = activity || ''
   }
@@ -134,6 +134,9 @@
       button.disabled = !mode || !idle || working && name !== current
     }
     panel.dataset.mode = current
+    const heading = document.querySelector?.('.brand h1')
+    if (heading) heading.textContent = player ? 'Minecraft プレイヤーBot' : 'Minecraft 露天掘りBot'
+    document.title = player ? 'プレイヤーモニター | Minecraft Bot' : '露天掘りモニター | Minecraft Bot'
     if (roadmap.hidden === player) {
       roadmap.hidden = !player
       signature = null

@@ -29,7 +29,8 @@ const cell = p => p && Number.isFinite(p.x) ? `(${Math.floor(p.x)}, ${Math.floor
 function createJournal ({ shared, log = () => {}, now = Date.now }) {
   const book = shared.decisionJournal ??= {}
   function note (lane, key, text) {
-    const at = now(), row = book[lane] ??= { key: null, since: 0, at: 0, seen: {}, turns: 0 }
+    const at = now(), row = book[lane] ??= { key: null, since: 0, at: 0, seen: {}, turns: 0, text: null }
+    row.text = cut(text)
     if (row.key === key) {
       if (at - row.at < AGAIN_MS) return false
       row.at = row.seen[key] = at

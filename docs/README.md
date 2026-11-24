@@ -12,6 +12,7 @@
 | [loadout-reset.md](loadout-reset.md) | シュルカー専用収納と初期セットリセットの仕様・移行 |
 | [manual-chest-deposit.md](manual-chest-deposit.md) | ラージチェストへの手動全収納 |
 | [player-branch-mining.md](player-branch-mining.md) | 受信鉱石から選ぶ2層の採掘場、はしご縦坑、湧き潰し、複数ラージチェストと再開 |
+| [player-mode-rules.md](player-mode-rules.md) | プレイヤーモード・ブランチマイニングの個別ルールと実Realmでの経緯記録（`AGENTS.md` から分離） |
 | [quarry-caves.md](quarry-caves.md) | 露天掘りの洞窟対応 |
 | [quarry-bedrock-exit.md](quarry-bedrock-exit.md) | ワールド下限まで掘るときの帰還入口 |
 | [quarry-lower-landing.md](quarry-lower-landing.md) | 採掘上限と地上着地点の高さの分離 |

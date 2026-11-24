@@ -1,4 +1,7 @@
-# 引き継ぎ資料（2026-11-11 21:30 JST）
+# 引き継ぎ資料（アーカイブ：2026-11-11 21:30 JST）
+
+> [!NOTE]
+> このファイルは **2026-11-11 時点の歴史的引き継ぎ記録** です。現在の品質改善計画・残課題は [quality-plan.md](quality-plan.md)、プレイヤーモードの最新進捗は [player-roadmap.md](player-roadmap.md)、個別ルールは [player-mode-rules.md](player-mode-rules.md) を参照してください。
 
 作業ルールは `AGENTS.md` / `CLAUDE.md` を必ず読んでから始めること。秘密情報（`.auth/`、`.env`）は読まない・出力しない。時刻は JST、報告は日本語。
 

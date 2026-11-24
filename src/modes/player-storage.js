@@ -100,7 +100,7 @@ function chestCells (getBlock, feet, single = null, skip = new Set()) {
   return []
 }
 
-function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig = null, why = () => null, walk = null, cells = () => null, getBlock, getFeet, getInventory, worldScope = () => null, file = null, write, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig = null, why = () => null, walk = null, cells = () => null, getBlock, getFeet, getInventory, worldScope = () => null, file = null, write, fieldChests = null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, stored = 0
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return true } catch { await sleep(2000) } } return false }
@@ -298,6 +298,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     const target = { position: got }
     const moved = await hands.store(target.position, storable(getInventory()))
     stored += moved
+    if (moved > 0) fieldChests?.remember?.(target.position, { itemsMoved: moved, scope: worldScope() })
     say(`チェスト (${target.position.x}, ${target.position.y}, ${target.position.z}) に ${moved} 個しまいました（持ち物 ${occupied(getInventory())}/36 枠）`)
     return moved > 0
   }

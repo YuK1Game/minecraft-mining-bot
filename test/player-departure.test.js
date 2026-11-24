@@ -23,6 +23,7 @@ function fixture (options = {}) {
     host: { shared },
     require: name => {
       if (name === './modes/mode-runtime') return { attachModeOperations () {} }
+      if (name === './modes/dragon-ports') return { createDragonRuntimePorts: () => ({}) }
       if (name === './modes/player-workstation-runtime') return { createPlayerWorkstationRuntime: () => ({}) }
       assert.equal(name, 'node:fs/promises')
       return { readFile: async () => { events.push('read-route'); return options.read ? options.read() : JSON.stringify(saved) } }

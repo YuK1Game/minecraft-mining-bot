@@ -21,6 +21,7 @@ const { mineWorldScope, sameWorld } = require('./mining/mine-state')
 const { held, receivedInventory } = require('./mining/mine-observed')
 const { constructionSupplies, builtWork } = require('./mining/mine-needs')
 const { createJournal, expeditionJudge } = require('./decision-journal')
+const { createIncidentRecorder } = require('./incident-snapshot')
 const says = require('./dragon-judge')
 const { inOwnMine, leaveOwnMine } = require('./dragon-mine-exit')
 
@@ -44,6 +45,11 @@ function createDragonRuntime (ports) {
   // What a step may tell its goal: a confirmed step, a mark, a failure of one way (`spent` after three), a wait on purpose.
   // What the step chose and why, for the log (decision-journal.js); nothing reads it back.
   const journal = createJournal({ shared, log: ports.log, now })
+  const incidents = ports.incidents ?? createIncidentRecorder({
+    root, shared, getState: raw, getFeet: ports.getFeet, getBlock,
+    getInventory: () => shared.inventoryUncertain ? null : runtime.inventory?.(),
+    getGoal: () => ledger.goal(), log: ports.log, now
+  })
   const goal = { step: key => ledger.step(key), mark: (key, value, by) => ledger.mark(key, value, by), fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure),
     reached: kind => ledger.step(kind + '@' + cell16(raw()?.position)) }
   async function run (record, signal, recoverHealth, live = {}) {
@@ -186,7 +192,11 @@ function createDragonRuntime (ports) {
     unpin = true
     delete shared.dragonHomeWalk; delete shared.dragonHomeInner
     return dropped.join('・')
-  }, onHold: () => { expedition.abandon('進まない目的を保留します。') } })
+  }, onHold: () => {
+    const heldGoal = ledger.goal()
+    void incidents.capture({ source: 'expedition', code: heldGoal?.hold?.code ?? 'GOAL_HELD', reason: HELD, stage: stepRecord?.stage ?? null })
+    expedition.abandon('進まない目的を保留します。')
+  } })
   // The goal the expedition works toward now; null while it cannot be told (nothing received yet).
   function keyNow () {
     let record = stepRecord

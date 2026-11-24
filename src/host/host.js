@@ -20,6 +20,8 @@ const { normalizePlayerCorrection } = require('../movement/server-physics')
 const { createRespawnSwim } = require('./respawn-swim')
 const { parseQuarryCommand } = require('./quarry-cli')
 const { createBotLog } = require('./bot-log')
+const { acquireProcessLock } = require('./process-lock')
+const { ensureSharedScopes, resetSessionScope, resetLifeScope } = require('../common/shared-scopes')
 
 const PACKET_EVENTS = ['start_game', 'network_chunk_publisher_update', 'player_action', 'show_credits', 'move_player', 'correct_player_move_prediction', 'server_post_move', 'change_dimension', 'respawn', 'update_attributes', 'set_health', 'death_info', 'item_registry', 'inventory_content', 'inventory_slot', 'mob_equipment', 'player_hotbar', 'set_player_game_type', 'update_player_game_type', 'level_chunk', 'subchunk', 'update_block', 'update_subchunk_blocks', 'update_block_synced', 'crafting_data', 'item_stack_response', 'container_open', 'container_close', 'add_item_entity', 'take_item_entity', 'remove_entity', 'move_entity', 'move_entity_delta', 'add_player', 'add_entity', 'entity_event', 'set_entity_data', 'command_output']
 const DIMENSION_EVENTS = new Set(['player_action', 'subchunk', 'level_chunk', 'update_block', 'move_player', 'server_post_move', 'correct_player_move_prediction'])
@@ -378,6 +380,12 @@ async function main () {
   const controlInfo = {}
   const meta = { version, startGame: null, startGameReceivedAt: null, workspaceRoot: process.cwd(), profile: config.profile }
   const shared = { autoWanted: args.includes('--auto'), safetyWanted: args.includes('--auto'), autoOptions: {}, autonomyProgress: null, loadingScreenEnded: false, motionSource: null, prediction: null, equipment: null }
+  ensureSharedScopes(shared)
+  resetSessionScope(shared, state.connectionId)
+  let processLock = null
+  if (!args.includes('--list')) {
+    processLock = acquireProcessLock({ root: path.resolve(__dirname, '..', '..'), profile: config.profile })
+  }
   let gcObserver = null
   if (process.env.MINECRAFT_CAPTURE_EMERGENCY === '1') {
     gcObserver = new PerformanceObserver(list => {
@@ -510,6 +518,7 @@ async function main () {
     dashboardSession?.dispose()
     loginSwim?.stop(); packetEvents.dispose(); gcObserver?.disconnect()
     clearInterval(chunkTimer); reloader?.stop(); lifecycle?.stop('接続を終了します。')
+    try { processLock?.release() } catch {}
     state.phase = 'disconnected'; terminal?.close(); client?.close(); api?.close(); api?.closeIdleConnections()
     process.exitCode = code
     const deadline = setTimeout(() => process.exit(code), 5000).unref()
@@ -551,11 +560,12 @@ async function main () {
     lifecycle = createLifecycle({ client: connection, getState: rawSnapshot, version,
       onDeath: ({ deathId, deathInfo }) => {
         shared.dragonDeathLocation = { dimension: dimensionName(state.dimension), position: finite(state.position) ? { ...state.position } : null, deathId, connectionId: state.connectionId, at: Date.now(), cause: deathInfo?.cause ?? null }
+        resetLifeScope(shared, `${state.connectionId}:${deathId}:dead`)
         state.dead = true
         void shared.persistDragonBoundary?.()?.catch(error => log(`遠征の死亡地点を保存できません: ${errorText(error)}`))
         respawnTerrainHandoff.cancel('Player died'); shared.prediction = null; shared.equipment = null; current()?.stopActions('死亡を確認しました。'); deathRespawn.observe() },
       onSpawnPending: () => { state.spawnPending = true; shared.prediction = null; shared.equipment = null; current()?.stopActions('参加位置の確定を待っています。') },
-      onRespawn: result => { state.dead = false; state.spawnPending = false; state.health = result.health; shared.prediction = null; applyState('server_post_move', { position: result.position }); respawnTerrainHandoff.begin(result) }
+      onRespawn: result => { state.dead = false; state.spawnPending = false; state.health = result.health; shared.prediction = null; resetLifeScope(shared, `${state.connectionId}:${result.deathId ?? lifecycle?.stats()?.deathId ?? 0}:alive`); applyState('server_post_move', { position: result.position }); respawnTerrainHandoff.begin(result) }
     })
     reloader = createHotReloader({ entry: path.join(__dirname, '..', 'runtime.js'), watchFiles: watched, createContext: () => context,
       canReload: () => !lifecycle.stats().pending && (current()?.canReload() ?? true),

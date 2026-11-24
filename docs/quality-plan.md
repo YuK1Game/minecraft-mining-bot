@@ -27,6 +27,10 @@
 | 保守性 | 構文確認は約1秒。大きいファイルの増加を `npm run check` が表示する。`runtime.js` の分割は `scripts/extract-runtime-block.js` で機械的に行える | `scripts/size-budget.json` |
 | 性能 | 地形参照（`world.getBlock`）は1回 約1,500ns → 120〜200ns（合成データ）。処理の停止の記録に作業名が出る | `npm run benchmark:world` |
 | 使いやすさ | 画面の「今していること」に長距離移動を表示。ログ欄は時刻を表示し、同じ行の繰り返しをまとめる。未使用のスタイル定義 252件を削除 | `test/dashboard-*.test.js` |
+| 使いやすさ | `dashboard/index.html` の重複旧ダークテーマCSSを削除し約5.8KB削減（基準を76KBへ引き下げ）。モード切替に連動したヘッダー／タイトル表記、判断ログ（`判断:`）の識別表示、活動欄・詳細モーダルへの直近判断連動を追加 | `dashboard/index.html`、`dashboard/mode.js`、`test/dashboard-decision-view.test.js` |
+| 保守性 | `AGENTS.md`（約420KB）からプレイヤーモード・ブランチマイニングの詳細経緯を `docs/player-mode-rules.md` へ分離し、`AGENTS.md` を約9KBのルール＋索引へ軽量化。テスト棚卸しスクリプト `npm run test:audit` を追加 | `AGENTS.md`、`docs/player-mode-rules.md`、`scripts/audit-tests.js` |
+| 信頼性 | 同一プロフィールでの二重起動を防ぐロック（`src/host/process-lock.js`）、`host.shared` のライフサイクル別スコープ（`src/common/shared-scopes.js`）、共通タイマースケジューラ（`src/common/runtime-scheduler.js`）、停滞・保留時の診断スナップショット自動保存（`src/modes/incident-snapshot.js` → `.local/incidents/`）を導入。`idle-safety-runtime.js` の直接 `require` を `rt.require` へ修復し `runtime-source-helper.test.js` を復旧 | `test/review-process-lock.test.js`、`test/review-shared-scopes.test.js`、`test/review-runtime-scheduler.test.js`、`test/player-incident-snapshot.test.js`、`test/runtime-source-helper.test.js` |
+| 自律性 | プレイヤーモード段階0の未着手3項目（拠点半径16m・8m間隔の湧き潰し、松明16本の常備在庫と木炭フォールバック、仮設チェストの場所記憶と集約）および作業調停（`work-dispatcher.js`）・ネザー〜エンドのステージ別ドライラン検証を実装 | `src/modes/player-base-lighting.js`、`player-torch-supply.js`、`player-field-chests.js`、`work-dispatcher.js`、`test/player-stage0-foundations.test.js`、`test/dragon-stage-dryrun.test.js` |
 
 ## 残っていること（優先順）
 

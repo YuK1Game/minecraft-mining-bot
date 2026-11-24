@@ -54,6 +54,10 @@ const { createHouseBuild, houseFile, houseDoc, loadHouseSync } = require('./hous
 const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
 const { writeDurableJson } = require('../common/durable-json')
+const { createScheduler } = require('../common/runtime-scheduler')
+const { createWorkDispatcher } = require('./work-dispatcher')
+const { createIncidentRecorder } = require('./incident-snapshot')
+const { createFieldChestLedger, fieldChestsFile } = require('./player-field-chests')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
@@ -217,10 +221,16 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const feetNow = () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   const torch = createPlayerTorch({
     getMode: control.get, shared, log, disposed, getFeet: feetNow,
+    getHouseOrigin: () => shared.playerHouse?.origin ?? null,
+    getClock: () => { try { return runtime.travel?.()?.travelClock?.() ?? null } catch { return null } },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), running: () => agentStatus().running === true, settled: idle },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || house.status().active || quarry.travelStatus().busy === true || danger(),
     hands: createTorchPorts({ operations, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory() })
+  })
+  const fieldChests = createFieldChestLedger({
+    shared, file: fieldChestsFile(root), write: writeDurableJson,
+    worldScope: () => stationWorldScope(runtime.raw()), getBase: () => shared.playerBase ?? null, log
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
   // The chest work reads its inventory as the chest operation does: not received while a main slot is missing (chest-pack.js).
@@ -228,6 +238,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const storagePorts = createStoragePorts({ operations, disposed, held: () => runtime.combatOwns?.() === true, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: chestPack, memory: shared.playerChestMemory ??= { seen: new Map() } })
   const storage = createPlayerStorage({
     file: path.join(root, '.local', 'player-chest-pairs.json'), write: writeDurableJson, worldScope: () => stationWorldScope(runtime.raw()),
+    fieldChests,
     getMode: control.get, shared, log, disposed, getFeet: feetNow, mine: async cell => (await hands.pick(cell)) && hands.mine(cell), dig: cell => hands.dig(cell), why: () => hands.why(), walk: target => hands.walk(target), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null },
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: chestPack,
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
@@ -253,6 +264,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     water: { needed: () => water.needed(), exit: aborted => water.exit(aborted) },
     house: { inside: () => insideHouse(shared.playerHouse?.origin, feetNow()), leave: () => leaveHouse({ house: shared.playerHouse, getFeet: feetNow, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), walk: target => hands.walk(target), door: () => houseDoor(), why: () => hands.why(), build: houseWayOut, log }) },
     scope: () => { try { return runtime.scope?.() ?? null } catch { return null } }, dimension: () => { try { return runtime.raw()?.dimension ?? null } catch { return null } }, interrupter: ahead,
+    onIncident: info => incidents.capture(info),
     hostile: () => danger()
   })
   const hungryWithoutFood = () => { const value = hunger(); return Number.isFinite(value) && value <= 14 && !shared.inventoryUncertain && !hasFood(runtime.inventory()) }
@@ -316,9 +328,30 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   const crew = [recovery, shelter, flee, cover, scaffold, torch, storage, base, wool, sand, food, water, house]
   const CREW = ['立て直し', '避難', '敵から離れる', '射線から外れる', '足場', '松明', '収納', '拠点への帰還', '羊毛', '砂', '食料', '水から上がる', '家の建築']
+  const dispatcher = createWorkDispatcher([
+    { id: 'recovery', label: '立て直し', task: recovery },
+    { id: 'shelter', label: '避難', task: shelter },
+    { id: 'flee', label: '敵から離れる', task: flee },
+    { id: 'cover', label: '射線から外れる', task: cover },
+    { id: 'scaffold', label: '足場', task: scaffold },
+    { id: 'torch', label: '松明', task: torch },
+    { id: 'storage', label: '収納', task: storage },
+    { id: 'base', label: '拠点への帰還', task: base },
+    { id: 'wool', label: '羊毛', task: wool },
+    { id: 'sand', label: '砂', task: sand },
+    { id: 'food', label: '食料', task: food },
+    { id: 'water', label: '水から上がる', task: water },
+    { id: 'house', label: '家の建築', task: house }
+  ])
+  const incidents = createIncidentRecorder({
+    root, shared, getState: () => runtime.raw(), getFeet: feetNow,
+    getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
+    getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(),
+    getGoal: () => shared.dragonGoal ?? null, log
+  })
   // Who has the player, said to the log when it changes (decision-journal.js).
   const journal = require('./decision-journal'), book = journal.createJournal({ shared, log })
-  const whoOwns = owned => { try { if (shared.playerWanted === true) journal.owner(book, { expedition: owned, label: expedition.objective()?.label, ahead: owned && expedition.runState().wait?.code === 'OWNER' ? require('./crew-busy').crewBusyName(crew, CREW) ?? (owner.held() ? '戦闘か退避' : 'ほかの操作') : null }) } catch { /* A log line only. */ } }
+  const whoOwns = owned => { try { if (shared.playerWanted === true) journal.owner(book, { expedition: owned, label: expedition.objective()?.label, ahead: owned && expedition.runState().wait?.code === 'OWNER' ? dispatcher.activeName() ?? (owner.held() ? '戦闘か退避' : 'ほかの操作') : null }) } catch { /* A log line only. */ } }
   const lifeKey = () => require('../common/life-key').lifeKey(runtime.host(), () => runtime.raw())
   const active = () => !disposed() && control.get() === 'player' && shared.playerWanted === true
   const getBlock = (x, y, z) => runtime.host().world.getBlock(x, y, z)
@@ -327,10 +360,10 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     expedition?.cancel()
   }
   expedition = createDragonRuntime({
-    operations, runtime, shared, root, active, log, getBlock, lifeKey, getFeet: () => feetNow(), loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
+    operations, runtime, shared, root, active, log, getBlock, lifeKey, getFeet: () => feetNow(), incidents, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
-    legacyBusy: () => require('./crew-busy').crewBusy(crew) || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || owner.held(),
+    legacyBusy: () => dispatcher.anyActive() || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || owner.held(),
     stopLegacy: (reason, why) => why?.hurtOnly === true && owner.held() ? runtime.autonomy().stop(reason) : inner.stop(reason),
     stepPorts: signal => {
       const owner = lifeKey()
@@ -354,14 +387,21 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // What the defenses were doing at a hit (live 2026-11-17 23:13-23:16 JST: three
   // minutes of arrows with no flee, cover or combat line in the log).
   const defenseNote = () => { const safe = (() => { try { return operations.safety.snapshot() } catch { return null } })(); return `離れる ${flee.status().skip ?? (flee.status().active ? '実行中' : '-')}・射線 ${cover.status().skip ?? (cover.status().active ? '実行中' : '-')}・待機保護 ${safe?.phase ?? '?'}${safe?.active ? `/${safe.active}` : ''}・プレイ ${shared.playerWanted === true ? '中' : '外'}` }
-  const fleeTimer = setInterval(require('../common/work-spans').wrap('player-flee.tick', () => { if (disposed()) clearInterval(fleeTimer); else { owner.sample(); if (expedition.owns()) expedition.guard(); else void flee.tick().catch(() => {}); void cover.tick().catch(() => {}); try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ } } }), 500)
-  fleeTimer.unref?.()
+  const workSpans = require('../common/work-spans')
+  const scheduler = createScheduler({ isDisposed: disposed, log, wrapSpan: workSpans.wrap })
+  scheduler.every('player-flee', 500, () => {
+    owner.sample()
+    if (expedition.owns()) expedition.guard()
+    else void flee.tick().catch(() => {})
+    void cover.tick().catch(() => {})
+    try { noteDamage({ shared, health: runtime.raw().health, position: where(), actors: runtime.host().entities.snapshot({ kind: 'all' }), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log, why: defenseNote }) } catch { /* A log line only. */ }
+  }, { preventOverlap: false })
   // The received world behind the server under the feet: the terrain there is asked for again
   // (live 2026-11-18 07:09-09:48 JST, movement/ground-refresh.js).
   const ground = createGroundRefresh({ getCorrection: () => shared.lastServerCorrection, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getDimension: () => runtime.raw().dimension, send: request => runtime.host().client.queue('subchunk_request', request), log })
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
-  const timer = setInterval(require('../common/work-spans').wrap('player-mode.tick', () => {
-    if (disposed()) { expedition.cancel(); return clearInterval(timer) }
+  scheduler.every('player-mode', 2000, () => {
+    if (disposed()) { expedition.cancel(); scheduler.disposeAll(); return }
     void resume.note()
     try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }
@@ -373,19 +413,9 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
       return
     }
     keepAim()
-    void shelter.tick()
-    void scaffold.tick().catch(() => {})
-    void torch.tick().catch(() => {})
-    void storage.tick().catch(() => {})
-    void base.tick().catch(() => {})
-    void wool.tick().catch(() => {})
-    void sand.tick().catch(() => {})
-    void food.tick().catch(() => {})
-    void water.tick().catch(() => {})
-    void house.tick().catch(() => {})
-    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || water.status().active || house.status().active }) } catch { /* The next tick retries. */ }
-  }), 2000)
-  timer.unref?.()
+    dispatcher.tickMany(['shelter', 'scaffold', 'torch', 'storage', 'base', 'wool', 'sand', 'food', 'water', 'house'])
+    try { recovery.keepPlaying({ running: agentStatus().running === true, resting: dispatcher.anyActive('recovery') }) } catch { /* The next tick retries. */ }
+  }, { preventOverlap: false })
   // The previous runtime was reloaded in the middle of a recovery: play on.
   if (shared.playerRecovering === true) { shared.playerRecovering = false; if (control.get() === 'player' && !expedition.owns()) shared.autoWanted = true }
   // The runtime restarts a stopped run with the options it was last started with: a reload brings the player objective's current flags.

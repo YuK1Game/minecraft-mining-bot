@@ -10,6 +10,15 @@ const OBJECTIVE = Object.freeze({ objective: 'diamond', diamondCount: 1, threatW
 const text = value => String(value ?? '').replace(/[\p{C}§]/gu, ' ').slice(0, 240)
 
 const safely = read => { try { return read() } catch { return null } }
+function latestDecision (shared) {
+  const book = shared?.decisionJournal
+  if (!book || typeof book !== 'object') return null
+  let best = null
+  for (const row of Object.values(book)) {
+    if (row && typeof row.text === 'string' && row.text && (!best || (row.at ?? 0) >= (best.at ?? 0))) best = row
+  }
+  return best ? text(best.text).slice(0, 160) : null
+}
 
 function createPlayerMode ({ getMode, agent, safety, expedition = null, recovery = null, shelter = null, flee = null, scaffold = null, shared = {}, getInventory = () => null, getWorn = () => null, log = () => {} }) {
   const worn = () => safely(getWorn)
@@ -40,20 +49,21 @@ function createPlayerMode ({ getMode, agent, safety, expedition = null, recovery
     const wanted = shared.playerWanted === true
     const record = safely(() => expedition?.record())
     const stages = playerStages(getInventory(), worn(), shared.playerHouse, record)
+    const decision = latestDecision(shared)
     const quest = expedition?.status()
-    if (record?.stage === 'complete') return { wanted, running: false, phase: 'completed', reason: record.end.preexisting ? '開通済みのエンドから帰還しました。今回の討伐は未確認です。' : 'ドラゴン討伐後の現世への帰還を確認しました。', ...stages }
-    if (wanted && expedition?.owns()) return { wanted, running: true, phase: quest?.phase ?? 'working', reason: text(quest?.reason ?? '次の遠征に向けて状態を確認しています。'), ...stages }
+    if (record?.stage === 'complete') return { wanted, running: false, phase: 'completed', reason: record.end.preexisting ? '開通済みのエンドから帰還しました。今回の討伐は未確認です。' : 'ドラゴン討伐後の現世への帰還を確認しました。', ...(decision ? { decision } : {}), ...stages }
+    if (wanted && expedition?.owns()) return { wanted, running: true, phase: quest?.phase ?? 'working', reason: text(quest?.reason ?? '次の遠征に向けて状態を確認しています。'), ...(decision ? { decision } : {}), ...stages }
     const fleeing = flee?.status() ?? { active: false }
-    if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...stages }
+    if (fleeing.active) return { wanted, running: true, phase: 'fleeing', reason: text(fleeing.reason), ...(decision ? { decision } : {}), ...stages }
     const sheltering = shelter?.status() ?? { active: false }
-    if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...stages }
+    if (sheltering.active) return { wanted, running: true, phase: 'sheltering', reason: text(sheltering.reason), ...(decision ? { decision } : {}), ...stages }
     const scaffolding = scaffold?.status() ?? { active: false }
-    if (scaffolding.active) return { wanted, running: true, phase: 'working', reason: text(scaffolding.reason), ...stages }
+    if (scaffolding.active) return { wanted, running: true, phase: 'working', reason: text(scaffolding.reason), ...(decision ? { decision } : {}), ...stages }
     const recovering = recovery?.status() ?? { active: false }
-    if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...stages }
+    if (recovering.active) return { wanted, running: true, phase: 'recovering', reason: text(recovering.reason), ...(decision ? { decision } : {}), ...stages }
     // A run whose current decision is a wait is waiting, whatever its phase says between ticks.
     const phase = value.running === true && value.lastDecision?.type === 'wait' ? 'waiting' : value.phase
-    return { wanted, running: value.running === true, phase: text(phase), reason: text(value.reason), ...stages }
+    return { wanted, running: value.running === true, phase: text(phase), reason: text(value.reason), ...(decision ? { decision } : {}), ...stages }
   }
   return { start, stop, status }
 }

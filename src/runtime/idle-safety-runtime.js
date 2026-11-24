@@ -1,6 +1,4 @@
 'use strict'
-const { threatFields } = require('../safety/threat-policy')
-const { splitExposed } = require('../safety/exposed-actors')
 
 // Moved from runtime.js by scripts/extract-runtime-block.js.
 // `rt` exposes the runtime closure bindings this code uses; each read or write
@@ -15,7 +13,8 @@ const { tryDetour } = require('./idle-escape/escape-port-detour')
 const { trySurfaceRetreat } = require('./idle-escape/escape-port-surface')
 
 function createIdleSafetyRuntime (rt) {
-    const { createSafetyOwnership } = rt.require('./runtime/safety-ownership')
+  const { threatFields } = rt.require('./safety/threat-policy'), { splitExposed } = rt.require('./safety/exposed-actors')
+  const { createSafetyOwnership } = rt.require('./runtime/safety-ownership')
     const generationGuardRoute = rt.createGuardedRoute({
       getState: rt.routeState, movement: rt.routeMovement, getMovement: rt.own(() => rt.generationMovement.snapshot()), inventory: rt.routeInventory,
       combat: { previewEngage: rt.own(id => rt.generationCombat.previewEngage(id)), engage: rt.own((id, options) => rt.generationCombat.engage(id, options)), preview: rt.own(id => rt.generationCombat.preview(id)), attack: rt.own(id => rt.generationCombat.attack(id)), cancel: reason => rt.generationCombat.cancel(reason), drain: () => rt.generationCombat.drain() },

@@ -11,6 +11,8 @@
 // around it, so one every eight leaves no dark floor in a tunnel.
 const { normalizeMode } = require('./bot-mode')
 const { underCover } = require('./player-surface')
+const { findDarkBaseSpot, shouldLightSurface } = require('./player-base-lighting')
+const { planTorchRestock, TORCH_STOCK_TARGET } = require('./player-torch-supply')
 
 const TORCH = 'minecraft:torch'
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
@@ -59,7 +61,7 @@ function torchSupply (inventory) {
 }
 
 // hands: { craft(output) -> bool, place(cell) -> bool } on the runtime's ordinary operations.
-function createPlayerTorch ({ getMode, shared, agent, hands, getBlock, getFeet, getInventory, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerTorch ({ getMode, shared, agent, hands, getBlock, getFeet, getInventory, getHouseOrigin = () => shared?.playerHouse?.origin ?? null, getClock = () => null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, placed = 0
   const trail = [], lost = new Set()
   // Where the Bot is heading: from a spot at least three blocks back on its trail.
@@ -80,19 +82,35 @@ function createPlayerTorch ({ getMode, shared, agent, hands, getBlock, getFeet, 
     const feet = getFeet()
     const heading = feet ? headingNow(feet) : null
     const spotsFor = at => torchSpots(getBlock, at, heading).filter(cell => !lost.has(`${cell.x},${cell.y},${cell.z}`))
-    if (!feet || !underCover(getBlock, { x: feet.x, y: feet.y + 1.62, z: feet.z }) || torchNear(getBlock, feet)) return null
-    if (!torchSupply(getInventory()) || !spotsFor(feet).length) { waitUntil = now() + AGAIN_MS; return null }
+    const underground = feet && underCover(getBlock, { x: feet.x, y: feet.y + 1.62, z: feet.z })
+    const origin = getHouseOrigin?.() ?? null
+    const clock = getClock?.() ?? null
+    const surfaceMode = !underground && feet && shouldLightSurface({ feet, origin, clock })
+    if (!feet || (!underground && !surfaceMode)) return null
+    const baseSpot = surfaceMode && origin ? findDarkBaseSpot({ getBlock, origin, feet, torchNear, lost }) : null
+    if (underground && torchNear(getBlock, feet)) return null
+    if (surfaceMode && !baseSpot && (!clock || torchNear(getBlock, feet))) return null
+    const targetSpots = baseSpot ? [baseSpot, ...spotsFor(feet)] : spotsFor(feet)
+    if (!torchSupply(getInventory()) || !targetSpots.length) { waitUntil = now() + AGAIN_MS; return null }
     busy = true
     let ok = false
     try {
       agent.stop('松明を置いています。')
       await settle()
-      for (let step = 0; step < 3 && live() && torches() < 1; step++) {
+      const wantTorches = surfaceMode ? TORCH_STOCK_TARGET : 1
+      for (let step = 0; step < 4 && live() && torches() < wantTorches; step++) {
+        if (wantTorches > 1) {
+          const plan = planTorchRestock(getInventory(), { target: wantTorches })
+          if (plan.action === 'craft_torch') { if (!await hands.craft(TORCH)) break; continue }
+          if (plan.action === 'craft_sticks') { if (!await hands.craft('minecraft:stick')) break; continue }
+          if (torches() >= 1) break
+        }
         const supply = torchSupply(getInventory())
         if (supply !== 'craft' && supply !== 'sticks') break
         if (!await hands.craft(supply === 'sticks' ? 'minecraft:stick' : TORCH)) break
       }
-      if (torches() > 0) for (const cell of spotsFor(getFeet() ?? feet).slice(0, 3)) {
+      const liveSpots = baseSpot ? [baseSpot, ...spotsFor(getFeet() ?? feet)] : spotsFor(getFeet() ?? feet)
+      if (torches() > 0) for (const cell of liveSpots.slice(0, 3)) {
         if (!live()) break
         if (await hands.place(cell)) {
           ok = true; placed++; log(`プレイヤーモード: 松明を置きました (${cell.x}, ${cell.y}, ${cell.z})（残り ${torches()} 本）`)
