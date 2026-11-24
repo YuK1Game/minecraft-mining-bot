@@ -114,3 +114,11 @@ test('the plan mines beach sand with sand beside and below it, not sand under sa
   assert.equal(out.target.y, 63)
   assert.equal(out.material, true)
 })
+
+test('when all house materials are held during repair, mineral actions wait on house completion instead of coal mining', () => {
+  const shared = { playerHouse: { origin: { x: 0, y: 64, z: 0 }, done: false, built: true, left: { cobblestone: 4 }, repair: { state: 'running', since: 1 } } }
+  const state = { inventory: inv([['stone_pickaxe', 1], ['cobblestone', 20]]) }
+  const out = withHouseSupply({ mode: 'player', playing: true, shared, state, getBlock: () => ({ known: false }), decision: { type: 'mine_ore', resource: 'coal' }, planLogs: () => null, planStone: () => null })
+  assert.equal(out.type, 'wait')
+  assert.equal(out.code, 'HOUSE_BUILD_PENDING')
+})

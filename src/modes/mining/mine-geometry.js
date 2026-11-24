@@ -186,4 +186,21 @@ function classifyMineCell (plan, p) {
   return { allowedDig: false, protected: !within, role: within ? 'vein_candidate' : 'outside' }
 }
 
-module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, defaultDropEstimate, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, MAX_STORAGE_PAIRS, key }
+// Expand an unstarted site plan (shaft-only, no lobby or corridors dug yet) to
+// a larger rectangle while keeping the exact same shaft columns, ladder and entrance.
+function upgradeMineGeometry (plan, { width = MAX_SIDE, length = MAX_SIDE } = {}) {
+  if (!plan?.site || !DIRECTIONS[plan.site.direction] || !Array.isArray(plan.layers) || !plan.layers.length) return null
+  const { anchor, direction, width: oldWidth, length: oldLength, surfaceY } = plan.site
+  if (oldWidth >= width && oldLength >= length) return null
+  const f = DIRECTIONS[direction], r = { x: -f.z, z: f.x }
+  const oldMid = Math.floor((oldWidth - 2) / 2), newMid = Math.floor((width - 2) / 2)
+  const newAnchor = { x: anchor.x + r.x * (oldMid - newMid), z: anchor.z + r.z * (oldMid - newMid) }
+  const upperY = plan.layers.find(l => l.id === 'upper')?.y
+  const lowerY = plan.layers.find(l => l.id === 'lower')?.y ?? null
+  if (!Number.isInteger(upperY)) return null
+  const upgraded = createMineGeometry({ scope: plan.scope, anchor: newAnchor, direction, width, length, surfaceY, upperY, lowerY })
+  if (JSON.stringify(upgraded.shaft) !== JSON.stringify(plan.shaft)) return null
+  return upgraded
+}
+
+module.exports = { createMineGeometry, extendMineGeometry, upgradeMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, defaultDropEstimate, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, MAX_STORAGE_PAIRS, key }

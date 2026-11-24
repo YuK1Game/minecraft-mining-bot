@@ -1,6 +1,6 @@
 'use strict'
 
-const {mineSteps,stepCells}=require('./mine-geometry')
+const {mineSteps,stepCells,upgradeMineGeometry,MAX_SIDE}=require('./mine-geometry')
 const state=require('./mine-state')
 const {at,solid,inventory,count,scope,live,received,save,pending,blocked,stopped,results}=require('./mine-common')
 const {excavateSegment,inspectDig}=require('./mine-excavate')
@@ -116,6 +116,24 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     catch{return outcome(blocked('MINE_SAVED_PROGRESS_INVALID','保存した坑道の施工順と現在の地形を確認します。','owner_released'))}
     branch.activeScope=scope(ctx)
     if(!await save(ctx,branch))return outcome(blocked('MINE_CHECKPOINT','再開する採掘場の記録を保存します。','owner_released'))
+  }
+  // If a real-scale (>=48) site was planned before the 128x128 rule and only its
+  // vertical shaft has been started (no lobby, chests or corridors yet), expand
+  // it in-place to 128x128 while preserving the exact same shaft and entrance.
+  if(!branch.retiring && !branch.segmentTask && !branch.vein &&
+      branch.plan.site.width>=48 && branch.plan.site.length>=48 &&
+      (branch.plan.site.width<MAX_SIDE || branch.plan.site.length<MAX_SIDE) &&
+      Object.keys(branch.storage?.pairs??{}).length===0 &&
+      branch.plan.layers.every(l=>!branch.lobbyReady?.[l.id] && (branch.progress?.[l.id]?.confirmedSteps??0)===0 && (branch.progress?.[l.id]?.cursor??0)===0)){
+    const upgraded=upgradeMineGeometry(branch.plan,{width:MAX_SIDE,length:MAX_SIDE})
+    if(upgraded){
+      branch.plan=upgraded
+      branch.progress=Object.fromEntries(upgraded.layers.map(l=>[l.id,state.createMineState(upgraded,{layer:l.id})]))
+      branch.activeScope=scope(ctx)
+      const pairs=upgraded.storage.find(s=>s.layer==='upper')?.pairs?.length??0
+      if(!await save(ctx,branch))return outcome(blocked('MINE_CHECKPOINT','128×128へ拡張した採掘場の記録を保存します。','owner_released'))
+      ctx.log?.(`プレイヤーモード: 縦坑のみ施工中の採掘場計画を ${MAX_SIDE}×${MAX_SIDE}（ラージチェスト ${pairs} 組）へ拡張して続行します`)
+    }
   }
   if(branch.retiring)return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
   if(branch.vein && branch.request?.resource!==resource){branch.vein.closing=true;return outcome(await restoreVein(ctx,branch),'先の鉱脈を埋め戻してから資源を切り替えます。')}

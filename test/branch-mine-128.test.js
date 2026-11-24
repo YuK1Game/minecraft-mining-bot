@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { createMineGeometry, defaultDropEstimate, MAX_SIDE, MAX_STORAGE_PAIRS } = require('../src/modes/mining/mine-geometry')
+const { createMineGeometry, upgradeMineGeometry, defaultDropEstimate, MAX_SIDE, MAX_STORAGE_PAIRS } = require('../src/modes/mining/mine-geometry')
 const { planMine, PLAN_RULES } = require('../src/modes/mining/mine-plan')
 const { supplyNeeds } = require('../src/modes/mining/mine-needs')
 const { observationWorld } = require('./helpers/branch-mine-observation-world')
@@ -79,4 +79,17 @@ test('planMine still rejects unreceived shaft/storage or barren 4-chunk areas on
   const none = await planMine({ world: barren.world, getState: barren.getState, origin: { x: 0.5, y: 64, z: 0.5 }, resource: 'raw_iron', targetCount: 1 })
   assert.equal(none.status, 'blocked', JSON.stringify(none))
   assert.equal(none.code, 'MINE_NO_SAFE_RESOURCE_PLAN')
+})
+
+test('upgradeMineGeometry expands an unstarted 48x48 site to 128x128 with identical shaft in all four directions', () => {
+  for (const direction of ['east', 'south', 'west', 'north']) {
+    const oldPlan = createMineGeometry({ scope, anchor: { x: 9797, z: 10266 }, direction, width: 48, length: 48, surfaceY: 70, upperY: 16 })
+    const upgraded = upgradeMineGeometry(oldPlan, { width: 128, length: 128 })
+    assert.ok(upgraded, `upgrade failed for ${direction}`)
+    assert.equal(upgraded.site.width, 128)
+    assert.equal(upgraded.site.length, 128)
+    assert.deepEqual(upgraded.shaft, oldPlan.shaft, `shaft must stay identical for ${direction}`)
+    assert.ok(upgraded.storage[0].pairs.length >= 8, `expected >= 8 large chests for ${direction}`)
+    assert.equal(upgradeMineGeometry(upgraded, { width: 128, length: 128 }), null)
+  }
 })

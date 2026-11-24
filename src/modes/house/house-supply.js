@@ -19,6 +19,7 @@ const { normalizeMode } = require('../bot-mode')
 const { counts, remaining, placements, matches } = require('./house-blueprint')
 const { houseDuty, focusOf } = require('./house-repair')
 const { houseNeeds } = require('./house-needs')
+const { mineral } = require('../player-mining-policy')
 
 const short = name => String(name ?? '').replace(/^minecraft:/, '')
 const hasPickaxe = inventory => (inventory?.items ?? []).some(item => item?.count > 0 && /_pickaxe$/.test(short(item.name)))
@@ -71,7 +72,13 @@ function needsNow ({ shared, state, getBlock }) {
 function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, log = () => {} }) {
   if (!decision || !pending({ mode, playing, shared, state })) return decision
   const needs = needsNow({ shared, state, getBlock })
-  if (!needs?.short) return decision
+  if (!needs?.short) {
+    const proposed = decision.type === 'capability_required' ? decision.proposedAction : decision
+    if (needs && mineral(proposed)) {
+      return { type: 'wait', stage: 'house', code: 'HOUSE_BUILD_PENDING', reason: '拠点の家の材料は揃っているため、建築・修繕の完了を待ちます。' }
+    }
+    return decision
+  }
   const tell = (key, text) => { if (shared.houseSupplyNote !== key) { shared.houseSupplyNote = key; log(`プレイヤーモード: ${text}`) } }
   const { need, total } = needs
   const ask = (plan, label) => {
