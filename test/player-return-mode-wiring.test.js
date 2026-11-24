@@ -162,3 +162,66 @@ test('resuming the same saved route creates a new travel owner that an old retur
   assert.notEqual(receipts[0].operationId, receipts[1].operationId)
   assert.equal(persisted.some(document => Object.hasOwn(document, 'operationId')), false, 'Operation ownership is never resumed from the saved route')
 })
+
+test('a persisted legacy return goal cannot deadlock an expedition-owned player on reconnect', async t => {
+  t.mock.method(globalThis, 'fetch', () => assert.fail('Mode wiring proof stays offline'))
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'player-return-expedition-'))
+  t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 3 }))
+  await fs.mkdir(path.join(root, '.local'), { recursive: true })
+  const staleGoal = newGoal({ id: 'rstale1', reason: '拠点のチェストからダイヤと資材を取り出します', base: { x: 10, y: GROUND, z: 10 }, scope: 'old-scope', now: 1000 })
+  staleGoal.state = 'held'
+  staleGoal.hold = { code: 'CHEST_UNREACHED', at: 1000, until: 900000, position: { x: 0, y: GROUND, z: 0 }, supplies: 0, kinds: ['position_changed'], vertical: false }
+  await fs.writeFile(path.join(root, '.local', 'player-return.json'), JSON.stringify({ version: 1, goal: staleGoal, failures: { entries: [], trail: [] } }))
+  const intervals = []
+  t.mock.method(globalThis, 'setInterval', (run, ms) => { const timer = { run, ms, unref () {} }; intervals.push(timer); return timer })
+  let disposed = false
+  let rawState = {
+    profile: 'bot', realm: { id: '42', name: 'Test' }, connectionId: 'c2', startedAt: '2026-11-25T00:00:00Z',
+    dimension: null, phase: 'connecting', loadingScreenEnded: false, health: 20,
+    position: null, lifecycle: { deathId: 0 }, inventory: { known: false, items: [] }
+  }
+  const shared = { botMode: 'player', playerWanted: true, loadingScreenEnded: false, playerHouse: { done: true, origin: { x: 0, y: GROUND, z: 0 } }, playerBase: { x: 10, y: GROUND, z: 10 }, vitals: { hunger: 20 } }
+  const logs = []
+  const operations = {
+    quarry: { status: () => null, start () {}, resume () {}, travelStatus: () => ({ busy: false }), cancelTravel () {} },
+    agent: { start () {}, stop () {} },
+    safety: { start () {}, snapshot: () => ({ busy: false }) },
+    movement: { stop () {}, snapshot: () => ({ phase: 'idle' }) }
+  }
+  const host = { shared, world: { getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }) }, entities: { snapshot: () => [] }, log: line => logs.push(line), getLife: () => ({ connectionId: rawState.connectionId, deathId: 0 }) }
+  const runtime = {
+    host: () => host, disposed: () => disposed,
+    raw: () => rawState, position: () => rawState.position, inventory: () => rawState.inventory,
+    mainSlot: slot => rawState.inventory.items.find(i => i.slot === slot) ?? null,
+    armor: () => ({ known: true, worn: [] }), scope: () => `${rawState.connectionId}:${rawState.dimension ?? 'none'}`,
+    autonomy: () => ({ snapshot: () => ({ running: false, busy: false, actionActive: false }) }),
+    motion: () => ({ phase: 'idle' }), hostiles: () => [], nearestHostile: () => Infinity,
+    chunkMoveHeld: () => false, resetHeld: () => false, manualChestStorage: () => null, combatOwns: () => false,
+    travel: () => ({ travelClock: () => ({ night: false }) })
+  }
+  const mode = attachModeOperations(operations, runtime, { root })
+  t.after(() => { disposed = true })
+  const tick = intervals.find(timer => timer.ms === 2000)
+  assert.ok(tick)
+  // 1. Before dimension is received on reconnect, legacy base must not wake the held goal or burn POSITION_UNKNOWN.
+  tick.run()
+  assert.equal(shared.playerReturn?.state, 'held')
+  assert.equal(logs.some(line => /POSITION_UNKNOWN/.test(line)), false)
+  // 2. Even if an active legacy return goal exists when expedition owns the player (e.g. restored active from disk),
+  // mode-runtime cancels the idle legacy goal instead of deadlocking expedition on OWNER.
+  shared.playerReturn.state = 'active'
+  shared.playerReturn.hold = null
+  const mode2 = attachModeOperations(operations, runtime, { root })
+  const tick2 = intervals.filter(timer => timer.ms === 2000).at(-1)
+  rawState = {
+    ...rawState, dimension: 'overworld', phase: 'spawned', loadingScreenEnded: true,
+    position: { x: 1.5, y: GROUND + 1.62, z: 1.5 },
+    inventory: { known: true, items: [{ slot: 0, name: 'minecraft:stone_pickaxe', count: 1 }, { slot: 1, name: 'minecraft:stone_sword', count: 1 }] }
+  }
+  shared.loadingScreenEnded = true
+  tick2.run()
+  assert.equal(shared.playerReturn, null, 'Idle legacy return goal must be cancelled once expedition owns the player')
+  assert.equal(logs.some(line => /EXPEDITION_OWNED/.test(line)), true, JSON.stringify(logs))
+  assert.equal(mode.get(), 'player')
+  assert.equal(mode2.get(), 'player')
+})

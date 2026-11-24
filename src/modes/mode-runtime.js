@@ -409,9 +409,14 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     const owned = expedition.tick()
     whoOwns(owned)
     if (owned) {
-      if (shared.travelNight?.cover && !require('./dragon-rest-pit').resting(shared) && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
+      if ((shelter.status().active || (shared.travelNight?.cover && !require('./dragon-rest-pit').resting(shared))) && runtime.raw().dimension === 'overworld') void shelter.tick().catch(() => {})
+      if (base.status().active) {
+        if (base.status().goal?.pendingTransfer) void base.tick().catch(() => {})
+        else if (!base.status().working) base.cancel('EXPEDITION_OWNED')
+      }
       return
     }
+    if (shared.playerWanted === true && runtime.raw()?.dimension == null) return
     keepAim()
     dispatcher.tickMany(['shelter', 'scaffold', 'torch', 'storage', 'base', 'wool', 'sand', 'food', 'water', 'house'])
     try { recovery.keepPlaying({ running: agentStatus().running === true, resting: dispatcher.anyActive('recovery') }) } catch { /* The next tick retries. */ }
