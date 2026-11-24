@@ -8,9 +8,10 @@
 // planned from inside the house and mined three floor blocks and the ground
 // under them). Walking, standing and the ordinary mining action are unchanged.
 const { placements } = require('../modes/house/house-blueprint')
+const { ringColumns, DEPTH } = require('../modes/house/house-yard')
 const AIR = /^minecraft:(?:air|cave_air|void_air)$/
 
-function createHouseProtection (getHouse) {
+function createHouseProtection (getHouse, { includeYardRing = false } = {}) {
   let origin = null, cells = new Set()
   function current () {
     const at = getHouse()?.origin
@@ -18,6 +19,9 @@ function createHouseProtection (getHouse) {
     if (origin && origin.x === at.x && origin.y === at.y && origin.z === at.z) return cells
     origin = { ...at }
     cells = new Set(placements(at).filter(step => step.item !== 'oak_door').flatMap(step => step.cells).filter(Boolean).map(cell => `${cell.x},${cell.y},${cell.z}`))
+    if (includeYardRing) {
+      for (const col of ringColumns(at)) for (let y = at.y - 1; y > at.y - 1 - DEPTH; y--) cells.add(`${col.x},${y},${col.z}`)
+    }
     return cells
   }
   return function overlay (block, x, y, z) {

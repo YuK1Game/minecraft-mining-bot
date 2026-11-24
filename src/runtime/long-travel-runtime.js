@@ -590,7 +590,8 @@ function createLongTravelRuntime (rt) {
         // Follow the coarse wide-area route first (2026-11-14): a point some
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
-          const planRoute = (extra = {}) => { const bad = rt.host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return rt.require('./travel/coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, signal, ...extra }) }
+          const houseOverlay = rt.require('./safety/house-protection').createHouseProtection(() => rt.host.shared.playerHouse, { includeYardRing: true })
+          const planRoute = (extra = {}) => { const bad = rt.host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return rt.require('./travel/coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => houseOverlay(rt.host.world.getBlock(x, y, z), x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, signal, ...extra }) }
           let route = await planRoute()
           // Live 16:05: columns marked after failed walks fenced the bot in (the
           // same route without them existed). When they leave no route at all,

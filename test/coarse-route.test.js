@@ -210,3 +210,27 @@ test('a covered start may step one block down near the start to walk out of a ho
   assert.equal(r.ready, true)
   assert.ok(r.path.some(p => Math.floor(p.x) === 3 && Math.floor(p.z) === 6), 'through the doorway')
 })
+
+// Live 2026-11-25 06:18:36 JST: leaving the starter house (9877,64,10138) for the mine,
+// long-travel's faceStairs dug (9877,63,10146) cobblestone from the house's own yard ring,
+// immediately waking the just-held 120-minute house repair.
+test('coarse route never carves house blueprint or yard-ring blocks overlaid by createHouseProtection', () => {
+  const { createHouseProtection } = require('../src/safety/house-protection')
+  const origin = { x: 9877, y: 64, z: 10138 }
+  const overlay = createHouseProtection(() => ({ origin }), { includeYardRing: true })
+  const air = { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  const solid = name => ({ known: true, name, boundingBox: 'block' })
+  // Flat stone below y=64 except a 2-block drop south of z=10146 so faceStairs would want to carve (9877,63,10146).
+  const raw = (x, y, z) => {
+    if (x < 9865 || x > 9890 || z < 10130 || z > 10160) return { known: false }
+    if (x === 9877 && y === 64 && z === 10144) return solid('minecraft:cobblestone')
+    if (z <= 10146) return y <= 63 ? solid('minecraft:cobblestone') : air
+    return y <= 60 ? solid('minecraft:stone') : air
+  }
+  const getBlock = (x, y, z) => overlay(raw(x, y, z), x, y, z)
+  assert.equal(getBlock(9877, 63, 10146).natural, false, 'yard-ring cell is marked non-natural')
+  assert.equal(getBlock(9877, 64, 10144).natural, false, 'house blueprint cell is marked non-natural')
+  const r = planCoarseRoute({ getBlock, start: { x: 9877.5, y: 64, z: 10145.5 }, goal: { x: 9877, z: 10156 }, maxDrop: 1, surfaceOnly: true, allowDig: true, faceStairs: true })
+  const dug = r.path.flatMap(step => step.dig ?? [])
+  assert.equal(dug.some(cell => cell.x === 9877 && cell.y === 63 && cell.z === 10146), false, `must not dig yard ring: ${JSON.stringify(dug)}`)
+})

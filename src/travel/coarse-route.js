@@ -135,10 +135,11 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
       if (allowDig && !col.stands.length && !(dx && dz)) {
         const b = (yy, xx = x, zz = z) => getBlock(xx, yy, zz)
         const floor = b(n.y), c1 = b(n.y + 1), c2 = b(n.y + 2), sky = b(n.y + 3), head = b(n.y + 2, n.x, n.z)
-        const solid = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
+        const solid = v => v?.known === true && v.boundingBox === 'block' && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
+        const diggable = v => solid(v) && !NOT_DIGGABLE.test(v.name ?? '') && v.natural !== false && v.protected !== true
         const isOpen = v => classify(v) === 'pass'
-        if (solid(floor) && solid(c1) && (solid(c2) || isOpen(c2)) && (isOpen(sky) || faceStairs && openFace(x, n.y + 2, z, dx, dz)) && (isOpen(head) || solid(head))) {
-          const cells = [{ x, y: n.y + 1, z, v: c1 }, { x, y: n.y + 2, z, v: c2 }, { x: n.x, y: n.y + 2, z: n.z, v: head }].filter(c => solid(c.v)).map(c => ({ x: c.x, y: c.y, z: c.z, name: c.v.name }))
+        if (solid(floor) && diggable(c1) && (diggable(c2) || isOpen(c2)) && (isOpen(sky) || faceStairs && openFace(x, n.y + 2, z, dx, dz)) && (isOpen(head) || diggable(head))) {
+          const cells = [{ x, y: n.y + 1, z, v: c1 }, { x, y: n.y + 2, z, v: c2 }, { x: n.x, y: n.y + 2, z: n.z, v: head }].filter(c => diggable(c.v)).map(c => ({ x: c.x, y: c.y, z: c.z, name: c.v.name }))
           const g = n.g + 1 + cells.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
           const k = key(x, n.y + 1, z)
           if (g < (best.get(k) ?? Infinity)) { best.set(k, g); parent.set(k, key(n.x, n.y, n.z)); digOf.set(k, cells); open.push({ x, y: n.y + 1, z, g, f: g + h(x, z) }) }
@@ -154,7 +155,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
       if (faceStairs && allowDig && !(dx && dz) && !onLeaves(n)) {
         const b = yy => getBlock(x, yy, z)
         const floor = b(n.y - 2), cells = [n.y + 1, n.y, n.y - 1].map(yy => ({ y: yy, v: b(yy) }))
-        const diggable = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '')
+        const diggable = v => v?.known === true && v.boundingBox === 'block' && !NOT_DIGGABLE.test(v.name ?? '') && !HAZARD.test(v.name ?? '') && !WATER.test(v.name ?? '') && v.natural !== false && v.protected !== true
         const dry = (xx, yy, zz) => { const v = getBlock(xx, yy, zz); return v?.known === true && !WATER.test(v.name ?? '') && !/lava/.test(v.name ?? '') }
         const floorOk = floor?.known === true && floor.boundingBox === 'block' && !HAZARD.test(floor.name ?? '') && !WATER.test(floor.name ?? '') && !/leaves/.test(floor.name ?? '')
         const cellsOk = cells.every(c => diggable(c.v) || classify(c.v) === 'pass') && cells.some(c => diggable(c.v))
