@@ -72,7 +72,8 @@ function needsNow ({ shared, state, getBlock }) {
 function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, log = () => {} }) {
   if (!decision || !pending({ mode, playing, shared, state })) return decision
   const needs = needsNow({ shared, state, getBlock })
-  if (!needs?.short) {
+  const gatherShort = !!needs && (needs.need.logs > 0 || needs.need.cobblestone > 0 || needs.need.sand > 0)
+  if (!gatherShort) {
     const proposed = decision.type === 'capability_required' ? decision.proposedAction : decision
     if (needs && mineral(proposed)) {
       return { type: 'wait', stage: 'house', code: 'HOUSE_BUILD_PENDING', reason: '拠点の家の材料は揃っているため、建築・修繕の完了を待ちます。' }
