@@ -33,7 +33,7 @@ function createHouseProtection (getHouse) {
 // house stood on an island and the return to its chest found no way in.
 // A cell is in the yard within YARD.around cells of the 7x7 footprint, from YARD.down below the floor to YARD.up
 // above it. Logs are not ground: a tree beside the house is cut whole, as before. Deeper rock is the mine's.
-// Who gathers material from the world asks this (dragon-supply-gather.js `unavailableAt`); the way into and out
+// Who gathers material from the world asks this (dragon-supply-gather.js `unavailable`); the way into and out
 // of the house (the dig-and-stack walk) and the house build do not.
 const YARD = { around: 8, down: 12, up: 3, size: 7 }
 const LOG = /_(?:log|stem)$/
