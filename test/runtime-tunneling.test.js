@@ -58,7 +58,8 @@ function fixture (t, { delayedStop = false, probeInput = false } = {}) {
       stats: () => ({ version: '1.26.60', initialized: true, loadedSections: 27 })
     },
     entities: { snapshot: () => [], nearby: () => [] },
-    getServerState: parsed.snapshot,
+    getServerState: () => { shared.serverStateReads = (shared.serverStateReads ?? 0) + 1; return parsed.snapshot() },
+    getServerFields: fields => parsed.snapshotFields(fields),
     getState: () => {
       const state = parsed.snapshot()
       state.rawServerPosition = structuredClone(state.position)
@@ -412,4 +413,21 @@ test('floor-view cache follows immutable receipt revisions and malformed or chan
   f.runtime.onSpawn()
   assert.equal(f.observed.tunneling.world.getBlock(1, 5, 0).protected, undefined, 'another known Realm does not inherit old floors')
   assert.deepEqual(f.host.shared.tunnelFloors.scopes[scope].floors, [point])
+})
+
+// Each physics read of the planning world asked for the whole server state (raw(): a structured clone) only to read
+// the floor journal's scope. Real Realm 2026-11-24 19:02:54 / 19:03:05 JST: the idle-escape candidate preview stalled
+// 637 / 635 ms, 74% under tunnelFloorKeys → raw → snapshot.
+test('planning-world block reads read the floor scope from three fields, not the whole server state', async t => {
+  const f = fixture(t)
+  f.parsed.state.realm = { id: '42', name: 'test' }; f.runtime.onSpawn()
+  const scope = JSON.stringify([f.parsed.state.profile, '42', 'overworld'])
+  f.host.shared.tunnelFloors = { version: 1, scopes: { [scope]: { floors: [{ x: 1, y: 5, z: 0 }] } } }
+  const view = f.observed.tunneling.world
+  assert.equal(view.getBlock(1, 5, 0).protected, true)
+  const before = f.host.shared.serverStateReads ?? 0
+  for (let n = 0; n < 500; n++) view.getBlock(n % 7, 5, 0)
+  assert.ok((f.host.shared.serverStateReads ?? 0) - before <= 2, 'no whole-state copy per block read: ' + ((f.host.shared.serverStateReads ?? 0) - before))
+  f.parsed.state.dimension = 'nether'
+  assert.throws(() => view.getBlock(1, 5, 0), /帰路の床/, 'a changed dimension is still read and fails closed')
 })

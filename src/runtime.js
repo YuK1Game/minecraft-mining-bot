@@ -660,7 +660,7 @@ function createRuntime (host) {
   function tunnelFloorKeys () {
     const journal = host.shared.tunnelFloors
     if (journal == null) { tunnelFloorViewCache = null; return noTunnelFloorKeys }
-    const state = raw()
+    const state = rawFields(['profile', 'realm', 'dimension'])
     if (typeof state.profile !== 'string' || !state.profile || state.realm?.id == null || !['overworld', 'nether', 'end'].includes(state.dimension)) throw Object.assign(new Error('帰路の床のワールド情報が未確定のため、計画を停止します。'), { code: 'TUNNEL_FLOOR_SCOPE_UNKNOWN' })
     if (journal.version !== 1 || !journal.scopes || typeof journal.scopes !== 'object' || Array.isArray(journal.scopes)) throw new Error('帰路の床の記録が不明なため、計画を停止します。')
     const scope = JSON.stringify([state.profile, String(state.realm.id), state.dimension])
