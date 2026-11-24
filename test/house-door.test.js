@@ -15,7 +15,8 @@ function scene ({ open = false, opens = true } = {}) {
   }
   let clock = 0
   const uses = [], walks = []
-  const run = feet => openDoor({ origin, getBlock, getFeet: () => feet, walk: async target => { walks.push(target); return true }, useDoor: async at => { uses.push(at); if (opens) state.open = !state.open }, now: () => clock, sleep: async ms => { clock += ms } })
+  // The walk moves the feet to its target, as the hands do (the door is clicked only from within reach).
+  const run = start => { let feet = start; return openDoor({ origin, getBlock, getFeet: () => feet, walk: async target => { walks.push(target); feet = target; return true }, useDoor: async at => { uses.push(at); if (opens) state.open = !state.open }, now: () => clock, sleep: async ms => { clock += ms } }) }
   return { door, state, getBlock, run, uses, walks }
 }
 
