@@ -7,6 +7,7 @@
 // stands on (docs/player-return.md). A file with a failure older than the
 // lane is named below with its reason and printed on every run, so it is
 // neither hidden nor counted as passing.
+const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
@@ -20,8 +21,14 @@ const required = ['player-return.test.js', 'player-return-live.test.js', 'player
 const missing = required.filter(name => !files.includes(path.join('test', name)))
 if (missing.length) { console.error(`test:player: required files are missing: ${missing.join(', ')}`); process.exit(1) }
 
-const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', '--test-concurrency=2', '--test-timeout=120000', ...files], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+const envConcurrency = Number(process.env.TEST_CONCURRENCY)
+const concurrency = Number.isInteger(envConcurrency) && envConcurrency >= 1
+  ? envConcurrency
+  : Math.max(2, Math.min(6, os.availableParallelism()))
+const startedAt = Date.now()
+const run = spawnSync(process.execPath, ['--test', '--test-reporter=tap', `--test-concurrency=${concurrency}`, '--test-timeout=120000', ...files], { cwd: root, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
 if (run.error) throw run.error
+const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1)
 const out = run.stdout ?? ''
 const count = name => { const found = new RegExp(`^# ${name} (\\d+)$`, 'm').exec(out); return found ? Number(found[1]) : null }
 const totals = Object.fromEntries(['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'].map(name => [name, count(name)]))
@@ -29,7 +36,7 @@ const totals = Object.fromEntries(['tests', 'pass', 'fail', 'cancelled', 'skippe
 const failed = out.split('\n# Subtest: ').slice(1).filter(block => /^not ok /m.test(block))
 for (const block of failed) console.log(`# Subtest: ${block.trimEnd()}`)
 if (run.stderr) process.stderr.write(run.stderr)
-console.log(`test:player: ${files.length} files, ${totals.tests} tests: pass ${totals.pass}, fail ${totals.fail}, cancelled ${totals.cancelled}, skipped ${totals.skipped}, todo ${totals.todo}`)
+console.log(`test:player: ${files.length} files, ${totals.tests} tests: pass ${totals.pass}, fail ${totals.fail}, cancelled ${totals.cancelled}, skipped ${totals.skipped}, todo ${totals.todo} (${elapsedSec}s, concurrency=${concurrency})`)
 for (const [name, why] of Object.entries(EXCLUDED)) console.log(`test:player: not in the lane: ${name} (${why})`)
 
 const problems = []

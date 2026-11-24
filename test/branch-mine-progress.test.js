@@ -16,9 +16,9 @@ test('a received 54-level shaft advances the real watcher beyond sixteen steps; 
   const w = createMineWorld(t)
   Object.assign(w.plan, createMineGeometry({ scope: w.plan.scope, anchor: { x: 0, z: 0 }, direction: 'east', surfaceY: 70, upperY: 16, lowerY: 10, width: 12, length: 12 }))
   for (const layer of ['upper', 'lower']) w.branch.progress[layer] = createMineState(w.plan, { layer })
-  let clock = 1000, holds = 0, decisions = 0
+  let clock = 1000, stalls = 0, decisions = 0
   const ledger = createGoalLedger({ shared: {}, now: () => clock, world: () => 'world' })
-  const watcher = createProgress({ ledger, now: () => clock, onReset: () => decisions++, onHold: () => holds++ })
+  const watcher = createProgress({ ledger, now: () => clock, onReset: () => decisions++, onStall: () => stalls++ })
   w.ctx.goal = { step: ledger.step, mark: ledger.mark }
   const look = () => watcher.note('early.diamond', { feet: w.feet(), health: 20, scope: 'life', ...measure({ key: 'early.diamond', items: w.items, record: w.ctx.memory }) }, { reason: '縦坑を施工しています。' })
   look()
@@ -34,16 +34,17 @@ test('a received 54-level shaft advances the real watcher beyond sixteen steps; 
   assert.equal(ledger.goal().steps.length, KEYS)
   assert.equal(ledger.goal().marks['mine:construction'], -54)
   assert.equal(decisions, 0)
-  assert.equal(holds, 0, 'continuing confirmed construction is not a stalled mineral goal')
+  assert.equal(stalls, 0, 'continuing confirmed construction is not a stalled mineral goal')
   assert.equal(ledger.goal().results, 0, 'building the shaft does not claim possession of diamonds')
 
-  // Re-reading the same completed shaft cannot keep a stuck goal alive forever.
-  for (let tick = 0; tick < 1300 && !holds; tick++) {
+  // Re-reading the same completed shaft still triggers stall resets and snapshot notification, without freezing in a time-based hold.
+  for (let tick = 0; tick < 1300 && !stalls; tick++) {
     if (tick % 35 === 0) assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).code, 'MINE_SHAFT_READY')
     clock += 2000; look()
   }
-  assert.equal(holds, 1)
-  assert.equal(ledger.goal().hold.code, 'NO_PROGRESS')
+  assert.equal(stalls, 1)
+  assert.equal(decisions, 3)
+  assert.equal(ledger.goal().hold, null)
 })
 
 test('confirmed preparation counts growing supplies without treating them as mined diamonds', t => {

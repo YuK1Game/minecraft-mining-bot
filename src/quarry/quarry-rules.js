@@ -142,10 +142,15 @@ function toolState (item, options) {
   const tool = toolOf(item)
   if (!tool) return null
   if (item.durabilityKnown !== true || !Number.isFinite(item.durabilityRemaining)) return { ...tool, item, usable: false, reason: 'DURABILITY_UNKNOWN' }
-  const reserve = reserveUses(tool.maxDurability, options)
-  // The next use may cost one unit; never plan below the reserve after it.
-  if (item.durabilityRemaining - 1 < reserve) return { ...tool, item, usable: false, reason: 'DURABILITY_RESERVE', remaining: item.durabilityRemaining, reserve }
-  return { ...tool, item, usable: true, remaining: item.durabilityRemaining, reserve, silk: enchantLevel(item, 'silk_touch') > 0, fortune: enchantLevel(item, 'fortune'), unbreaking: enchantLevel(item, 'unbreaking') }
+  const disposable = Number.isSafeInteger(options?.disposableMaxTier) && tool.tier <= options.disposableMaxTier
+  const reserve = disposable ? 0 : reserveUses(tool.maxDurability, options)
+  // Disposable tools (iron and below in player mode) are used until they break
+  // and disappear from inventory. In Bedrock, durabilityRemaining === 0 still
+  // has one final use left before breaking.
+  if (disposable ? item.durabilityRemaining < 0 : item.durabilityRemaining - 1 < reserve) {
+    return { ...tool, item, usable: false, reason: 'DURABILITY_RESERVE', remaining: item.durabilityRemaining, reserve }
+  }
+  return { ...tool, item, usable: true, disposable, remaining: item.durabilityRemaining, reserve, silk: enchantLevel(item, 'silk_touch') > 0, fortune: enchantLevel(item, 'fortune'), unbreaking: enchantLevel(item, 'unbreaking') }
 }
 
 // Chooses an owned tool for one block (§7.1): harvest condition, drop policy,
@@ -170,7 +175,8 @@ function selectTool (rule, items, { orePolicy = 'maximize_yield', buildingBlockP
     else if (rule.silkKeeps && buildingBlockPolicy === 'preserve_blocks' && t.silk) s += 100
     // Lowest sufficient tier first preserves better tools; ores take the best.
     s += rule.ore ? t.tier * 10 : -t.tier * 10
-    return s + Math.min(t.remaining, 2000) / 10000
+    // Finish worn disposable tools first so they break and free inventory slots.
+    return s + (t.disposable ? -Math.min(t.remaining, 2000) : Math.min(t.remaining, 2000)) / 10000
   }
   preferred.sort((a, b) => score(b) - score(a) || a.item.slot - b.item.slot)
   if (preferred.length) {

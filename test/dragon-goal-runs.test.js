@@ -84,15 +84,14 @@ test('B5 B6: the same failure is tried three times however often the goal is dec
   assert.equal(tries, 6)
 })
 
-test('B6: a hold is looked at again when the goal has more than it had, and a result above all it ever had gives the decisions back', async t => {
+test('B6: a stalled goal clears its stall and gives decisions back as soon as it has more than it ever had', async t => {
   const w = await createWorld(t)
   await w.pass(41 * MIN)
-  assert.equal(w.said(HOLD).length, 1)
-  assert.equal(w.goal().decisions, 3)
-  // Something the goal is made of arrives while it is held (a drop picked up on the way to the bed).
+  assert.equal(w.said(HOLD).length, 0)
+  assert.equal(w.goal().decisions, 4)
+  // Something the goal is made of arrives while it is stalled.
   w.have('raw_iron', 2)
   await w.pass(30000)
-  assert.match(w.said(RELEASE)[0], /GAINED/)
   assert.match(w.said(MOVING)[0], /4[01] 分止まっていました/)
   assert.equal(w.goal().hold, null)
   assert.equal(w.goal().decisions, 0)
@@ -138,11 +137,11 @@ test('B8: a restart reads the goal back from the saved record: its id, its start
   assert.equal(w.goal().startedAt, started)
   assert.equal(w.goal().decisions, 1)
   assert.ok(w.goal().stalledMs >= 12 * MIN && w.goal().stalledMs < 13 * MIN + 30000, 'the time nobody looked is not counted: ' + w.goal().stalledMs)
-  assert.match(w.said(WARN)[0], /が 12 分進んでいません.*決め直し 1\/3/)
+  assert.match(w.said(WARN)[0], /が 12 分進んでいません.*決め直し 1 回/)
   assert.deepEqual(w.said(DECIDE), [], 'the decision made before the restart is not made again')
   await w.pass(8 * MIN)
   assert.equal(w.said(DECIDE).length, 1)
-  assert.match(w.said(DECIDE)[0], /決め直し 2\/3/)
+  assert.match(w.said(DECIDE)[0], /決め直し 2 回目/)
 })
 
 test('B8: a death measures the goal again from what is received; its start and its decisions stay, and what the next life gathers again gives none back', async t => {

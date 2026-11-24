@@ -248,8 +248,10 @@ test('what counts toward the home kit: its items and their parts; making is a ga
   assert.ok(of([item('cooked_beef', 1)]) < cooked)
   // Capped at what the kit can use.
   assert.equal(of([item('cooked_beef', 64)]), of([item('cooked_beef', 16)]))
-  // A tool at its last use is not counted (dragon-supply-kit.js matches).
-  assert.equal(of([item('iron_pickaxe', 1, { durabilityRemaining: 1 })]), 0)
+  // Iron-or-below tools are disposable down to Bedrock's last use (0); diamond keeps its reserve.
+  assert.ok(of([item('iron_pickaxe', 1, { durabilityRemaining: 1 })]) > 0)
+  assert.ok(of([item('iron_pickaxe', 1, { durabilityRemaining: 0 })]) > 0)
+  assert.equal(of([item('diamond_pickaxe', 1, { durabilityRemaining: 1 })]), 0)
   // The record's confirmed steps count, its counters and choices do not.
   const record = { stage: 'early', early: { gather: { name: 'food', count: 8 }, foodSearch: 4, supplySearch: { log: 3 } } }
   assert.equal(of([], { record }), 0)

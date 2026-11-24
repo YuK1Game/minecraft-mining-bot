@@ -238,7 +238,13 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // For a block (`cell`): the working pickaxe of the lowest tier that mines it (dig-tool.js), so rock and dirt are
   // not dug with the iron pickaxe while a stone one is carried. With no cell, or a block with no dig rule: the
   // pickaxe with the most uses left, as before.
-  const picks = () => (getInventory()?.items ?? []).filter(item => /_pickaxe$/.test(item?.name ?? '') && item.count > 0 && item.durabilityKnown === true && item.durabilityRemaining > 2).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)
+  const { toolOf } = require('../quarry/quarry-rules')
+  const usablePick = item => {
+    if (!/_pickaxe$/.test(item?.name ?? '') || !(item.count > 0) || item.durabilityKnown !== true || !Number.isFinite(item.durabilityRemaining)) return false
+    const tool = toolOf(item)
+    return tool && tool.tier <= 3 ? item.durabilityRemaining >= 0 : item.durabilityRemaining > 2
+  }
+  const picks = () => (getInventory()?.items ?? []).filter(usablePick).sort((a, b) => b.durabilityRemaining - a.durabilityRemaining)
   const chosen = cell => {
     const name = cell ? block(cell.x, cell.y, cell.z)?.name : null
     return name && digTool(getInventory()?.items ?? [], name, getHeld()) || picks()[0] || null

@@ -5,9 +5,19 @@ const assert = require('node:assert/strict')
 const { createMineTools } = require('../src/modes/mining/mine-tools')
 const { hasWorkingPick } = require('../src/modes/dragon-supply-kit')
 
-test('mine admission agrees with the actual hand at the two-use and unknown-durability boundaries', async () => {
-  for (const remaining of [2, null]) {
-    const items = [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: remaining != null, durabilityRemaining: remaining }], calls = []
+test('mine admission uses iron-or-below tools down to Bedrock last use (0), and guards unknown durability or reserved diamond', async () => {
+  for (const remaining of [1, 0]) {
+    const usable = [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: true, durabilityRemaining: remaining }]
+    assert.equal(hasWorkingPick(usable, 'iron'), true)
+    const readyTools = createMineTools(
+      { cancelled: () => false, runtime: { raw: () => null }, supplies: { acquire: async () => assert.fail('disposable iron pick is usable until broken') } },
+      { inventory: () => ({ known: true, items: usable }), done: (code, evidence) => ({ code, evidence, status: 'completed', serverConfirmed: true }) }
+    )
+    assert.equal((await readyTools({ request: { resource: 'diamond' } })).serverConfirmed, true)
+  }
+
+  {
+    const items = [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: false, durabilityRemaining: null }], calls = []
     assert.equal(hasWorkingPick(items, 'iron'), true)
     const ctx = { cancelled: () => false, runtime: { raw: () => null }, supplies: { acquire: async (...args) => calls.push(args) } }
     const tools = createMineTools(ctx, { inventory: () => ({ known: true, items }) })
@@ -27,7 +37,7 @@ test('received usable higher-tier tools satisfy a lower-tier mine without making
 
 test('the early mine uses carried goal diamonds for its next pick rather than replacing iron first', async () => {
   const amount = { name: 'minecraft:diamond', slot: 1, count: 4 }
-  const items = [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: true, durabilityRemaining: 2 }, amount]
+  const items = [{ name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: false, durabilityRemaining: null }, amount]
   const calls = []
   const ctx = { cancelled: () => false, memory: { stage: 'early', early: { reserveReady: true } },
     runtime: { raw: () => null }, supplies: { acquire: async (...args) => calls.push(args) } }
@@ -42,7 +52,7 @@ test('the early mine uses carried goal diamonds for its next pick rather than re
 test('a remaining deep diamond block chooses a usable pick despite an older iron request', async () => {
   const diamonds = { name: 'minecraft:diamond', slot: 2, count: 4 }
   const items = [
-    { name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: true, durabilityRemaining: 2 },
+    { name: 'minecraft:iron_pickaxe', slot: 0, count: 1, durabilityKnown: false, durabilityRemaining: null },
     { name: 'minecraft:stone_pickaxe', slot: 1, count: 1, durabilityKnown: true, durabilityRemaining: 110 },
     diamonds
   ]

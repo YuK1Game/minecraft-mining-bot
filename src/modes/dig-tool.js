@@ -16,7 +16,11 @@
 const { blockRule, selectTool, toolState } = require('../quarry/quarry-rules')
 
 const ROCK = Object.freeze({ kind: 'dig', tool: 'pickaxe', needs: 'pickaxe', tier: 1, drops: [], maxDrop: 1 })
-const KEEP = { reserveMinUses: 2 }
+// User policy (2026-11-24): iron-or-below tools (wooden/golden/stone/copper/iron,
+// tier <= 3) are disposable and used until they break at 0 durability so worn
+// tools do not clog inventory. Diamond/netherite (tier >= 4) keep 2 uses.
+const DISPOSABLE_MAX_TIER = 3
+const KEEP = { reserveMinUses: 2, disposableMaxTier: DISPOSABLE_MAX_TIER }
 
 // items: inventory rows with the received durability. name: the block's name, or nothing for plain rock.
 // hand: the row in the hand, when known. A working pickaxe of the chosen tier that is already there stays: of two
@@ -59,4 +63,4 @@ function isSpentPickaxe (item) {
   return tool?.kind === 'pickaxe' && tool.reason === 'DURABILITY_RESERVE'
 }
 
-module.exports = { digTool, toolNeeded, diggerWanted, isSpentPickaxe }
+module.exports = { digTool, toolNeeded, diggerWanted, isSpentPickaxe, DISPOSABLE_MAX_TIER }

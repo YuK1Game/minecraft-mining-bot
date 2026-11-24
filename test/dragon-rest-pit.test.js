@@ -288,15 +288,20 @@ test('as at 17:52:56 JST: on stone with the sword in the hand: the working stone
   await w.look()
   assert.deepEqual(w.said(/回復の穴を作れませんでした/), [])
   assert.deepEqual(g.equips[0], 'stone_pickaxe')
-  assert.equal(g.bag.find(item => item.name === full('stone_pickaxe') && item.durabilityRemaining === 24).slot <= 8, true, 'the pickaxe with 24 uses, not one with 2')
+  assert.equal(g.bag.some(item => item.name === full('stone_pickaxe') && item.durabilityRemaining >= 1 && item.slot <= 8), true, 'a working stone pickaxe is equipped into hotbar')
   assert.equal(g.equips.filter(name => name === 'stone_pickaxe').length, 1, 'held once for the three cells')
   assert.deepEqual(g.mined, [61, 60, 59].map(y => ({ x: 9904, y, z: 10142 })))
   assert.deepEqual(g.placed, [{ x: 9904, y: 61, z: 10142 }], 'the lid')
   assert.equal(resting(w.shared), true)
 })
 
-test('only worn pickaxes: the pit is not begun (no half-dug hole), and the line says why', async t => {
-  const g = ground({ ...ROCK, bag: WORN().filter(item => item.durabilityRemaining !== 24) }), w = await expedition(t, g)
+test('only reserved diamond pickaxe: the pit is not begun (no half-dug hole), and the line says why', async t => {
+  const reserved = [
+    { slot: 0, name: full('stone_sword'), count: 1, durabilityKnown: true, durabilityRemaining: 122 },
+    { slot: 9, name: full('diamond_pickaxe'), count: 1, durabilityKnown: true, durabilityRemaining: 2 },
+    { slot: 1, name: full('cobblestone'), count: 49 }
+  ]
+  const g = ground({ ...ROCK, bag: reserved }), w = await expedition(t, g)
   await w.look()
   assert.deepEqual(g.mined, [])
   assert.deepEqual(g.equips, [])

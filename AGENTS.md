@@ -34,7 +34,7 @@
 - **共有状態スコープとスケジューラ**: ライフサイクル別の共有状態（`src/common/shared-scopes.js`：`persistent`/`session`/`life`/`mode`）と共通タイマー管理（`src/common/runtime-scheduler.js`）。
 - **戦闘モード**: 接続中は既定で有効（50ms周期、`src/combat/combat-coordinator.js`）。接敵時は戦闘を最優先（例外: 自分のシュルカーを壊してから回収確定までのみ保留）。攻撃が届く敵（経路・3本射線）のみ迎撃。不死のトーテム保持中は体力で止めない。満腹度18未満で食事。速く積極的に戦う方針を維持。
 - **露天掘りモード**: 掘り抜き優先（`pickupMode:"passive", depositWhen:"full"`）。木・葉は採取しない（長距離移動準備の `woodHarvestAllowance` のみ例外）。道具耐久は既定で残り1を予備として保持。洞窟があっても止めない。終了時は初期セットチェストへ全返却＋隣接土柱で地上復帰。
-- **プレイヤーモード**: 目的と操作の分離（[docs/player-return.md](docs/player-return.md)）、進捗台帳（`src/modes/goal/goal-ledger.js`）、判断ログ（`src/modes/decision-journal.js`）、停滞・保留時の診断スナップショット自動保存（`src/modes/incident-snapshot.js` → `.local/incidents/`）、作業調停（`src/modes/work-dispatcher.js`）。拠点周辺の湧き潰し（`player-base-lighting.js`）・松明16本在庫目標（`player-torch-supply.js`）・仮設チェスト記憶と集約（`player-field-chests.js`）を備える。
+- **プレイヤーモード**: 目的と操作の分離（[docs/player-return.md](docs/player-return.md)）、進捗台帳（`src/modes/goal/goal-ledger.js`）、判断ログ（`src/modes/decision-journal.js`）、停滞時の診断スナップショット自動保存（`src/modes/incident-snapshot.js` → `.local/incidents/`）、作業調停（`src/modes/work-dispatcher.js`）。時間で状況が変わらないため時間待ちの保留（`NO_PROGRESS` hold）には入らず、一定時間進捗がなければ記憶していた選択・失敗履歴を捨てて決め直しを継続する。鉄以下のツール（木・金・石・銅・鉄）は使い捨てとし耐久0まで使い切る（ダイヤ・ネザライトは耐久予備を保持）。拠点周辺の湧き潰し（`player-base-lighting.js`）・松明16本在庫目標（`player-torch-supply.js`）・仮設チェスト記憶と集約（`player-field-chests.js`）を備える。
 - **ローカル API / 統合ダッシュボード**: `:3000`（`src/host/api.js`）と `:3001`（`scripts/dashboard.js`、`dashboard/`）。Host/Origin/一時トークン検査と固定コマンド許可リストを維持。
 
 ## ディレクトリ構成
@@ -78,6 +78,7 @@ docs/           仕様・計画・運用ルール記録（docs/README.md に一�
 | `npm run auto` / `auto:once` | プレイヤーモードで遠征を開始・再開（`auto` は異常終了時自動再接続） |
 | `npm run dashboard` | 統合ダッシュボード起動（`http://127.0.0.1:3001`） |
 | `npm run check` | 全JS・ダッシュボードHTMLの構文確認（約1秒）と `scripts/size-budget.json` の増加警告 |
+| `npm run test:fast` | 開発中の高速ユニット確認（重いワールド模擬を除いた厳格テスト抜粋・高並列） |
 | `npm run test:review` | 安全回帰・互換テスト厳格レーン（失敗1件でも不合格） |
 | `npm run test:player` | プレイヤーモード厳格レーン（全件実行・合格必須） |
 | `npm run test:audit` | テストレーン分類・`.local/*.cjs` 依存・旧サバイバル参照の棚卸し |

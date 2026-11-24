@@ -16,8 +16,14 @@ const end = [...active, ['food', 32], ['arrow', 128], ['cobblestone', 128]]
 const nether = [['golden_boots', 1], ['shield', 1], ['flint_and_steel', 1], ['bow', 1], ['arrow', 32], ['food', 32], ['cobblestone', 128]]
 const bare = name => String(name).replace(/^minecraft:/, '')
 const full = name => 'minecraft:' + bare(name)
+function toolUsable (item) {
+  if (item?.durabilityRemaining == null) return true
+  const tool = toolOf(item)
+  if (tool && tool.tier <= 3) return item.durabilityRemaining >= 0
+  return item.durabilityRemaining > 1
+}
 function matches (name, item) {
-  if (!item?.name || !item.count || item.durabilityRemaining != null && item.durabilityRemaining <= 1) return false
+  if (!item?.name || !item.count || !toolUsable(item)) return false
   if (name === 'food') return FOOD.test(item.name)
   if (name === 'bed') return /^(?:minecraft:)(?:bed|[a-z_]+_bed)$/.test(item.name)
   if (name === 'planks') return /_planks$/.test(item.name)
@@ -36,7 +42,7 @@ function homeCarryNeed (name, amount, main, worn) {
 }
 
 function workingPickTier (item) {
-  if (!item?.count || item.durabilityRemaining != null && item.durabilityRemaining <= 1) return 0
+  if (!item?.count || !toolUsable(item)) return 0
   const tool = toolOf(item)
   return tool?.kind === 'pickaxe' ? tool.tier : 0
 }

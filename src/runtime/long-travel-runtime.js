@@ -219,7 +219,7 @@ function createLongTravelRuntime (rt) {
     // The boat was lost (coordinator 2026-11-14): within the preparation
     // allowance, with trees near, gather a few logs and craft a boat again.
     try { await travelRespawnBed(signal) } catch (error) { rt.host.log(`長距離移動: ベッドでのリスポーン地点の設定に失敗しました: ${String(error.message ?? error).slice(0, 100)}`) }
-    try { await travelMakeBoat(signal) } catch (error) { rt.host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
+    try { await travelMakeBoat(signal) } catch (error) { if (!signal?.aborted && error?.code !== 'PLAYER_TRAVEL_CRAFT_INTERRUPTED') rt.host.log(`長距離移動: ボートを作れませんでした: ${String(error.message ?? error).slice(0, 100)}`) }
     return { hold: false }
   }
   // Retreat from shooters during long travel: a shooter within 20 m and a hit

@@ -30,7 +30,7 @@ const minutes = ms => Math.round(ms / 60000)
 const cell = (feet, size) => feet && Number.isFinite(feet.x) ? [feet.x, feet.y, feet.z].map(v => Math.floor(v / size)).join(',') : null
 const activity = ({ feet, health }) => [cell(feet, 8) ?? '?', Number.isFinite(health) ? Math.floor(health) : '?'].join(';')
 
-function createProgress ({ shared = {}, ledger, now = Date.now, log = () => {}, onReset = () => {}, onHold = () => {}, stallMs = STALL_MS, resetMs = RESET_MS } = {}) {
+function createProgress ({ shared = {}, ledger, now = Date.now, log = () => {}, onReset = () => {}, onStall = () => {}, stallMs = STALL_MS, resetMs = RESET_MS } = {}) {
   // key: the goal (dragon-goal-measure.js goalKey). seen: { feet, health, value, extras, scope }.
   // run: { n, wait: { code } | null, reason }.
   function note (key, seen = {}, run = {}) {
@@ -40,22 +40,25 @@ function createProgress ({ shared = {}, ledger, now = Date.now, log = () => {}, 
       if (previous) log(`遠征: 目的 ${previous.id} から ${g.id} に移ります（${minutes(at - previous.startedAt)} 分、成果 ${previous.results} 回）。`)
       delete shared.dragonStall
     }
+    // Clear any legacy time-based hold carried over from an older checkpoint or reload.
+    // Waiting for a timer does not solve terrain/supply obstacles in Minecraft.
+    if (g.hold) {
+      ledger.clearHold?.()
+      g.hold = null
+      log(`遠征: 目的 ${g.id} の旧保留を解除して、受信した状態から再開します。`)
+    }
     const moved = activity(seen)
     if (g.activity !== moved) { g.activity = moved; g.activityAt = at }
-    const here = cell(seen.feet, 16)
     const waits = run.wait?.code ?? null
-    const hold = ledger.held({ cell: here, value: seen.value, scope: seen.scope ?? null, wait: waits })
-    if (hold.released) log(`遠征: 目的 ${g.id} の保留を解いて、受信した状態から見直します（${hold.released}）。`)
-    const looked = ledger.look({ value: seen.value, extras: seen.extras, scope: seen.scope ?? null, wait: run.wait ?? null, counting: !hold.held })
+    const looked = ledger.look({ value: seen.value, extras: seen.extras, scope: seen.scope ?? null, wait: run.wait ?? null, counting: true })
     if (looked.progressed) {
       if (shared.dragonStall) log(`遠征: 目的 ${g.id} が進み始めました（${minutes(at - shared.dragonStall.since)} 分止まっていました）。`)
       delete shared.dragonStall
       return { stalledMs: 0, held: false }
     }
-    if (hold.held) return { stalledMs: g.stalledMs, held: true, hold: hold.hold }
     const idle = g.stalledMs
     if (idle < stallMs) return { stalledMs: idle, held: false }
-    const budget = `決め直し ${g.decisions}/${ledger.limit}`
+    const budget = `決め直し ${g.decisions} 回`
     const text = String(run.reason ?? '').replace(/。$/, '') + (run.wait?.code ? `・待ち ${run.wait.code} は期限切れ` : '')
     shared.dragonStall = { since: at - idle, reason: run.reason ?? '', goal: g.id }
     if (at - g.saidAt >= stallMs) {
@@ -63,17 +66,16 @@ function createProgress ({ shared = {}, ledger, now = Date.now, log = () => {}, 
       log(`遠征: 目的 ${g.id} が ${minutes(idle)} 分進んでいません（${text}。実行 #${run.n ?? g.runs}、最後の成果 ${g.resultAt ? minutes(at - g.resultAt) + ' 分前' : 'なし'}、最後の動き ${minutes(at - (g.activityAt ?? at))} 分前、${budget}）。`)
     }
     if (!ledger.due(resetMs)) return { stalledMs: idle, held: false }
-    if (g.decisions < ledger.limit) {
-      const { used } = ledger.decide()
-      // A wait that outlasted its limit is looked at again; what the step remembers is dropped only for work that stood.
-      const dropped = onReset({ waiting: waits })
-      log(`遠征: 目的 ${g.id} の覚えていた選択を捨てて、受信した状態から決め直します（${dropped ? dropped + '・' : ''}決め直し ${used}/${ledger.limit}）。`)
-      return { stalledMs: idle, held: false, decided: used }
+    const { used } = ledger.decide()
+    // Periodically clear exhausted failure memory so newly fixed code or changed
+    // surroundings can retry without getting stuck in a time-based hold.
+    if (used % ledger.limit === 0) {
+      ledger.clearFailures?.()
+      onStall({ code: waits ? 'WAIT_EXPIRED' : 'NO_PROGRESS', decisions: used, idleMs: idle })
     }
-    const held = ledger.hold(waits ? 'WAIT_EXPIRED' : 'NO_PROGRESS', { cell: here, value: Number.isFinite(seen.value) ? seen.value : null, wait: waits })
-    onHold(held)
-    log(`遠征: 目的 ${g.id} は決め直しを ${ledger.limit} 回しても進まないため、保留します（${held.code}。見直し: ${minutes(held.until - at)} 分後、または${waits ? '待ち ' + waits + ' が終わった時・' : ''}場所・持ち物・接続が変わった時）。`)
-    return { stalledMs: idle, held: true, hold: held }
+    const dropped = onReset({ waiting: waits })
+    log(`遠征: 目的 ${g.id} の覚えていた選択を捨てて、受信した状態から決め直します（${dropped ? dropped + '・' : ''}決め直し ${used} 回目）。`)
+    return { stalledMs: idle, held: false, decided: used }
   }
   return { note }
 }

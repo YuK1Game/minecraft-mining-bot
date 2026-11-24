@@ -146,12 +146,12 @@ test('35 occupied slots with no mining cargo gain six free slots through actual 
   assert.equal(await minePackRoom(w.ctx),null)
 })
 
-test('capacity relief banks only confirmed spent picks until the working inventory has room', async t => {
+test('capacity relief banks only confirmed spent diamond picks until the working inventory has room', async t => {
   const w = createMineWorld(t)
   await upper(w)
   const spentSlots = new Set([0, 5, 12, 18, 27, 33])
   w.items.splice(0, w.items.length, ...Array.from({ length: 35 }, (_, slot) => ({
-    slot, name: 'minecraft:iron_pickaxe', count: 1,
+    slot, name: 'minecraft:diamond_pickaxe', count: 1,
     durabilityKnown: slot !== 3, durabilityRemaining: spentSlots.has(slot) || slot === 3 ? 2 : 100
   })))
   assert.deepEqual(cargo(w.inv), [])
@@ -161,7 +161,7 @@ test('capacity relief banks only confirmed spent picks until the working invento
   assert.equal(w.items.find(item => item.slot === 3)?.count, 1)
   assert.equal(w.items.filter(item => item.count === 1 && item.durabilityRemaining === 100).length, 28)
   assert.equal(w.items.filter(item => item.count === 1 && spentSlots.has(item.slot)).length, 1)
-  assert.equal(w.boxes.get('upper:supply').filter(item => item.name === 'minecraft:iron_pickaxe').reduce((sum, item) => sum + item.count, 0), 5)
+  assert.equal(w.boxes.get('upper:supply').filter(item => item.name === 'minecraft:diamond_pickaxe').reduce((sum, item) => sum + item.count, 0), 5)
   assert.equal(await minePackRoom(w.ctx), null)
 })
 

@@ -35,7 +35,8 @@ test('the pickaxe for a block is the working one of the lowest tier that mines i
   assert.equal(of('minecraft:dirt'), 'wooden_pickaxe', 'a block no tool is needed for keeps the cheap pickaxe in the hand')
   assert.equal(of('minecraft:coal_ore'), 'wooden_pickaxe')
   assert.equal(of('minecraft:iron_ore'), 'stone_pickaxe')
-  assert.equal(digTool(items, 'minecraft:iron_ore').slot, 1, 'not the stone pickaxe with two uses left')
+  assert.equal(digTool(items, 'minecraft:iron_ore').slot, 3, 'iron-or-below tools are disposable: finish the 2-use stone pickaxe first to free inventory slots')
+  assert.equal(digTool([pick(0, 'diamond', 2), pick(1, 'diamond', 50)], 'minecraft:obsidian').slot, 1, 'diamond pickaxes keep their 2-use durability reserve')
   assert.equal(of('minecraft:diamond_ore'), 'iron_pickaxe')
   assert.equal(of('minecraft:obsidian'), null, 'nothing here mines obsidian')
   assert.equal(of('minecraft:mob_spawner'), null, 'a block with no dig rule has no answer: the caller keeps its old choice')
@@ -45,12 +46,12 @@ test('the pickaxe for a block is the working one of the lowest tier that mines i
 })
 
 test('of two pickaxes alike the one in the hand stays there', () => {
-  const items = [pick(0, 'iron', 100), pick(1, 'iron', 240), pick(2, 'stone', 2)]
-  assert.equal(digTool(items, 'minecraft:stone').slot, 1, 'with no hand known: the one with more uses left')
-  assert.equal(digTool(items, 'minecraft:stone', items[0]).slot, 0, 'the one in the hand is kept')
-  assert.equal(digTool(items, 'minecraft:stone', items[2]).slot, 1, 'a worn one in the hand is not')
+  const items = [pick(0, 'iron', 100), pick(1, 'iron', 240), pick(2, 'diamond', 2)]
+  assert.equal(digTool(items, 'minecraft:stone').slot, 0, 'for disposable iron picks, the lower-durability one is finished first')
+  assert.equal(digTool(items, 'minecraft:stone', items[1]).slot, 1, 'the one in the hand is kept')
+  assert.equal(digTool([pick(0, 'diamond', 100), pick(1, 'diamond', 240), pick(2, 'diamond', 2)], 'minecraft:obsidian', pick(2, 'diamond', 2)).slot, 1, 'a worn diamond pick in the hand is not kept')
   assert.equal(digTool([pick(0, 'iron', 100), pick(1, 'stone', 60)], 'minecraft:stone', pick(0, 'iron', 100)).slot, 1, 'a better one in the hand gives way to the cheaper')
-  assert.equal(digTool(items, 'minecraft:stone', sword(5)).slot, 1)
+  assert.equal(digTool(items, 'minecraft:stone', sword(5)).slot, 0)
 })
 
 // A patch of ground: grass on dirt on stone, the Bot standing on it; beside the feet a dirt block and a stone block
@@ -100,11 +101,13 @@ test('a stone pickaxe is wanted for digging when rock would be dug with a better
   const parts = [{ slot: 5, name: full('cobblestone'), count: 64 }, { slot: 6, name: full('stick'), count: 3 }]
   const want = rows => diggerWanted(rows, held(rows))
   assert.equal(want([pick(0, 'iron', 53), ...parts]), 'make')
-  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 2), ...parts]), 'make', 'a stone pickaxe with two uses left is not a digging pickaxe')
+  assert.equal(want([pick(0, 'iron', 53), { slot: 1, name: full('stone_pickaxe'), count: 1, durabilityKnown: false, durabilityRemaining: null }, ...parts]), 'make', 'a stone pickaxe with unknown durability is not a digging pickaxe')
+  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 0), ...parts]), false, 'a disposable stone pickaxe at Bedrock last use (0) is still finished before crafting another')
+  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 2), ...parts]), false, 'a disposable stone pickaxe with 2 uses left is still used before crafting another')
   assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 60), ...parts]), false)
   assert.equal(want([pick(0, 'stone', 60), ...parts]), false)
   assert.equal(want([pick(0, 'iron', 53), parts[0]]), 'wood', 'no sticks, planks or log: the wood is what is missing')
-  assert.equal(want([pick(0, 'iron', 53), pick(1, 'stone', 2), parts[0]]), 'wood')
+  assert.equal(want([pick(0, 'iron', 53), { slot: 1, name: full('stone_pickaxe'), count: 1, durabilityKnown: false, durabilityRemaining: null }, parts[0]]), 'wood')
   assert.equal(want([pick(0, 'iron', 53), parts[0], { slot: 6, name: full('oak_planks'), count: 2 }]), 'make')
   assert.equal(want([pick(0, 'iron', 53), parts[0], { slot: 6, name: full('oak_log'), count: 1 }]), 'make')
   assert.equal(want([pick(0, 'iron', 53), { slot: 5, name: full('cobblestone'), count: 2 }, parts[1]]), false)
@@ -202,7 +205,7 @@ test('a stone pickaxe that cannot be made is left after three tries, and the dig
 const forest = require('./fixtures/tree-top-stuck.json')
 const within = (x, z) => x >= forest.x0 && x <= forest.x0 + 14 && z >= forest.z0 && z <= forest.z0 + 14
 function surface ({ underground = false } = {}) {
-  const bag = [pick(0, 'iron', 177), pick(1, 'stone', 2), { slot: 2, name: full('crafting_table'), count: 1 }, { slot: 3, name: full('raw_iron'), count: 3 }, { slot: 4, name: full('iron_ingot'), count: 1 },
+  const bag = [pick(0, 'iron', 177), { slot: 2, name: full('crafting_table'), count: 1 }, { slot: 3, name: full('raw_iron'), count: 3 }, { slot: 4, name: full('iron_ingot'), count: 1 },
     ...[64, 64, 43, 64, 64].map((n, i) => ({ slot: 5 + i, name: full('cobblestone'), count: n }))]
   // underground: the same ground with rock over everything from y 68 up (the trees are cut off at the trunk).
   const scene = underground ? { ...forest, rows: Object.fromEntries(Object.entries(forest.rows).filter(([y]) => Number(y) <= 67).map(([y, rows]) => [y, rows.map(row => row.replace(/[OB]/g, 'S'))])) } : forest

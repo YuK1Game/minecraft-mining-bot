@@ -27,7 +27,13 @@ function conditions (ports, points, kind, reason) {
   const inventory = current.inventory
   // The scaffold chooses a pickaxe with more than two uses. Slot moves,
   // stack IDs and 100 -> 99 uses do not change whether that tool is usable.
-  const tools = [...new Set((inventory?.items ?? []).filter(item => item?.count > 0 && /_(?:pickaxe|shovel|axe|hoe)$/.test(item.name ?? '')).map(item => JSON.stringify([item.name, item.durabilityKnown === true, Number.isFinite(item.durabilityRemaining) && item.durabilityRemaining > 2])))].sort()
+  const { toolOf } = require('../quarry/quarry-rules')
+  const toolReady = item => {
+    if (!Number.isFinite(item.durabilityRemaining)) return false
+    const tool = toolOf(item)
+    return tool && tool.tier <= 3 ? item.durabilityRemaining >= 0 : item.durabilityRemaining > 2
+  }
+  const tools = [...new Set((inventory?.items ?? []).filter(item => item?.count > 0 && /_(?:pickaxe|shovel|axe|hoe)$/.test(item.name ?? '')).map(item => JSON.stringify([item.name, item.durabilityKnown === true, toolReady(item)])))].sort()
   const cells = new Map()
   for (const p of points) for (const [dx, dy, dz] of NEAR) {
     const x = p.x + dx, y = p.y + dy, z = p.z + dz, key = `${x},${y},${z}`

@@ -10,7 +10,7 @@ const MIN = 60000
 const WARN = /分進んでいません/, DECIDE = /決め直します/, HOLD = /保留します/, RELEASE = /保留を解いて/
 const minutes = line => Number(/が (\d+) 分進んでいません/.exec(line)?.[1])
 
-test('B1: health that goes down and up, and a walk between two places, are not progress: warned at 5 minutes, decided again 3 times, then held', async t => {
+test('B1: health that goes down and up, and a walk between two places, are not progress: warned at 5 minutes and decided again every 10 minutes without time-based hold freezes', async t => {
   let flips = 0
   const w = await createWorld(t, { step: async (ctx, w) => {
     // Every four minutes of work the Bot is hit or healed, and stands in the other of two places.
@@ -24,34 +24,22 @@ test('B1: health that goes down and up, and a walk between two places, are not p
   await w.pass(20000)
   assert.equal(w.said(WARN).length, 1)
   assert.equal(minutes(w.said(WARN)[0]), 5)
-  assert.match(w.said(WARN)[0], /目的 early\.home_reserve#1 .*iron_helmet を準備しています.*最後の成果 なし、最後の動き \d 分前、決め直し 0\/3/)
+  assert.match(w.said(WARN)[0], /目的 early\.home_reserve#1 .*iron_helmet を準備しています.*最後の成果 なし、最後の動き \d 分前、決め直し 0 回/)
   assert.equal(w.shared.dragonStall.goal, 'early.home_reserve#1')
   await w.pass(35 * MIN)
-  assert.equal(w.said(DECIDE).length, 3, 'one decision per ten minutes without progress')
-  assert.deepEqual(w.said(DECIDE).map(line => /決め直し (\d)\/3/.exec(line)[1]), ['1', '2', '3'])
-  assert.equal(w.said(HOLD).length, 1)
-  assert.match(w.said(HOLD)[0], /NO_PROGRESS。見直し: 10 分後/)
-  assert.equal(w.goal().hold.code, 'NO_PROGRESS')
-  // Held: the step is not run, and nothing more is decided or said until the hold is looked at again.
-  const calls = w.calls, lines = w.lines.length
+  assert.equal(w.said(DECIDE).length, 4, 'one decision per ten minutes without progress, never freezing in a hold')
+  assert.deepEqual(w.said(DECIDE).map(line => /決め直し (\d+) 回目/.exec(line)[1]), ['1', '2', '3', '4'])
+  assert.equal(w.said(HOLD).length, 0)
+  assert.equal(w.goal().hold, null)
+  // No time-based hold: the step keeps running so hot-reloaded fixes or terrain changes act immediately.
+  const calls = w.calls
   await w.pass(8 * MIN)
-  assert.equal(w.calls, calls)
-  assert.equal(w.lines.filter(line => /^遠征:/.test(line)).length, w.lines.slice(0, lines).filter(line => /^遠征:/.test(line)).length)
-  assert.match(w.rt.status().reason, /進まない目的を保留しています/)
-  // Its time is up: one decision is given back, and the next hold is longer. Never for good, never without a bound.
-  await w.pass(2 * MIN + 20000)
-  assert.equal(w.said(RELEASE).length, 1)
-  assert.match(w.said(RELEASE)[0], /TIME/)
-  assert.ok(w.calls > calls, 'the step runs again')
-  await w.pass(128 * MIN)
+  assert.ok(w.calls > calls, 'the step keeps running without a time-based hold freeze')
   assert.equal(w.goal().startedAt, started, 'the same goal all along')
   assert.equal(w.goal().id, 'early.home_reserve#1')
-  assert.equal(w.said(DECIDE).length, 6, 'three hours: 3 decisions, then one for each hold that was looked at again (10, 20, 40 minutes)')
-  assert.equal(w.said(HOLD).length, 4)
-  assert.match(w.said(HOLD).at(-1), /見直し: 60 分後/)
 })
 
-test('B2: a reload of the behaviour code every four minutes does not start the clock, the decisions or the hold again', async t => {
+test('B2: a reload of the behaviour code every four minutes does not start the clock or decisions again, and clears any legacy hold', async t => {
   const w = await createWorld(t)
   const started = w.at
   for (let i = 0; i < 11; i++) { await w.pass(4 * MIN); w.boot(w.shared) }
@@ -59,10 +47,13 @@ test('B2: a reload of the behaviour code every four minutes does not start the c
   assert.equal(w.goal().id, 'early.home_reserve#1')
   assert.equal(w.goal().startedAt, started)
   assert.equal(minutes(w.said(WARN)[0]), 5)
-  assert.equal(w.said(DECIDE).length, 3)
-  assert.equal(w.said(HOLD).length, 1)
-  assert.equal(w.goal().decisions, 3)
-  assert.ok(w.goal().hold)
+  assert.equal(w.said(DECIDE).length, 4)
+  assert.equal(w.goal().decisions, 4)
+  assert.equal(w.goal().hold, null)
+  // Legacy hold injected in shared state is immediately cleared on the next look.
+  w.goal().hold = { code: 'NO_PROGRESS', since: w.at, until: w.at + 60 * MIN, basis: {} }
+  await w.pass(10000)
+  assert.equal(w.goal().hold, null)
 })
 
 test('B3: a run that throws is an outcome, not a wait; the run after it that never returns is let go at the deadline', async t => {
@@ -82,12 +73,12 @@ test('B3: a run that throws is an outcome, not a wait; the run after it that nev
   assert.match(w.said(WARN)[0], /boom.*同じ1歩が \d+ 秒/)
   await w.pass(5 * MIN + 10000)
   assert.equal(w.said(DECIDE).length, 1)
-  assert.match(w.said(DECIDE)[0], /step・決め直し 1\/3/)
+  assert.match(w.said(DECIDE)[0], /step・決め直し 1 回目/)
   assert.equal(w.calls, 3, 'the step that never returned was let go and another one began')
   await w.pass(50 * MIN)
-  assert.equal(w.said(DECIDE).length, 4)
-  assert.ok(w.said(HOLD).length >= 1)
-  assert.ok(w.calls <= 8, 'a bounded number of runs in an hour: ' + w.calls)
+  assert.equal(w.said(DECIDE).length, 6)
+  assert.equal(w.goal().hold, null)
+  assert.ok(w.calls <= 10, 'a bounded number of runs in an hour: ' + w.calls)
 })
 
 test('a run that throws tells its code to the next look', async t => {

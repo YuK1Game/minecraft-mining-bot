@@ -17,6 +17,15 @@ const CONTACT_EPSILON = 1e-4
 const float32Step = value => Math.pow(2, Math.floor(Math.log2(Math.max(1, Math.abs(value)))) - 23)
 const wallSkin = position => Math.max(CONTACT_EPSILON, float32Step(position.x), float32Step(position.z))
 const EYE_HEIGHT = 1.62
+const EMPTY_SUPPORT_PLANTS = new Set([
+  'air', 'cave_air', 'void_air', 'leaf_litter', 'short_grass', 'tall_grass', 'tallgrass', 'grass',
+  'fern', 'large_fern', 'dead_bush', 'deadbush', 'dandelion', 'poppy', 'blue_orchid', 'allium',
+  'azure_bluet', 'red_tulip', 'orange_tulip', 'white_tulip', 'pink_tulip', 'oxeye_daisy',
+  'cornflower', 'lily_of_the_valley', 'pink_petals', 'wildflowers', 'short_dry_grass',
+  'tall_dry_grass', 'bush', 'firefly_bush', 'sunflower', 'lilac', 'rose_bush', 'peony',
+  'brown_mushroom', 'red_mushroom', 'moss_carpet', 'pale_moss_carpet', 'glow_lichen',
+  'hanging_roots', 'vine', 'snow_layer', 'torch', 'soul_torch', 'redstone_torch'
+])
 const HAZARD = /(?:lava|fire|cactus|magma|campfire|sweet_berry_bush|powder_snow|cobweb|wither_rose|pointed_dripstone)/
 const key = position => `${Math.floor(position.x)},${position.y},${Math.floor(position.z)}`
 const copy = position => ({ x: position.x, y: position.y, z: position.z })
@@ -192,10 +201,10 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
         }
         if (!stable) return false
       }
-      // Received, dry short grass is empty space beside a ledge, never the
-      // contact holding the player up. Real cube contact is still required.
-      if (['air', 'cave_air', 'void_air', 'leaf_litter', 'short_grass'].includes(support.name) && support.shapes.length === 0) continue
-      if (support.name === 'short_grass') return false
+      // Received, dry passable plants with empty collision shapes (wildflowers,
+      // short grass, leaf litter, flowers, etc.) are empty space beside a ledge,
+      // never the contact holding the player up. Real cube contact is still required.
+      if (EMPTY_SUPPORT_PLANTS.has(support.name) && support.shapes.length === 0) continue
       // Partial initial contact is restricted to ordinary complete cubes.
       // Slabs, stairs and unreceived geometry cannot authorize this skin.
       if (support.shapes.length !== 1 || !support.shapes[0].every((value, index) => Math.abs(value - [0, 0, 0, 1, 1, 1][index]) <= 1e-9) || Math.abs(y + 1 - position.y) > CONTACT_EPSILON) return false

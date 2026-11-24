@@ -195,6 +195,8 @@ function createGoalLedger ({ shared, slot = 'dragonGoal', now = Date.now, world 
     if (code !== 'GAINED') rebase(g, value)
     return { held: false, released: code }
   }
+  function clearHold () { const g = goal(); if (!g?.hold) return false; g.hold = null; return true }
+  function clearFailures () { failures.progress(); keep() }
   const run = () => { const g = goal(); return g ? ++g.runs : 0 }
   function checkpoint () {
     const g = goal()
@@ -204,7 +206,7 @@ function createGoalLedger ({ shared, slot = 'dragonGoal', now = Date.now, world 
     return { key: g.key, seq: g.seq, world: g.world, startedAt: g.startedAt, progressAt: minute(g.progressAt), resultAt: minute(g.resultAt), top: g.top, stalledMin: Math.floor(g.stalledMs / 60000), decidedMin: Math.floor(g.decidedStall / 60000),
       results: g.results, decisions: g.decisions, holds: g.holds, runs: g.runs - g.runs % 50, scopes: g.scopes, hold: g.hold ? { code: g.hold.code, since: g.hold.since, until: g.hold.until, basis: g.hold.basis } : null }
   }
-  return { goal, open, look, step, mark, fail, spent, decide, due, hold, held, run, checkpoint, limit }
+  return { goal, open, look, step, mark, fail, spent, decide, due, hold, held, clearHold, clearFailures, run, checkpoint, limit }
 }
 
 module.exports = { createGoalLedger, WAITS, GAP_MS, CONFIRM_MS, DECISIONS, SAME, KEYS, MARK_M, HOLD_MS }

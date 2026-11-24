@@ -126,13 +126,17 @@ test('a received unchanged block can resume an interrupted break after a new con
   assert.equal(f.ctx.memory.early.mine.branch.pendingAction, undefined)
 })
 
-test('a corridor pauses before spending the last two uses of its only pickaxe', async () => {
+test('a corridor uses a disposable iron-or-below pick down to 1 use, and pauses at 0 or on a reserved diamond pick', async () => {
   const f = fixture(), position = { x: 1, y: 1, z: 1 }
   f.setReceive(true)
   await f.ports.place({ position, name: 'cobblestone' })
+  f.inventory.items[1].name = 'minecraft:diamond_pickaxe'
   f.inventory.items[1].durabilityRemaining = 2
   assert.equal((await f.ports.mine(position)).code, 'MINE_TOOL_SUPPLY')
   assert.equal(f.ctx.getBlock(1, 1, 1).name, 'minecraft:cobblestone')
+  f.inventory.items[1].name = 'minecraft:iron_pickaxe'
+  f.inventory.items[1].durabilityRemaining = 1
+  assert.equal((await f.ports.mine(position)).code, 'MINE_AIR_RECEIVED')
 })
 
 test('spawn prevention requires a received bottom slab property', () => {

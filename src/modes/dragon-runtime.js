@@ -122,29 +122,20 @@ function createDragonRuntime (ports) {
       const logs = shared.playerTree?.logs?.length, felling = await finishTree(ctx)
       if (felling) { judge(...says.tree(logs)); return felling }
     }
-    const currentGoal = ledger.goal(), hold = currentGoal?.hold
+    const currentGoal = ledger.goal()
+    if (currentGoal?.hold) {
+      ledger.clearHold?.()
+      currentGoal.hold = null
+    }
     if (dim === 'overworld') {
       const mineGoal = record.stage === 'early' && ['early.home_reserve', 'early.diamond'].includes(currentGoal?.key)
-      if (mineGoal && (!hold || hold.code === 'NO_PROGRESS')) {
+      if (mineGoal) {
         const reconciled = await ctx.minePorts?.reconcilePlacement?.()
-        let reached = false
-        if (!reconciled && hold && triedFinishHold !== hold) {
-          // One verified walk for the unfinished floor. A failed attempt
-          // leaves the normal hold in force.
-          triedFinishHold = hold
-          reached = await ctx.minePorts?.recoverFinishStand?.()
-        }
-        if (reconciled || reached) {
-          if (hold && ledger.goal() === currentGoal && currentGoal.hold === hold) {
-            ledger.held({ ...hold.basis, mineWorkReconciled: true })
-          }
-          const reason = reached ? '床の設置面が見える足場への到着を確認しました。仕上げを続けます。'
-            : '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。'
-          judge(...says.mineMend(reached))
-          return { phase: 'waiting', reason }
+        if (reconciled) {
+          judge(...says.mineMend(false))
+          return { phase: 'waiting', reason: '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。' }
         }
       }
-      if (hold) { judge(...says.held(hold, now())); return { phase: 'waiting', reason: HELD } }
     }
     if (dim === 'end') {
       judge(...says.stage('end', dim))
@@ -192,10 +183,8 @@ function createDragonRuntime (ports) {
     unpin = true
     delete shared.dragonHomeWalk; delete shared.dragonHomeInner
     return dropped.join('・')
-  }, onHold: () => {
-    const heldGoal = ledger.goal()
-    void incidents.capture({ source: 'expedition', code: heldGoal?.hold?.code ?? 'GOAL_HELD', reason: HELD, stage: stepRecord?.stage ?? null })
-    expedition.abandon('進まない目的を保留します。')
+  }, onStall: ({ code = 'NO_PROGRESS' } = {}) => {
+    void incidents.capture({ source: 'expedition', code, reason: '進捗が止まったため診断スナップショットを保存し、選択を捨てて決め直します。', stage: stepRecord?.stage ?? null })
   } })
   // The goal the expedition works toward now; null while it cannot be told (nothing received yet).
   function keyNow () {

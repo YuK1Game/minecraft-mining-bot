@@ -93,14 +93,19 @@ function createBootstrapWorld (t) {
     const p = args[0], block = w.getBlock(p.x, p.y, p.z), hand = w.items.find(i => i.slot === 0 && i.count > 0)
     if (/stone$|_ore$/.test(block.name)) {
       assert.ok(/_pickaxe$/.test(hand?.name ?? ''), 'stone and ore require the actual equipped tool')
-      assert.ok(hand.durabilityKnown && hand.durabilityRemaining > 2, 'do not mine with a spent tool')
+      const disposable = /^minecraft:(?:wooden|golden|stone|copper|iron)_pickaxe$/.test(hand.name)
+      assert.ok(hand.durabilityKnown && (disposable ? hand.durabilityRemaining >= 0 : hand.durabilityRemaining > 2), 'do not mine with a spent tool')
       if (/iron_ore$/.test(block.name)) assert.ok(/(?:stone|iron)_pickaxe$/.test(hand.name), 'iron needs the stone tier')
     }
     const result = mine(args)
     if (/_log$/.test(block.name)) w.give(block.name.replace('minecraft:', ''))
-    if (hand?.durabilityRemaining && /stone$|_ore$/.test(block.name)) {
+    if (hand && Number.isFinite(hand.durabilityRemaining) && /stone$|_ore$/.test(block.name)) {
       hand.durabilityRemaining--; hand.durabilityUsed = (hand.durabilityUsed ?? 0) + 1
       worn.push({ name: hand.name, remaining: hand.durabilityRemaining, feet: w.feet() })
+      if (hand.durabilityRemaining < 0) {
+        const idx = w.items.indexOf(hand)
+        if (idx >= 0) w.items.splice(idx, 1)
+      }
     }
     return result
   }

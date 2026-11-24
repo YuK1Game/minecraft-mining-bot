@@ -19,11 +19,12 @@ const homeIron = require('./dragon-home-iron')
 function earlyObjective ({ inventory, worn, house, memory = {} }) {
   const step = (id, label, legacy = false, ready = false) => ({ id, label, next: label, legacy, ready })
   if (inventory?.known !== true || inventory.uncertain || !Array.isArray(inventory.items)) return step('observe', '持ち物の受信を待ちます。')
-  const held = inventory.items.filter(item => item?.count > 0 && item.durabilityRemaining !== 0)
-  if (!held.some(item => /_pickaxe$/.test(item.name))) return step('wood', '原木から最初の道具を作ります。', true)
+  const held = inventory.items.filter(item => item?.count > 0)
   const duty = house?.origin ? houseDuty(house) : 'build'
+  const activeMine = !duty && memory.early?.spawnReady === true && !!memory.early?.mine?.branch?.request
+  if (!activeMine && !hasWorkingPick(held, 'wooden')) return step('wood', '原木から最初の道具を作ります。', true)
   if (duty) return step('base', duty === 'repair' ? '壊れた本拠点を直します。' : 'ベッドとラージチェストのある本拠点を作ります。', true)
-  if (!hasWorkingPick(held, 'stone')) return step('stone', '鉄鉱石を採れる石以上のツルハシを用意します。', true)
+  if (!activeMine && !hasWorkingPick(held, 'stone')) return step('stone', '鉄鉱石を採れる石以上のツルハシを用意します。', true)
   if (!memory.early?.spawnReady) return step('home_spawn', '本拠点へ戻り、復帰ベッドを確認します。')
   if (!memory.early.reserveReady) return step('home_reserve', '本拠点のラージチェストに再出発用の装備を揃えます。')
   if (!diamondNeed(inventory, worn).done) return step('diamond', '計画した下層坑道の採掘とクラフトでダイヤ装備を揃えます。')
