@@ -102,6 +102,18 @@ test('actual Input carries ladder controls through two ascents, two descents and
   assert.equal(f.stopped, 4)
 })
 
+// Real Realm 2026-11-24 09:36 JST, mine 3e6066b4c10280c8b841 (ladder column (9989,10139), facing 4): from the top
+// landing, feet (9989.586, 66, 10140.30), the body was 0.074 too far towards the ladder's support to fit past its
+// panel. No frame moved it, the mount ended LADDER_NO_PROGRESS on every try, and ten minutes later the goal was held.
+test('a mount beside the ladder panel lines up with the column before it steps on', async t => {
+  const f = fixture(t, { startOffset: { x: 0, z: 0.0866 } })
+  const working = f.getState().position
+  const result = await f.move(65, 68, { from: { ...working, y: working.y - 1.62 } })
+  assert.equal(result.status, 'completed', JSON.stringify({ result, server: f.server, errors: f.errors }))
+  assert.equal(result.serverConfirmed, true)
+  assert.ok(Math.abs(f.host.snapshot().position.y - 1.62 - 68) < 0.04)
+})
+
 test('a normal walk offset uses its actual supported origin and witness for consecutive ladder moves', async t => {
   const f = fixture(t, { receipts: false, oracle: true, startOffset: { x: 0.1487445, z: -0.00445 } })
   f.agePose(300)

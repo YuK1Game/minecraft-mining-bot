@@ -68,7 +68,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
     return copy(receipt)
   }
 
-  function steer (run, target, sneak = false, forwardOnly = false) {
+  function steer (run, target, sneak = false, forwardOnly = false, nudge = false) {
     const candidates = forwardOnly ? [{ forward: true }, { forward: true, left: true }, { forward: true, right: true }] : [{}, { forward: true }, { back: true }, { left: true }, { right: true }]
     let best = null
     for (const base of candidates) {
@@ -87,7 +87,10 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         // arrival radius; the ordinary two settled frames and server witness
         // still decide whether the move completed.
         if (run.phase === 'dismount' && !holdingSneak && !Object.keys(base).length && predicted.onGround && coast.onGround && horizontal(coast.position, target) < 0.075 && Math.abs(coast.position.y - target.y) <= 0.04) return { controls, predicted }
-        const score = horizontal(coast.position, target) ** 2 + horizontal(predicted.position, target) ** 2 * 0.1
+        // A mount that stands still is judged by the next frame alone: beside the ladder's panel the body has to
+        // come within 0.0125 of the column's line before it fits past, and from 0.02-0.1 off that line every step
+        // towards it coasts further past it than it began, so standing still scored best for good.
+        const score = nudge ? horizontal(predicted.position, target) ** 2 : horizontal(coast.position, target) ** 2 + horizontal(predicted.position, target) ** 2 * 0.1
         if (!best || score < best.score) best = { controls, predicted, score }
       } catch {}
     }
@@ -113,7 +116,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         if (atLevel) run.phase = 'dismount'
       }
       let next
-      if (run.phase === 'mount') next = steer(run, plan.centre)
+      if (run.phase === 'mount') next = steer(run, plan.centre, false, false, run.stalled >= 2)
       else if (run.phase === 'climb' && plan.direction > 0) {
         const normal = FACE[plan.facing]
         next = steer(run, { x: plan.centre.x - normal.x * 0.25, z: plan.centre.z - normal.z * 0.25 }, false, true)
