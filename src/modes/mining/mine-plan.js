@@ -2,7 +2,16 @@
 
 const { setImmediate: immediate } = require('node:timers/promises')
 const { surveyMine, oreResource } = require('./mine-survey')
-const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, shaftSurfaceLayout, key } = require('./mine-geometry')
+const { createMineGeometry, mineSteps, stepCells, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, shaftSurfaceLayout, key } = require('./mine-geometry')
+// The sizes a site is planned at. A mine is planned large from the start: a new site costs a shaft, ladders,
+// a chest room and the search for a safe place, and 16 to 32 block sites gave 10 to 15 raw iron each.
+// User 2026-11-24 10:20 JST chose 「最初から大きく計画する」. Real Realm 2026-11-23/24: ten sites saved in a day
+// (16x16 to 32x32), each retired with 10 to 15 raw_iron against a target of 33.
+const SIZES = Object.freeze([48, 64])
+// Each candidate is built and evaluated in full. A 64-block rectangle costs about 80 000 work units, so 96
+// candidates spent the 8 000 000 budget before the end (MINE_PLAN_BUDGET). The ranking keeps one candidate per
+// size, direction and upper height first (3 x 4 x 3 = 36 families), so 36 still compares every family.
+const MAX_CANDIDATES = 36
 const { mineWorldScope, mineLiveScope } = require('./mine-state')
 const { pocketOf, isMineNaturalBlock } = require('./mine-vein-geometry')
 const { shaftBoundary, shaftEntryBackingUsable, shaftVoids } = require('./mine-shaft-boundary')
@@ -314,13 +323,13 @@ function observedSurfaceY (site, radius, read) {
   return { y: site.surfaceY, ready: false }
 }
 
-async function planMine ({ world, getState, origin, resource = 'raw_iron', targetCount = 1, width = null, length = null, sizes = [16, 24, 32], searchRadius = 8, upperYs = [16, 32, 48], maxLowerLevels = 2,
-  maxCandidates = 96, maxWork = 8000000, yieldNow = immediate, requestSections = null, maxCells = 1500000, survey: suppliedSurvey = null, isProtected = () => false } = {}, { signal } = {}) {
+async function planMine ({ world, getState, origin, resource = 'raw_iron', targetCount = 1, width = null, length = null, sizes = SIZES, searchRadius = 8, upperYs = [16, 32, 48], maxLowerLevels = 2,
+  maxCandidates = MAX_CANDIDATES, maxWork = 8000000, yieldNow = immediate, requestSections = null, maxCells = 1500000, survey: suppliedSurvey = null, isProtected = () => false } = {}, { signal } = {}) {
   const state = getState?.(), scope = mineWorldScope(state), liveScope = mineLiveScope(state)
   if (!scope || !liveScope || !origin || !['x', 'y', 'z'].every(axis => Number.isFinite(origin[axis]))) return { status: 'blocked', code: 'MINE_SCOPE_UNKNOWN' }
   resource = resourceName(resource)
   const dimensions = width != null || length != null ? [[width ?? length, length ?? width]] : sizes.flatMap(w => sizes.filter(l => l >= w).map(l => [w, l]))
-  if (!VALUES[resource] || !Number.isSafeInteger(targetCount) || targetCount < 1 || targetCount > 4096 || dimensions.length > 9 || !dimensions.length || !dimensions.flat().every(n => Number.isInteger(n) && n >= 12 && n <= 32) || !Number.isInteger(searchRadius) || searchRadius < 0 || searchRadius > 16 || !Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 1024 || !Number.isInteger(maxWork) || maxWork < 1 || maxWork > 20000000 || !Number.isInteger(maxLowerLevels) || maxLowerLevels < 1 || maxLowerLevels > 8) return { status: 'blocked', code: 'MINE_PLAN_OPTIONS_INVALID' }
+  if (!VALUES[resource] || !Number.isSafeInteger(targetCount) || targetCount < 1 || targetCount > 4096 || dimensions.length > 9 || !dimensions.length || !dimensions.flat().every(n => Number.isInteger(n) && n >= 12 && n <= MAX_SIDE) || !Number.isInteger(searchRadius) || searchRadius < 0 || searchRadius > 16 || !Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 1024 || !Number.isInteger(maxWork) || maxWork < 1 || maxWork > 20000000 || !Number.isInteger(maxLowerLevels) || maxLowerLevels < 1 || maxLowerLevels > 8) return { status: 'blocked', code: 'MINE_PLAN_OPTIONS_INVALID' }
   const upperOnly = ['coal', 'raw_iron', 'raw_copper'].includes(resource)
   const surfaceY = Math.floor(origin.y), possibleUppers = [...new Set(upperYs)].filter(y => [16, 32, 48].includes(y) && y <= surfaceY - 3)
   if (!possibleUppers.length) return { status: 'blocked', code: 'MINE_SURFACE_TOO_LOW' }
@@ -416,6 +425,7 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
 // judged under an older number starts over (mine-sites.js). Raise it when a rule here accepts more or less.
 // 2: a hazard beside a branch closes that branch instead of rejecting the geometry.
 // 3: a received void in the shaft's columns or under their bottom rejects the geometry.
-const PLAN_RULES = 3
+// 4: sites are 48 or 64 blocks a side (were 16 to 32).
+const PLAN_RULES = 4
 
 module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed, PLAN_RULES }
