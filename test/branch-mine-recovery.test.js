@@ -401,3 +401,19 @@ test('resuming an open lower room budgets for its highest remaining safe pickaxe
   assert.equal(result.result.code, 'MINE_TOOL_SUPPLY')
   assert.equal(w.digs.length, 0)
 })
+
+// Live Realm 2026-11-25 00:19 JST: while walking home with capacityDestination='home'
+// and 36/36 slots full, a brief damage grace period skipped dragon-runtime's
+// minePackRoom and fell through to requestMine, which walked 146m back to the mine.
+test('requestMine finishes pending home capacity relief instead of walking back to the mine with a full bag', async t => {
+  const w = createMineWorld(t)
+  fillNonCargo(w)
+  w.setFeet({ x: 80.5, y: 70, z: 80.5 })
+  w.branch.capacityDestination = 'home'
+  let homeCalls = 0
+  w.ctx.minePorts.storage.depositHome = async () => { homeCalls++; return { status: 'blocked', code: 'MINE_HOME_APPROACH' } }
+  w.ctx.travelTo = async () => assert.fail('must not travel back to the mine while home capacity relief is pending')
+  const out = await requestMine(w.ctx, { resource: 'raw_iron', targetHeld: 33 })
+  assert.equal(homeCalls, 1)
+  assert.equal(out.result.code, 'MINE_HOME_APPROACH')
+})

@@ -85,12 +85,14 @@ function createDragonRuntime (ports) {
     const mine = record.early?.mine?.branch
     const capacityPending = mine?.capacityDestination || mine?.homeCapacityPending === true
     if (dim === 'overworld' && !recoverHealth && ctx.drop &&
-        (capacityPending || crowded(shared.inventoryUncertain ? null : runtime.inventory())) && !ports.threatened()) {
+        (capacityPending || crowded(shared.inventoryUncertain ? null : runtime.inventory()) && !ports.threatened())) {
       const returningToMine = record.stage === 'early' && ['early.diamond', 'early.home_reserve'].includes(ledger.goal()?.key)
       const stored = await require('./mining/mine-controller').minePackRoom(ctx, { returningToMine })
       if (stored) { judge(...says.mineCargo(runtime.inventory(), capacityPending)); return stored }
-      const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
-      if (packed) { judge(...says.pack(runtime.inventory())); return packed }
+      if (!ports.threatened()) {
+        const packed = await packRoom({ shared, getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), getFeet: ctx.getFeet, drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands.why?.(), cells: ctx.cells, log: ctx.log })
+        if (packed) { judge(...says.pack(runtime.inventory())); return packed }
+      }
     }
     // The wait for health: a meal, the regeneration, or the way to food (dragon-heal.js).
     if (recoverHealth && dim !== 'end') {

@@ -136,6 +136,10 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     }
   }
   if(branch.retiring)return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
+  if((branch.capacityDestination || branch.homeCapacityPending===true) && occupied(inventory(ctx))>30){
+    const stored=await minePackRoom(ctx,{returningToMine:true})
+    if(stored)return stored
+  }
   if(branch.vein && branch.request?.resource!==resource){branch.vein.closing=true;return outcome(await restoreVein(ctx,branch),'先の鉱脈を埋め戻してから資源を切り替えます。')}
   const layer=layerFor(resource)
   branch.request={resource,targetHeld,requester:requester??ctx.memory.stage,layer}
