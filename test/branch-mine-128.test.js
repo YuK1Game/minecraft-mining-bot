@@ -135,3 +135,83 @@ test('mine-lighting accepts a solidly-supported gravel side wall and wall-torch 
   assert.equal(bad.status, 'blocked', JSON.stringify(bad))
   assert.equal(bad.code, 'MINE_CAVE_BOUNDARY_UNSAFE')
 })
+
+test('walkLayer advances along received 128x128 corridor floors when the target lies beyond the 4-chunk view horizon, and still refuses a received broken target', async () => {
+  const { walkLayer } = require('../src/modes/mining/mine-route')
+  const { mineSteps, stepCells } = require('../src/modes/mining/mine-geometry')
+  const plan = createMineGeometry({ scope, anchor: { x: 9797, z: 10243 }, direction: 'west', width: 128, length: 128, surfaceY: 70, upperY: 16 })
+  const steps = mineSteps(plan, { layer: 'upper' })
+  const farStep = steps.find(step => step.id === 'upper:main:81')
+  assert.ok(farStep, '128x128 mine must have upper:main:81')
+  const excavated = new Set()
+  for (const step of steps) {
+    if (step.kind === 'branch') continue
+    const cells = stepCells(plan, step)
+    for (const p of cells.clear) if (p.y === 16) excavated.add(`${p.x},${p.z}`)
+    if (step.id === farStep.id) break
+  }
+  for (const c of plan.shaft.columns) excavated.add(`${c.x},${c.z}`)
+  const landing = plan.shaft.landings.find(entry => entry.layer === 'upper').stand
+  const target = stepCells(plan, farStep).approach
+  assert.ok(Math.hypot(target.x - landing.x, target.z - landing.z) > 80, 'target must lie beyond 4-chunk view horizon')
+
+  const feet = { ...landing }
+  const walks = []
+  const VIEW_RADIUS = 56
+  let breakTargetFloor = false
+  const solidStone = { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }
+  const slab = { known: true, name: 'minecraft:cobblestone_slab', boundingBox: 'block', properties: { 'minecraft:vertical_half': 'bottom' }, extra: [] }
+  const air = { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+  const getBlock = (x, y, z) => {
+    if (Math.hypot(x - feet.x, z - feet.z) > VIEW_RADIUS) return { known: false }
+    if (breakTargetFloor && x === Math.floor(target.x) && z === Math.floor(target.z) && y === 15) return air
+    if (excavated.has(`${x},${z}`)) {
+      if (y === 15) return slab
+      if (y === 16 || y === 17) return air
+    }
+    return solidStone
+  }
+  const branch = { plan, progress: { upper: { cursor: steps.indexOf(farStep) } } }
+  const ctx = {
+    signal: new AbortController().signal,
+    cancelled: () => false,
+    getBlock,
+    getFeet: () => ({ ...feet }),
+    saveMine: async () => true,
+    runtime: {
+      raw: () => ({ profile: 'HouchiChan', realm: { id: '21225335' }, runtimeEntityId: '1', phase: 'spawned', dead: false, dimension: 'overworld', connectionId: 'c1', startedAt: '2026-11-25T00:00:00Z', lifecycle: { deathId: 0 }, health: 20, inventory: { known: true, items: [] } }),
+      inventory: () => ({ known: true, items: [] })
+    },
+    shared: {},
+    minePorts: {
+      walk: async point => {
+        // Every walk step must land on a currently-received corridor floor.
+        const floor = getBlock(Math.floor(point.x), 15, Math.floor(point.z))
+        assert.equal(floor.known, true, `must never walk onto an unreceived cell: ${JSON.stringify(point)}`)
+        walks.push({ ...point })
+        Object.assign(feet, point)
+        return { status: 'completed', serverConfirmed: true }
+      }
+    }
+  }
+
+  // Forward: shaft -> upper:main:81 (90+ blocks away, initially unreceived).
+  const forward = await walkLayer(ctx, branch, 'upper', target)
+  assert.equal(forward.status, 'completed', JSON.stringify(forward))
+  assert.ok(Math.hypot(feet.x - target.x, feet.z - target.z) < 0.5)
+  assert.ok(walks.length >= 2)
+
+  // Reverse: upper:main:81 -> shaft landing (90+ blocks away, now shaft is unreceived).
+  const back = await walkLayer(ctx, branch, 'upper', landing)
+  assert.equal(back.status, 'completed', JSON.stringify(back))
+  assert.ok(Math.hypot(feet.x - landing.x, feet.z - landing.z) < 0.5)
+
+  // A received broken target still returns MINE_ROUTE_UNKNOWN without walking.
+  Object.assign(feet, { x: target.x + 6, y: target.y, z: target.z })
+  breakTargetFloor = true
+  const beforeBroken = walks.length
+  const broken = await walkLayer(ctx, branch, 'upper', target)
+  assert.equal(broken.status, 'blocked')
+  assert.equal(broken.code, 'MINE_ROUTE_UNKNOWN')
+  assert.equal(walks.length, beforeBroken)
+})

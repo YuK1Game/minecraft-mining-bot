@@ -98,49 +98,94 @@ function layerStands(ctx,plan,layer){
   return out
 }
 
-// Travel between already excavated branches uses their received floors. The planned future corridors are not
-// edges, and a missing edge is not replaced by a new tunnel through nearby rock.
-async function walkLayer(ctx,branch,layer,target){
-  if(!live(ctx))return stopped()
-  if(feetAt(ctx,target))return walkCell(ctx,branch,target,'mine_route')
-  const nodes=layerStands(ctx,branch.plan,layer)
-  const columnKey=p=>`${Math.floor(p.x)},${Math.floor(p.z)}`
-  const feet=ctx.getFeet(),finish=columnKey(target)
-  const unknown=()=>blocked('MINE_ROUTE_UNKNOWN','採掘場の通路と帰路を再確認します。')
-  if(!feet || !nodes.has(finish))return unknown()
-  let start=columnKey(feet)
-  if(!nodes.has(start)){
-    // After a ladder dismount the received position can be supported at the
-    // rim of an adjacent slab, before the body centre is in its column.
-    const x=Math.floor(feet.x),z=Math.floor(feet.z)
-    const adjacent=[...nodes.values()].filter(p=>
-      Math.abs(Math.floor(p.x)-x)+Math.abs(Math.floor(p.z)-z)===1 &&
-      Math.abs(p.y-feet.y)<=0.12 && Math.hypot(p.x-feet.x,p.z-feet.z)<=1
-    ).sort((a,b)=>Math.hypot(a.x-feet.x,a.z-feet.z)-Math.hypot(b.x-feet.x,b.z-feet.z))
-    if(!adjacent.length)return unknown()
-    const landed=await walkCell(ctx,branch,adjacent[0],'mine_route_start')
-    if(!received(landed))return landed
-    start=columnKey(ctx.getFeet())
-    if(!nodes.has(start))return unknown()
-  }
-  const queue=[start],parents=new Map([[start,null]])
-  for(let i=0;i<queue.length && !parents.has(finish);i++){
-    const from=nodes.get(queue[i]),x=Math.floor(from.x),z=Math.floor(from.z)
-    for(const [dx,dz]of[[1,0],[-1,0],[0,1],[0,-1]]){const id=`${x+dx},${z+dz}`,next=nodes.get(id);if(next && Math.abs(next.y-from.y)<=0.5 && !parents.has(id)){parents.set(id,queue[i]);queue.push(id)}}
-  }
-  if(!parents.has(finish))return blocked('MINE_ROUTE_BLOCKED','確認済み坑道だけでは目的の枝へ届きません。','position_changed')
-  const path=[]
-  for(let id=finish;id!==start;id=parents.get(id))path.push(nodes.get(id))
+function columnKnown (ctx, plan, layer, target) {
+  const y = plan.layers.find(p => p.id === layer)?.y
+  if (y == null) return true
+  const x = Math.floor(target.x), z = Math.floor(target.z)
+  return at(ctx, { x, y: y - 1, z })?.known === true &&
+    at(ctx, { x, y, z })?.known === true &&
+    at(ctx, { x, y: y + 1, z })?.known === true
+}
+
+async function walkPath (ctx, branch, nodes, parents, start, goal) {
+  const path = []
+  for (let id = goal; id !== start; id = parents.get(id)) path.push(nodes.get(id))
   path.reverse()
   // Keep walks bounded and check every corner against the actual received arrival.
-  for(let index=0;index<path.length;){
-    let end=index
-    while(end+1<path.length && end-index<5){const a=path[index],b=path[end+1];if(a.x!==b.x && a.z!==b.z)break;end++}
-    const out=await walkCell(ctx,branch,path[end],'mine_route')
-    if(!received(out))return out
-    index=end+1
+  for (let index = 0; index < path.length;) {
+    let end = index
+    while (end + 1 < path.length && end - index < 5) {
+      const a = path[index], b = path[end + 1]
+      if (a.x !== b.x && a.z !== b.z) break
+      end++
+    }
+    const out = await walkCell(ctx, branch, path[end], 'mine_route')
+    if (!received(out)) return out
+    index = end + 1
   }
-  return {...results.completed('MINE_ROUTE_CONFIRMED'),serverConfirmed:true}
+  return { ...results.completed('MINE_ROUTE_CONFIRMED'), serverConfirmed: true }
+}
+
+// Travel between already excavated branches uses their received floors. The planned future corridors are not
+// edges, and a missing edge is not replaced by a new tunnel through nearby rock.
+// On a 128x128 mine the far end of an excavated corridor can lie beyond the server's 4-chunk view horizon
+// (live 2026-11-25 05:42 JST: shaft x=9797 to upper:main:81 x=9702, 95 blocks away -> MINE_ROUTE_UNKNOWN).
+// When the target (or a frontier along the corridor) is unreceived, advance strictly along already-received
+// corridor floors toward it so the server streams the intervening chunks, then finish the walk.
+async function walkLayer (ctx, branch, layer, target) {
+  const columnKey = p => `${Math.floor(p.x)},${Math.floor(p.z)}`
+  const unknown = () => blocked('MINE_ROUTE_UNKNOWN', '採掘場の通路と帰路を再確認します。')
+  const finish = columnKey(target)
+  for (let hop = 0; hop < 8; hop++) {
+    if (!live(ctx)) return stopped()
+    if (feetAt(ctx, target)) return walkCell(ctx, branch, target, 'mine_route')
+    const nodes = layerStands(ctx, branch.plan, layer)
+    const feet = ctx.getFeet()
+    if (!feet) return unknown()
+    const targetUnreceived = !nodes.has(finish) && !columnKnown(ctx, branch.plan, layer, target)
+    if (!nodes.has(finish) && !targetUnreceived) return unknown()
+    let start = columnKey(feet)
+    if (!nodes.has(start)) {
+      // After a ladder dismount the received position can be supported at the
+      // rim of an adjacent slab, before the body centre is in its column.
+      const x = Math.floor(feet.x), z = Math.floor(feet.z)
+      const adjacent = [...nodes.values()].filter(p =>
+        Math.abs(Math.floor(p.x) - x) + Math.abs(Math.floor(p.z) - z) === 1 &&
+        Math.abs(p.y - feet.y) <= 0.12 && Math.hypot(p.x - feet.x, p.z - feet.z) <= 1
+      ).sort((a, b) => Math.hypot(a.x - feet.x, a.z - feet.z) - Math.hypot(b.x - feet.x, b.z - feet.z))
+      if (!adjacent.length) return unknown()
+      const landed = await walkCell(ctx, branch, adjacent[0], 'mine_route_start')
+      if (!received(landed)) return landed
+      start = columnKey(ctx.getFeet())
+      if (!nodes.has(start)) return unknown()
+    }
+    const queue = [start], parents = new Map([[start, null]])
+    for (let i = 0; i < queue.length && !parents.has(finish); i++) {
+      const from = nodes.get(queue[i]), x = Math.floor(from.x), z = Math.floor(from.z)
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const id = `${x + dx},${z + dz}`, next = nodes.get(id)
+        if (next && Math.abs(next.y - from.y) <= 0.5 && !parents.has(id)) { parents.set(id, queue[i]); queue.push(id) }
+      }
+    }
+    if (parents.has(finish)) return walkPath(ctx, branch, nodes, parents, start, finish)
+    const canStreamFrontier = targetUnreceived || [...parents.keys()].some(id => {
+      const p = nodes.get(id), x = Math.floor(p.x), z = Math.floor(p.z)
+      return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => !columnKnown(ctx, branch.plan, layer, { x: x + dx, z: z + dz }))
+    })
+    if (!canStreamFrontier) return blocked('MINE_ROUTE_BLOCKED', '確認済み坑道だけでは目的の枝へ届きません。', 'position_changed')
+    const startNode = nodes.get(start)
+    const startDist = Math.hypot(startNode.x - target.x, startNode.z - target.z)
+    let best = null, bestDist = startDist - 0.5
+    for (const id of parents.keys()) {
+      if (id === start) continue
+      const p = nodes.get(id), d = Math.hypot(p.x - target.x, p.z - target.z)
+      if (d < bestDist) { bestDist = d; best = id }
+    }
+    if (!best) return targetUnreceived ? unknown() : blocked('MINE_ROUTE_BLOCKED', '確認済み坑道だけでは目的の枝へ届きません。', 'position_changed')
+    const stepped = await walkPath(ctx, branch, nodes, parents, start, best)
+    if (!received(stepped)) return stepped
+  }
+  return unknown()
 }
 
 async function reachLayer(ctx,branch,layer){
