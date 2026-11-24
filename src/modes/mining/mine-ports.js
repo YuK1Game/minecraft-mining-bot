@@ -9,6 +9,7 @@ const { mineSteps, stepCells } = require('./mine-geometry')
 const { sameWorld, mineWorldScope } = require('./mine-state')
 const { air, fillMaterial, scopeOf } = require('./mine-observed')
 const { solid } = require('./mine-common')
+const { createVeinFillStand } = require('./mine-vein-fill')
 
 // Created with the ordinary expedition context. memory/supplies/saveMine are
 // attached by DragonRuntime before the first method runs, so all operations
@@ -26,6 +27,7 @@ function createMinePorts (ctx) {
         solid(actions.block({ x, y: Math.floor(feet.y - 0.01), z }))
     })
   }
+  const approachVeinFill = createVeinFillStand(ctx, lighting, actions)
   async function recoverFinishStand () {
     const branch = ctx.memory?.early?.mine?.branch, intent = branch?.intent, task = branch?.segmentTask
     const scope = scopeOf(ctx)
@@ -46,7 +48,7 @@ function createMinePorts (ctx) {
   }
   return { mine: actions.mine, place: actions.place, walk: actions.walk, confirmPosition: actions.confirmPosition, ladderMove: actions.ladderMove, observe: actions.observe,
     reconcilePlacement: actions.reconcilePlacement,
-    recoverFinishStand, approachLadderSupport,
+    recoverFinishStand, approachLadderSupport, approachVeinFill,
     ensureSupplies: async (plan, options = {}) => {
       const ready = await tools(options)
       return ready.serverConfirmed === true ? supplies.ensure(plan, options) : ready

@@ -8,6 +8,7 @@ const { cellRest } = require('../supply-cell-rest')
 const { pocketOf,isMineNaturalBlock } = require('./mine-vein-geometry')
 const {prepareVeinReturn}=require('./mine-vein-access')
 const {insideMine}=require('./mine-location')
+const {veinFillOrder}=require('./mine-vein-fill')
 const ORES={coal:/^(?:deepslate_)?coal_ore$/,raw_iron:/^(?:deepslate_)?iron_ore$/,raw_gold:/^(?:deepslate_)?gold_ore$/,diamond:/^(?:deepslate_)?diamond_ore$/,redstone:/^(?:lit_)?(?:deepslate_)?(?:lit_)?redstone_ore$/}
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 
@@ -64,7 +65,8 @@ async function restoreVein (ctx,branch) {
   if(!vein)return {...results.completed('MINE_VEIN_CLOSED'),serverConfirmed:true}
   const back=await prepareVeinReturn(ctx,branch)
   if(!received(back))return back
-  const ordered=[...vein.opened].sort((a,b)=>Math.hypot(b.x-vein.anchor.x,b.z-vein.anchor.z)-Math.hypot(a.x-vein.anchor.x,a.z-vein.anchor.z)||b.y-a.y)
+  // Far end of the pocket first, each from a stand inside it that sees the cell (mine-vein-fill.js).
+  const ordered=veinFillOrder(vein)
   for(const p of ordered){
     if(!live(ctx))return stopped()
     // An interrupted intent may name a block that was never mined: that received solid is left alone.

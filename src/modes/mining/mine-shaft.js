@@ -25,8 +25,10 @@ async function fillCell (ctx,branch,target,purpose = 'shaft') {
   if(!name)return blocked('MINE_FILL_SUPPLY','縦坑の足場と埋戻し用ブロックを補給します。','supplies_changed')
   return action(ctx,branch,{kind:'fill',purpose,target},async()=>{
     const request={position:target,name,supportPurpose:purpose}
-    if(purpose!=='ladder_support' || !ctx.minePorts.approachLadderSupport || branch.pendingAction)return ctx.minePorts.place(request)
-    const access=await ctx.minePorts.approachLadderSupport(request)
+    // The cell is clicked from a stand that sees it: the shaft for a ladder's wall, the pocket for a vein (mine-ports.js).
+    const approach={ladder_support:ctx.minePorts.approachLadderSupport,vein_restore:ctx.minePorts.approachVeinFill}[purpose]
+    if(!approach || branch.pendingAction)return ctx.minePorts.place(request)
+    const access=await approach(request)
     return access.result??ctx.minePorts.place(access.plan)
   },()=>solid(at(ctx,target)))
 }
