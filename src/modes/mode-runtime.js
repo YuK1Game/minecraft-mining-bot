@@ -22,6 +22,7 @@ const { underCover } = require('./player-surface')
 const { boxedIn, stepOut } = require('./player-pit')
 const { settle, offCentre, offGrid } = require('./player-settle')
 const { openDoor } = require('./house/house-door')
+const { toEntrance } = require('./house/house-entry')
 const { leaveHouse } = require('./house/house-exit')
 const { createBuildWalk } = require('./player-build-walk')
 const { createPlayerTorch } = require('./player-torch')
@@ -211,7 +212,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   // Underground, a torch every eight blocks (player-torch.js).
   // The finished house's door, opened by an ordinary click before going in (house/house-door.js).
-  const houseDoor = () => shared.playerHouse?.origin ? openDoor({ origin: shared.playerHouse.origin, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), useDoor: target => operations.interactions.useDoor(target), walk: target => hands.walk(target), getFeet: feetNow, log }) : Promise.resolve(true)
+  const houseDoor = () => shared.playerHouse?.origin ? openDoor({ origin: shared.playerHouse.origin, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), useDoor: target => operations.interactions.useDoor(target), walk: target => hands.walk(target), getFeet: feetNow, reach: () => toEntrance({ origin: shared.playerHouse.origin, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: feetNow, hands, build: buildWalk, aborted: disposed }), log }) : Promise.resolve(true)
   const feetNow = () => { const position = where(); return position ? { x: position.x, y: position.y - 1.62, z: position.z } : null }
   const torch = createPlayerTorch({
     getMode: control.get, shared, log, disposed, getFeet: feetNow,
