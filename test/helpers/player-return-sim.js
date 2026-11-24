@@ -380,7 +380,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     }
     return null
   }
-  function mount ({ chest: chestMaker = null, canBuild: mayBuild = canBuild, pendingChest = () => false } = {}) {
+  function mount ({ chest: chestMaker = null, canBuild: mayBuild = canBuild, buildHeld = () => null, pendingChest = () => false } = {}) {
     let gone = false
     const disposed = () => gone
     const say = line => log.push(line)
@@ -409,7 +409,7 @@ function createReturnSim ({ feet = { x: 0.5, y: GROUND, z: 0.5 }, items = [], st
     const base = createPlayerBase({
       getMode: () => sim.mode, shared, log: say, disposed, getFeet, getPosition, getBlock, getInventory: pack, getWorn: () => sim.worn, now, sleep,
       agent: { objective: { objective: 'diamond' }, start: async options => { if (gone) throw new Error('reloaded'); agent.running = true; agent.starts.push({ at: clock, options }) }, stop: reason => { agent.running = false; agent.stopUntil = clock + sim.stopLagMs; agent.stops.push({ at: clock, reason }); path = []; motion = { phase: 'idle', reason: null } }, settled, running: () => agent.running },
-      hands: storagePorts, chest: chestMaker ?? (async options => makeChest(options, at => storagePorts.room(at))), canBuild: mayBuild, pendingChest,
+      hands: storagePorts, chest: chestMaker ?? (async options => makeChest(options, at => storagePorts.room(at))), canBuild: mayBuild, buildHeld, pendingChest,
       porch: () => { const o = sim.house?.origin; return o ? { stand: { x: o.x + 3.5, y: o.y, z: o.z + 10.5 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null },
       spares: () => { const o = sim.house?.origin; return [...(o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : []), ...sim.spares] },
       climb, door, build, walk: target => hands.walk(target), approach: (target, within) => fail.approach ? Promise.resolve(false) : hands.approach(target, within),

@@ -307,6 +307,12 @@ function createReturnSteps ({ goal, ports, flow }) {
     // what is taken out makes room (live 2026-11-18 16:20-16:39 JST: two goals
     // to take the diamonds out ended held for a chest, with nothing taken).
     if ((!policy.canBuild() || goalNow.built >= MAX_BUILT) && goalNow.kit !== 'done' && policy.restockWanted()) { goalNow.kit = 'taking'; return { ...completed('KIT_BEFORE_STORE'), next: 'verify' } }
+    // Wood held, but the house is being built or mended, or a chest just set
+    // down is still to be received: that is no lack of wood, and the goal
+    // wakes when it is over (live 2026-11-24 17:06 JST: 8 logs held, held as
+    // NO_CHEST_MATERIAL while the house repair ran; woken only by time).
+    const held = !policy.canBuild() ? policy.buildHeld?.() ?? null : null
+    if (held) return failed(held, { retry: { kind: 'build_free' }, detail: held === 'HOUSE_WORK' ? '家の建築・修理の間は新しいチェストを置きません' : '未完成チェストの記録をまだ読めていません' })
     if (!policy.canBuild()) return failed('NO_CHEST_MATERIAL', { retry: { kind: 'supplies_changed' }, detail: !goalNow.base ? '拠点のチェストを作る木がありません' : goalNow.full.length ? '拠点のチェストが満杯で、新しいチェストを作る木がありません' : '使えるチェストがなく、新しいチェストを作る木がありません' })
     if (goalNow.built >= MAX_BUILT) return failed('CHEST_LIMIT', { retry: { kind: 'supplies_changed' } })
     // The maker answers with a chest standing near the Bot when there is one

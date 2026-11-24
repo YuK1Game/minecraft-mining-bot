@@ -28,6 +28,7 @@ const { createBuildWalk } = require('./player-build-walk')
 const { createPlayerTorch } = require('./player-torch')
 const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
+const { chestBuildHeld } = require('./chest-build-held')
 const { createStoragePorts } = require('./player-storage-ports')
 const { stationWorldScope, supplyScope } = require('../survival/supply-return')
 const { nextObjective } = require('./player-goal')
@@ -246,7 +247,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getInventory: chestPack,
     getMineKeep: inventory => expedition?.mineKeep(inventory),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle, running: () => agentStatus().running === true || shared.autoWanted === true },
-    hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => !!shared.playerHouse?.origin && require('./house/house-repair').houseDuty(shared.playerHouse) === null && storage.canMakeChest(), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
+    hands: storagePorts, pendingChest: at => storage.pendingChest(at), chest: options => storage.chest(options), porch: () => { const o = shared.playerHouse?.origin; return o ? { stand: { x: o.x + 3, y: o.y, z: o.z + 10 }, avoid: [8, 9].flatMap(dz => [0, 1, 2].map(dy => ({ x: o.x + 3, y: o.y + dy, z: o.z + dz }))) } : null }, canBuild: () => !!shared.playerHouse?.origin && require('./house/house-repair').houseDuty(shared.playerHouse) === null && storage.canMakeChest(), buildHeld: () => chestBuildHeld({ house: shared.playerHouse, pairs: storage.chestWork }), climb: climbUp, door: () => houseDoor(), porchWalk: () => shared.playerHouse?.origin ? house.closeIn(shared.playerHouse.origin) : false, spares: () => { const o = shared.playerHouse?.origin; return o ? [{ x: o.x + 5, y: o.y + 1, z: o.z + 3 }] : [] }, walk: target => hands.walk(target), approach: (target, within) => hands.approach(target, within), build: require('./player-build-walk').createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }),
     // The return checks each precondition itself: out of the water, out of the house, then the raw long travel.
     travel: { to: (input, options) => quarry.travelTo(input, options), status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel() },
     water: { needed: () => water.needed(), exit: aborted => water.exit(aborted) },

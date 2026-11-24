@@ -102,6 +102,7 @@ function wakeReason (goal, seen) {
   // Supplies as a number (the chests the held material makes) wake only by growing; an unknown inventory says nothing.
   const more = typeof hold.supplies === 'number' && typeof seen.supplies === 'number' ? seen.supplies > hold.supplies : typeof hold.supplies === 'number' ? false : seen.supplies !== hold.supplies
   if (kinds.includes('supplies_changed') && hold.supplies !== null && hold.supplies !== undefined && more) return 'SUPPLIES_CHANGED'
+  if (kinds.includes('build_free') && seen.buildFree === true) return 'BUILD_FREE'
   if (kinds.includes('inventory_update') && seen.inventoryKnown === true) return 'INVENTORY_RECEIVED'
   if (kinds.includes('terrain_received') && seen.terrain === true) return 'TERRAIN_RECEIVED'
   if (kinds.includes('owner_released') && seen.settled === true) return 'OWNER_RELEASED'

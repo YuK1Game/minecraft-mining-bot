@@ -568,3 +568,35 @@ test('a chest that is wanted for the kit and gives nothing answers with its own 
   await sim.sleep(60000)
   assert.equal(await runtime.base.tick(), null)
 })
+
+// Real Realm 2026-11-24 17:06 JST: 8 logs and 4 planks held, the base chests
+// full, and the house repair running. canBuild() said no for the repair, and
+// the goal was held as NO_CHEST_MATERIAL "no wood", woken only by time. What
+// keeps the chest from being made is the house work, and its end wakes the goal.
+test('held while the house work keeps a new chest from being made, the goal is not "no wood" and wakes when the work ends', async () => {
+  const sim = createReturnSim({ feet: { x: 8.5, y: GROUND, z: 3.5 }, items: [...KIT, [2, 'diamond', 40], [3, 'oak_log', 8]] })
+  sim.shared.playerBase = sim.placeChest(5, GROUND, 0, { fill: 27 })
+  sim.agent.running = true
+  let repairing = true
+  const runtime = sim.mount({ canBuild: () => !repairing && sim.held('chest') >= 1, buildHeld: () => repairing ? 'HOUSE_WORK' : null })
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.state === 'held', ms: 600000 })
+  assert.equal(sim.goal(runtime)?.hold.code, 'HOUSE_WORK', sim.log.join('\n'))
+  assert.ok(sim.goal(runtime).hold.kinds.includes('build_free'))
+  assert.equal(lines(sim, /新しいチェストを作る木がありません/).length, 0, sim.log.join('\n'))
+  await sim.run(runtime, { ms: 120000 })
+  assert.equal(sim.goal(runtime)?.wakes, 0, 'nothing changed: still held')
+  repairing = false
+  await sim.run(runtime, { until: () => sim.goal(runtime)?.wakes === 1, ms: 30000 })
+  assert.equal(sim.goal(runtime)?.wakes, 1, sim.log.join('\n'))
+  assert.equal(lines(sim, /BUILD_FREE/).length, 1, sim.log.join('\n'))
+})
+
+test('chestBuildHeld reads the house duty and the chest record', () => {
+  const { chestBuildHeld } = require('../src/modes/chest-build-held')
+  const origin = { x: 0, y: 64, z: 0 }
+  const ready = { ready: () => true }
+  assert.equal(chestBuildHeld({ house: null, pairs: ready }), null)
+  assert.equal(chestBuildHeld({ house: { origin, done: true, built: true }, pairs: ready }), null)
+  assert.equal(chestBuildHeld({ house: { origin, done: false, built: true, repair: { state: 'running', since: 1 } }, pairs: ready }), 'HOUSE_WORK')
+  assert.equal(chestBuildHeld({ house: { origin, done: true, built: true }, pairs: { ready: () => false } }), 'CHEST_PENDING')
+})
