@@ -225,7 +225,7 @@ function createMineLighting (ctx, actions) {
     }
     for (const torch of cells.torch ?? []) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
-      if (!placementSupportOk(block(torch.support))) return wait('MINE_TORCH_SUPPORT_UNKNOWN')
+      if (!wallClosed(torch.support, block(torch.support))) return wait('MINE_TORCH_SUPPORT_UNKNOWN')
       if (block(torch.position)?.known === true && block(torch.position).name === 'minecraft:torch') continue
       const stand = await placementStand({ ...torch, clicked: torch.support, name: 'torch' })
       if (!stand.plan) return stand.result

@@ -93,3 +93,45 @@ test('upgradeMineGeometry expands an unstarted 48x48 site to 128x128 with identi
     assert.equal(upgradeMineGeometry(upgraded, { width: 128, length: 128 }), null)
   }
 })
+
+test('mine-lighting accepts a solidly-supported gravel side wall and wall-torch support, while rejecting floating gravel', async () => {
+  const { createMineLighting } = require('../src/modes/mining/mine-lighting')
+  const { mineSteps, stepCells } = require('../src/modes/mining/mine-geometry')
+  const plan = createMineGeometry({ scope, anchor: { x: 0, z: 0 }, direction: 'east', width: 16, length: 16, surfaceY: 64, upperY: 16 })
+  const step = mineSteps(plan, { layer: 'upper' })[0]
+  const cells = stepCells(plan, step)
+  const torch = cells.torch[0]
+  assert.ok(torch, 'storage step must define a wall torch')
+  const blocks = new Map()
+  const key = p => `${p.x},${p.y},${p.z}`
+  const solidBlock = name => ({ known: true, name: `minecraft:${name}`, boundingBox: 'block', runtimeId: 1, extra: [] })
+  const airBlock = () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty', runtimeId: 0, extra: [] })
+  const slabBlock = () => ({ known: true, name: 'minecraft:cobblestone_slab', boundingBox: 'block', runtimeId: 2, properties: { 'minecraft:vertical_half': 'bottom' }, extra: [] })
+  const torchBlock = () => ({ known: true, name: 'minecraft:torch', boundingBox: 'empty', runtimeId: 3, extra: [] })
+  for (const p of cells.clear) blocks.set(key(p), airBlock())
+  for (const f of cells.floor) blocks.set(key(f.position), slabBlock())
+  // Side wall behind the torch is a 2-high gravel column resting on stone below.
+  blocks.set(key(torch.support), solidBlock('gravel'))
+  blocks.set(key({ ...torch.support, y: torch.support.y - 1 }), solidBlock('gravel'))
+  blocks.set(key({ ...torch.support, y: torch.support.y - 2 }), solidBlock('stone'))
+  for (const t of cells.torch) blocks.set(key(t.position), torchBlock())
+  const getBlock = (x, y, z) => blocks.get(`${x},${y},${z}`) ?? solidBlock('stone')
+  const lighting = createMineLighting({
+    getBlock,
+    getFeet: () => cells.stand,
+    cancelled: () => false,
+    signal: new AbortController().signal,
+    memory: { early: { mine: { branch: { progress: { upper: { cursor: 0 } }, shaft: { landings: { upper: true } } } } } }
+  }, {
+    block: p => getBlock(p.x, p.y, p.z),
+    inventory: () => ({ known: true, items: [] }),
+    done: code => ({ status: 'completed', code, serverConfirmed: true })
+  })
+  const ok = await lighting.finish(plan, cells)
+  assert.equal(ok.status, 'completed', JSON.stringify(ok))
+  // Removing stone support under the gravel column turns it into floating gravel and must block.
+  blocks.set(key({ ...torch.support, y: torch.support.y - 2 }), airBlock())
+  const bad = await lighting.finish(plan, cells)
+  assert.equal(bad.status, 'blocked', JSON.stringify(bad))
+  assert.equal(bad.code, 'MINE_CAVE_BOUNDARY_UNSAFE')
+})
