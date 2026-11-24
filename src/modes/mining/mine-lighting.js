@@ -4,7 +4,7 @@ const { completed, partial, blocked, interrupted } = require('../return/return-r
 const { classifyMineCell, isMineTorchTarget, mineSteps, stepCells } = require('./mine-geometry')
 const { key, air, solid, bottomSlab, confirmed, held, FILL_BLOCKS, fillMaterial } = require('./mine-observed')
 const { low } = require('../low-block')
-const { placementSupportOk } = require('../../quarry/storage/storage-site-terrain')
+const { placementSupportOk, supportIssue } = require('../../quarry/storage/storage-site-terrain')
 const { shaftBoundary } = require('./mine-shaft-boundary')
 const { canSeePlacementFloor } = require('../../actions/interaction-sight')
 const { visibleMinePlacement } = require('./mine-actions')
@@ -150,6 +150,12 @@ function createMineLighting (ctx, actions) {
     let changed = 0, later = null
     const open = []
     const pause = () => partial('MINE_FINISH_IN_PROGRESS', { progress: { confirmedBlocks: changed } })
+    const clearSet = new Set((cells.clear ?? []).map(key))
+    const wallClosed = (p, b) => placementSupportOk(b) || (
+      !clearSet.has(key({ ...p, y: p.y - 1 })) &&
+      b?.known === true && !b.extra?.length && /^minecraft:(?:gravel|sand|red_sand)$/.test(b.name ?? '') &&
+      supportIssue(block, { x: p.x, y: p.y + 1, z: p.z }) === null
+    )
     // The opening ends here. An adjoining cave is closed, never treated as
     // part of the mine simply because its first cell was received as air.
     for (const p of walls) {
@@ -179,7 +185,7 @@ function createMineLighting (ctx, actions) {
         const out = await actions.place(stand.plan)
         if (!confirmed(out)) return out
         if (++changed >= 12) return pause()
-      } else if (!placementSupportOk(b)) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
+      } else if (!wallClosed(p, b)) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
     }
     for (const p of floors) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')
@@ -227,7 +233,7 @@ function createMineLighting (ctx, actions) {
       if (!confirmed(out)) return out
       if (++changed >= 12) return pause()
     }
-    if (!boundary(plan, cells).every(p => placementSupportOk(block(p)))) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
+    if (!boundary(plan, cells).every(p => wallClosed(p, block(p)))) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
     if (!floors.every(p => bottomSlab(block(p))) || !targets.every(p => {
       const head = { ...p, y: p.y + 1 }, retained = cells.retainedTorchSupport
       if (retained && key(retained.support) === key(head)) {

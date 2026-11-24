@@ -69,4 +69,8 @@ test('house sand with open air above may be dug on request, beside other sand; s
   assert.equal(buried.mining.preview([{ ...buried.target, accessPreparation: 'house_sand' }]).ready, false, 'sand above still refuses')
   const gravel = fixture(); gravel.set(gravel.target, 'gravel')
   assert.equal(gravel.mining.preview([{ ...gravel.target, accessPreparation: 'house_sand' }]).ready, false)
+  // Top-exposed mine gravel may be cleared top-down on explicit mine_gravel request, while gravel above still refuses.
+  assert.equal(gravel.mining.preview([{ ...gravel.target, accessPreparation: 'mine_gravel' }]).ready, true)
+  gravel.set({ x: 1, y: 66, z: 0 }, 'gravel')
+  assert.equal(gravel.mining.preview([{ ...gravel.target, accessPreparation: 'mine_gravel' }]).ready, false, 'gravel above mine_gravel still refuses')
 })

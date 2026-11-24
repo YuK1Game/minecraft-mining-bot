@@ -20,14 +20,21 @@ function inspectDig (ctx, target, branch = null, kind = null) {
   const shaft = branch?.plan?.shaft
   const clearEntryPlant = kind === 'shaft_entry_plant' && target.y === shaft?.topY && clearableSitePlant(block) &&
     [shaft.ladder, shaft.ladder.support].some(p => p.x === target.x && p.z === target.z)
-  if (block.protected || block.protectionSource || !owned && !isMineNaturalBlock(block) && !clearEntryPlant || wet(block)) return { code: 'MINE_PROTECTED_OR_UNSAFE', target }
+  const clearMineGravel = kind === 'corridor' && block.name === 'minecraft:gravel' && block.natural !== false && !block.protected && !block.protectionSource && !block.extra?.length
+  if (block.protected || block.protectionSource || !owned && !isMineNaturalBlock(block) && !clearEntryPlant && !clearMineGravel || wet(block)) return { code: 'MINE_PROTECTED_OR_UNSAFE', target }
   const neighbours = SIDES.map(([x,y,z]) => cell(target,x,y,z))
   const unknown = neighbours.filter(p => at(ctx, p)?.known !== true)
   if (unknown.length) return { unknown }
   if (neighbours.some(p => wet(at(ctx,p))) || /gravel|sand$/.test(at(ctx,cell(target,0,1,0))?.name ?? '')) return { code: 'MINE_HAZARD', target }
   const feet = ctx.getFeet()
   if (feet && Math.floor(feet.x) === target.x && Math.floor(feet.z) === target.z && target.y < feet.y && feet.y - target.y <= 1.05) return { code: 'MINE_OWN_FLOOR', target }
-  return { clear: false, ...(clearEntryPlant ? { clearEntryPlant: true } : {}) }
+  return { clear: false, ...(clearEntryPlant ? { clearEntryPlant: true } : {}), ...(clearMineGravel ? { clearMineGravel: true } : {}) }
+}
+
+function digTarget (target, block, checked) {
+  if (checked?.clearEntryPlant) return { ...target, accessPreparation: 'quarry', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
+  if (checked?.clearMineGravel) return { ...target, accessPreparation: 'mine_gravel', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
+  return target
 }
 
 async function digCell (ctx, branch, target, kind = 'corridor') {
@@ -37,9 +44,7 @@ async function digCell (ctx, branch, target, kind = 'corridor') {
   if (checked.code) return blocked(checked.code, '坑道の予定範囲に掘れない地形があります。', 'position_changed')
   if (checked.clear) return { ...results.completed('MINE_ALREADY_CLEAR'), serverConfirmed: true }
   const block = at(ctx, target)
-  const miningTarget = checked.clearEntryPlant
-    ? { ...target, accessPreparation: 'quarry', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
-    : target
+  const miningTarget = digTarget(target, block, checked)
   const out = await action(ctx, branch, { kind: 'dig', purpose: kind, target: { ...target }, expectedName: block.name },
     () => ctx.minePorts.mine(miningTarget), () => air(at(ctx,target)))
   if (received(out)) for (const name of ['temporarySeals','supportFills']) if (branch[name]) branch[name]=branch[name].filter(p=>key(p)!==key(target))
@@ -67,11 +72,17 @@ async function excavateSegment (ctx, branch, step, cells) {
       .sort((a, b) => far(a) - far(b) || b.y - a.y)
     if (!remaining.length) break
 
-    const candidates = remaining.filter(p => inspectDig(ctx, p, branch).clear === false)
+    const candidateChecks = new Map()
+    const candidates = remaining.filter(p => {
+      const checked = inspectDig(ctx, p, branch, 'corridor')
+      if (checked.clear === false) { candidateChecks.set(key(p), checked); return true }
+      return false
+    })
+    const previewTarget = p => digTarget(p, at(ctx, p), candidateChecks.get(key(p)))
     // A nearer block can be hidden behind the next visible face. Prefer a
     // face the normal mining preview accepts now and reconsider the rest
     // after the received air update.
-    let target = candidates.find(p => ctx.hands.canMine(p))
+    let target = candidates.find(p => ctx.hands.canMine(previewTarget(p)))
     if (!target && candidates.length) {
       // Finishing a previous segment may have left a torch or slab in the
       // hand. Prepare a suitable tool for a visible face, then use the same
@@ -83,7 +94,7 @@ async function excavateSegment (ctx, branch, step, cells) {
       })
       if (prepare && await ctx.hands.pick(prepare)) {
         if (!live(ctx)) return stopped()
-        target = candidates.find(p => ctx.hands.canMine(p))
+        target = candidates.find(p => ctx.hands.canMine(previewTarget(p)))
       }
     }
     if (target) {
@@ -120,7 +131,7 @@ async function excavateSegment (ctx, branch, step, cells) {
       return !ownFloor && visibleFrom(target, p)
     }))
     if (!stand || triedStands.size >= 6) {
-      const detail = ctx.hands.reason?.(candidates[0]) ?? '確認済みの足場から採掘面に届きません。'
+      const detail = ctx.hands.reason?.(previewTarget(candidates[0])) ?? '確認済みの足場から採掘面に届きません。'
       const said = ctx.shared && (ctx.shared.mineDigRefusedSaid ??= {})
       const sig = `${step?.id}:${key(candidates[0])}:${detail}`
       if (said && said.sig !== sig) {

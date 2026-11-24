@@ -66,6 +66,9 @@ function targetList (targets) {
     } else if (position.accessPreparation === 'house_sand') {
       // Player mode's house glass: sand or red sand with open air above (checked in validate).
       Object.assign(target, { accessPreparation: 'house_sand' })
+    } else if (position.accessPreparation === 'mine_gravel') {
+      // Planned branch mine: top-exposed natural gravel cleared top-down (hazard checks still enforce no gravel above).
+      Object.assign(target, { accessPreparation: 'mine_gravel', expectedName: 'minecraft:gravel', expectedRuntimeId: position.expectedRuntimeId ?? null })
     } else if (position.accessPreparation === 'hand_dig') {
       // The player's climb with every pickaxe worn out: plain rock by hand,
       // slowly and without a drop (checked in validate).
@@ -281,6 +284,8 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     // was refused 「このブロックは自動採掘の対象外です: sand」).
     const houseSand = target.accessPreparation === 'house_sand' && /^(?:red_)?sand$/.test(name)
     if (target.accessPreparation === 'house_sand' && !houseSand) throw new Error(`砂だけを掘ります: ${name}`)
+    const mineGravel = target.accessPreparation === 'mine_gravel' && name === 'gravel' && !block.protected && !block.protectionSource && !isProtected(target, state, block)
+    if (target.accessPreparation === 'mine_gravel' && !mineGravel) throw new Error(`採掘場の砂利だけを掘ります: ${name}`)
     const stronghold = target.accessPreparation === 'stronghold_access'
     if (stronghold && (state.dimension !== 'overworld' || block.name !== target.expectedName || block.runtimeId !== target.expectedRuntimeId || pickTier(state) < 1 || block.protected || block.protectionSource || isProtected(target, state, block))) throw Error('要塞の対象・ツルハシを再確認しています。')
     const endTarget = target.accessPreparation === 'end_expedition'
@@ -289,7 +294,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (ingredient && (state.dimension !== 'nether' || block.name !== target.expectedName || block.protected || block.protectionSource || isProtected(target, state, block))) throw new Error('取得したネザーの素材だけを掘れます。')
     const farmHarvest = target.accessPreparation === 'farm_harvest'
     if (farmHarvest && (state.dimension !== 'overworld' || block.name !== target.expectedName || block.runtimeId !== target.expectedRuntimeId || name === 'wheat' && block.properties?.growth !== 7 || block.protected || block.protectionSource || isProtected(target, state, block))) throw new Error('収穫対象が変わったか、作物がまだ育っていません。')
-    if (!farmHarvest && !endTarget && !quarry && !ingredient && !stronghold && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !ownedStation && !logAllowed && !leafDown && !houseDoor && !houseSand) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    if (!farmHarvest && !endTarget && !quarry && !ingredient && !stronghold && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !ownedStation && !logAllowed && !leafDown && !houseDoor && !houseSand && !mineGravel) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     const handDig = target.accessPreparation === 'hand_dig'
     if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)
