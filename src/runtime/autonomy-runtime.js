@@ -9,7 +9,7 @@ function createAutonomyRuntime (rt) {
   // Ore no tunnel reaches is not searched again at every decision (survival/tunnel-dead-targets.js).
   const deadTargets = rt.require('./survival/tunnel-dead-targets').createDeadTargets()
   // Every port is timed for the stall log (common/work-spans.js).
-  const autonomy = rt.createAutonomy(require('../common/work-spans').wrapAll('autonomy', {
+  const autonomy = rt.createAutonomy({ actionIntervalMs: 120, ...require('../common/work-spans').wrapAll('autonomy', {
     requestWorkClearance: () => rt.idleSafety?.requestWorkClearance?.() ?? { pending: false },
     getState: () => {
       const state = rt.observedState(), knownLife = Number.isSafeInteger(rt.host.shared.deathRespawn?.deathId) && rt.host.shared.deathRespawn.deathId >= 0
@@ -304,7 +304,7 @@ function createAutonomyRuntime (rt) {
       rt.host.noteProgress(progress)
       rt.host.shared.onAutonomyProgress?.(progress)
     }
-  }))
+  }) })
   return {
     get autonomy () { return autonomy }
   }

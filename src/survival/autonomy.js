@@ -175,18 +175,20 @@ function observationFingerprint (state, observations) {
   return String(hash)
 }
 
-function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {}, onProgress = () => {}, intervalMs = 1000, planAction = nextBootstrapAction, planSafety = null, observeSafety = null, requestWorkClearance = null }) {
+function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {}, onProgress = () => {}, intervalMs = 1000, actionIntervalMs = null, planAction = nextBootstrapAction, planSafety = null, observeSafety = null, requestWorkClearance = null }) {
   if (typeof getState !== 'function' || typeof observe !== 'function' || !actions || typeof actions !== 'object') throw new Error('自律実行には状態取得・観測・実行器が必要です。')
   if (typeof planAction !== 'function') throw new Error('自律実行には次の作業を返す判断関数が必要です。')
   if (planSafety !== null && typeof planSafety !== 'function') throw new Error('安全判断には関数またはnullを指定してください。')
   if (observeSafety !== null && typeof observeSafety !== 'function') throw new Error('安全観測には関数またはnullを指定してください。')
   if (requestWorkClearance !== null && typeof requestWorkClearance !== 'function') throw new Error('作業前の退避確認には関数またはnullを指定してください。')
   intervalMs = positive(intervalMs, 1000, 60000)
+  actionIntervalMs = actionIntervalMs == null ? null : positive(actionIntervalMs, 120, 60000)
   let runId = 0
   let controller = null
   let timer = null
   let inFlight = null
   let running = false
+  let lastFast = false
   let options = null
   let previousCounts = null
   let rememberedExplorationBudget = null
@@ -581,6 +583,7 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
         status.progress.actionsReturned++
         if (decision.type === 'explore') status.progress.explorations++
         status.progress.consecutiveSafetyInterruptions = 0
+        lastFast = true
         trace('action_returned', '実行器が終了しました。達成状況は次の持ち物・周囲の観測で確認します。', { type: decision.type, serverConfirmed: returned?.serverConfirmed ?? null })
       }
       await notify('progress', snapshot(), signal)
@@ -629,12 +632,14 @@ function createAutonomy ({ getState, observe, actions = {}, onDecision = () => {
 
   function schedule () {
     if (!running || timer) return
-    timer = setTimeout(() => { timer = null; void tick() }, intervalMs)
+    const delay = lastFast && actionIntervalMs !== null && intervalMs < 10000 ? Math.min(intervalMs, actionIntervalMs) : intervalMs
+    timer = setTimeout(() => { timer = null; void tick() }, delay)
   }
   function tick () {
     if (inFlight) return inFlight
     if (!running) return Promise.resolve(snapshot())
     clearTimeout(timer); timer = null
+    lastFast = false
     status.busy = true
     const id = runId
     const signal = controller.signal

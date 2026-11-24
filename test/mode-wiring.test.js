@@ -139,3 +139,31 @@ test('player start resumes a witnessed End exit through the real mode dispatcher
   assert.equal(initial.calls.includes('agent.start:diamond'), false)
   assert.equal(mode.set('quarry').changed, true)
 })
+
+test('autonomy schedules actionIntervalMs after a completed action and keeps intervalMs on wait', async t => {
+  const { createAutonomy } = require('../src/survival/autonomy')
+  const delays = []
+  let mode = 'act'
+  const origSetTimeout = globalThis.setTimeout
+  t.mock.method(globalThis, 'setTimeout', (fn, ms, ...args) => {
+    if (ms >= 50 && ms <= 2000) delays.push(ms)
+    const handle = origSetTimeout(fn, ms >= 50 && ms <= 2000 ? 60000 : ms, ...args)
+    handle.unref?.()
+    return handle
+  })
+  const agent = createAutonomy({
+    getState: () => ({ phase: 'spawned', health: 20, position: { x: 0, y: 64, z: 0 }, inventory: { known: true, items: [] }, idleProtection: { running: true, wanted: true, busy: false, phase: 'observing' } }),
+    observe: () => ({ entities: [] }),
+    planAction: () => mode === 'act' ? { type: 'probe', reason: 'step' } : { type: 'wait', reason: 'hold' },
+    actions: { probe: async () => ({ ok: true, phase: 'completed', serverConfirmed: true }) },
+    intervalMs: 1000,
+    actionIntervalMs: 120
+  })
+  agent.start()
+  await agent.tick()
+  assert.equal(delays.at(-1), 120, `completed action schedules fast continuation: ${JSON.stringify(delays)}`)
+  mode = 'wait'
+  await agent.tick()
+  assert.equal(delays.at(-1), 1000, `wait decision keeps full intervalMs: ${JSON.stringify(delays)}`)
+  await agent.stop('done')
+})

@@ -12,7 +12,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
   const inventoryReady = () => received()?.known === true
   const items = () => received()?.items ?? []
   const count = test => items().filter(item => item?.count > 0 && test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
-  const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
+  const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(50) } return test() }
   let why = null
   const refused = error => { why = String(error?.message ?? error).slice(0, 160); return false }
   async function patient (run, retry = () => true) {
@@ -20,7 +20,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     for (;;) {
       try { return await run() } catch (error) {
         if (!retry() || !/待って|待機|使用中|確認しています/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
-        await sleep(300)
+        await sleep(100)
       }
     }
   }

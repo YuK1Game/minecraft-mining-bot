@@ -355,12 +355,25 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const lifeKey = () => require('../common/life-key').lifeKey(runtime.host(), () => runtime.raw())
   const active = () => !disposed() && control.get() === 'player' && shared.playerWanted === true
   const getBlock = (x, y, z) => runtime.host().world.getBlock(x, y, z)
+  let fastExpeditionTimer = null
+  const clearFastExpedition = () => { if (fastExpeditionTimer) { clearTimeout(fastExpeditionTimer); fastExpeditionTimer = null } }
   const cancelExpedition = () => {
+    clearFastExpedition()
     if (expedition?.busy() && quarry.travelStatus?.()?.busy) void Promise.resolve(quarry.cancelTravel()).catch(() => {})
     expedition?.cancel()
   }
   expedition = createDragonRuntime({
     operations, runtime, shared, root, active, log, getBlock, lifeKey, getFeet: () => feetNow(), incidents, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
+    onStepDone: info => {
+      if (disposed() || !active() || fastExpeditionTimer) return
+      const delay = info?.ms >= 100 ? 100 : 400
+      fastExpeditionTimer = setTimeout(() => {
+        fastExpeditionTimer = null
+        if (disposed() || !active()) return
+        whoOwns(expedition.tick())
+      }, delay)
+      fastExpeditionTimer.unref?.()
+    },
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
     legacyBusy: () => dispatcher.anyActive() || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || owner.held(),
@@ -401,7 +414,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const ground = createGroundRefresh({ getCorrection: () => shared.lastServerCorrection, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getDimension: () => runtime.raw().dimension, send: request => runtime.host().client.queue('subchunk_request', request), log })
   // The shelter is checked every two seconds; a reloaded runtime's timer ends itself.
   scheduler.every('player-mode', 2000, () => {
-    if (disposed()) { expedition.cancel(); scheduler.disposeAll(); return }
+    if (disposed()) { clearFastExpedition(); expedition.cancel(); scheduler.disposeAll(); return }
     void resume.note()
     try { const gone = control.get() === 'player' ? pruneTunnelFloors(shared, runtime.raw(), where()) : 0; if (gone) log(`プレイヤーモード: 帰路の床の記録が多いため、遠いものから ${gone} 個を外しました`) } catch { /* The next tick retries. */ }
     try { if (shared.playerWanted === true) ground.tick() } catch { /* The next tick retries. */ }

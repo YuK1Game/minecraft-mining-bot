@@ -18,7 +18,7 @@ const { isOpen } = require('../movement/door-cell')
 function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, getMotion, getHealth = () => null, getHeld = () => null, getScope = () => null, pillarStep, disposed = () => false, log = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now }) {
   const block = (x, y, z) => getBlock(x, y, z)
   const air = cell => { const found = block(cell.x, cell.y, cell.z); return found?.known === true && AIR.test(found.name ?? '') }
-  const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(200) } return test() }
+  const until = async (test, ms) => { const end = now() + ms; while (now() < end && !disposed()) { if (test()) return true; await sleep(50) } return test() }
   const stacks = () => (getInventory()?.items ?? []).filter(item => item?.name === DIRT && item.count > 0)
   const dirt = () => getInventory()?.known === true ? stacks().reduce((sum, item) => sum + item.count, 0) : 0
 
@@ -38,7 +38,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     for (;;) {
       try { start(); return true } catch (error) {
         if (!WAIT.test(String(error?.message ?? '')) || now() >= end || disposed()) return refused(error)
-        await sleep(300)
+        await sleep(100)
       }
     }
   }
@@ -52,7 +52,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   async function land () {
     if (typeof operations.movement.settle !== 'function') return false
     try { operations.movement.settle({ maxTicks: 40, maxDrop: 1, maxHorizontal: 1 }) } catch (error) { return refused(error) }
-    await sleep(200)
+    await sleep(50)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
     return true
   }
@@ -70,7 +70,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     const cost = cell => toward ? Math.hypot(cell.x - toward.x, cell.z - toward.z) : Math.hypot(cell.x - at.x, cell.z - at.z)
     for (const cell of out.sort((a, b) => cost(a) - cost(b)).slice(0, 4)) {
       if (!await begin(() => operations.movement.start(cell, { lowStepDown: true, maxDistance: 2, maxTicks: 40 }))) continue
-      await sleep(300)
+      await sleep(50)
       await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
       if (!offGrid(getFeet())) return true
     }
@@ -84,7 +84,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     if (!adrift(block, getFeet())) return false
     for (const stand of footings(block, getFeet(), toward)) {
       if (!await begin(() => operations.movement.start(stand.target, stand.options))) continue
-      await sleep(300)
+      await sleep(50)
       await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 5000)
       const at = getFeet()
       if (at && !offGrid(at) && !adrift(block, at)) return true
@@ -116,7 +116,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     if (!started && landing && await land()) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     if (!started && landing && offGrid(getFeet()) && await stepOff(target)) started = await begin(() => operations.movement.start(target, { maxDistance: 16 }))
     if (!started) return false
-    await sleep(300)
+    await sleep(50)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 12000)
     const at = getFeet()
     const there = !!at && Math.hypot(at.x - target.x, at.z - target.z) <= 0.45 && Math.abs(at.y - target.y) <= 0.2
@@ -283,7 +283,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // `fall` over three (the route asked for it, build-route.js `maxFall`) is a jump that costs health.
   async function drop (target, fall = 3) {
     if (!await begin(() => operations.movement.start(target, { controlledDrop: true, dropLimit: Math.min(6, Math.max(3, Math.round(fall))), maxDistance: 2, maxTicks: 80 }))) return false
-    await sleep(300)
+    await sleep(50)
     await until(() => !['moving', 'settling'].includes(getMotion()?.phase), 6000)
     const at = getFeet()
     return !!at && Math.floor(at.x) === Math.floor(target.x) && Math.floor(at.z) === Math.floor(target.z) && Math.abs(at.y - target.y) < 0.3

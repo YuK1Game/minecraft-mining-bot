@@ -128,3 +128,30 @@ test('a life or dimension change is not reported as a hit alone', async t => {
   assert.deepEqual(f.controls.why, { hurtOnly: false })
   release(); await f.job.settled()
 })
+
+test('onStepDone fires after a working step and not after a waiting or failed step', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'player-expedition-fast-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const raw = { profile: 'bot', realm: { id: 'test' }, connectionId: 'a', startedAt: 't', dimension: 'overworld',
+    health: 20, phase: 'spawned', lifecycle: { deathId: 0 }, inventory: { known: true, items: [] } }
+  const state = createDragonState({ root, shared: {}, getState: () => raw })
+  const doneEvents = []
+  let nextResult = { phase: 'working', reason: '採掘を進めます' }
+  const job = createDragonExpedition({
+    state, raw: () => raw, active: () => true,
+    legacyNeeded: () => false, legacyBusy: () => false, legacyIdle: () => true,
+    stopLegacy: () => {}, finish: () => {},
+    lifeKey: () => 'a/overworld/0', loading: () => false,
+    onStepDone: info => doneEvents.push(info),
+    run: async () => nextResult
+  })
+  job.tick(); await job.settled()
+  assert.equal(doneEvents.length, 1)
+  assert.equal(doneEvents[0].phase, 'working')
+  nextResult = { phase: 'waiting', reason: '待機', wait: { code: 'OWNER' } }
+  job.tick(); await job.settled()
+  assert.equal(doneEvents.length, 1, 'waiting step must not trigger fast continuation')
+  nextResult = { phase: 'working', reason: '失敗', result: { status: 'failed', code: 'X' } }
+  job.tick(); await job.settled()
+  assert.equal(doneEvents.length, 1, 'failed outcome must not trigger fast continuation')
+})

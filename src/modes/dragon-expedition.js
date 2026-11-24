@@ -18,7 +18,7 @@ const CARRY_MS = 5000
 // - A wait on purpose is named by a code (`wait: { code }` in the step's answer, or `ports.wait(code)` while
 //   it runs); the limit of each code is the ledger's (goal/goal-ledger.js WAITS).
 // - An exception is an outcome (`failed`, STEP_THREW), shown as 「recovering」, and is not a wait.
-function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy, legacyIdle, stopLegacy, run, lifeKey = () => null, loading = () => false, finish = () => {}, log = () => {}, now = Date.now }) {
+function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy, legacyIdle, stopLegacy, run, lifeKey = () => null, loading = () => false, finish = () => {}, onStepDone = null, log = () => {}, now = Date.now }) {
   let job = null, displayed = null, recoveringHealth = false, previousHealth = null
   let currentController = null, fence = null, acting = false, stepSince = 0
   let runs = 0, live = null, last = null
@@ -93,6 +93,7 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     if (seen.health >= 18) recoveringHealth = false
     const before = JSON.stringify(record)
     acting = true
+    mine.acted = true
     const result = await run(record, controller.signal, recoveringHealth, { n: mine.n, wait: code => { if (live === mine) mine.wait = code ? { code } : null } })
     // Given up while it ran (abandon): another step owns the flags now.
     if (controller !== currentController) return
@@ -136,6 +137,9 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
       currentController = null
       last = { wait: entry.wait, outcome: entry.outcome }
       live = null
+      if (typeof onStepDone === 'function' && entry.acted === true && !controller.signal.aborted && active() && !entry.wait && entry.outcome?.status !== 'failed' && !['waiting', 'recovering', 'completed'].includes(displayed?.phase)) {
+        try { onStepDone({ ms: now() - entry.since, phase: displayed?.phase ?? null, reason: displayed?.reason ?? null }) } catch {}
+      }
     })
     job = mine
     stepSince = now()
