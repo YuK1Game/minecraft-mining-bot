@@ -215,8 +215,8 @@ async function provisionFood (ctx, wanted = 32) {
     // Home visits do not consume a search direction. The six directions on
     // each ring are all visited before expanding to the next ring (up to 480m).
     const destination = index % 3 === 2 ? { x: origin.x + 3, z: origin.z + 9 } : spiralPoint(origin, index - Math.floor(index / 3))
-    // The search trip ends as soon as a food source comes into view (dragon-trip.js).
-    await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: () => { const seen = forage.preview({ stockpile: true }); return seen.ready === true && !reach.given(seen.target?.runtimeId) } })
+    // The search trip ends as soon as a fresh food source comes into view (dragon-trip.js).
+    await ctx.travelTo({ destination }, { aborted: ctx.cancelled, until: () => { const seen = forage.preview({ stockpile: true }); return seen.ready === true && !reach.missed(seen.target?.runtimeId) } })
     if (!ctx.cancelled()) state.foodSearch = index + 1
   }
   return pending('畑の成長を待ちながら、周囲の食料源を探します。')

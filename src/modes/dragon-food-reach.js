@@ -30,6 +30,8 @@ function foodReach (shared, { now = Date.now } = {}) {
   const entry = id => held[String(id)] ?? null
   // The source is not hunted from here: walked to once, or left alone.
   const given = id => (entry(id)?.count ?? 0) >= MISSES
+  // A source that already failed to reach once must not cancel a search trip when its short foraging cooldown expires.
+  const missed = id => (entry(id)?.count ?? 0) > 0
   // What a finished hunt says about its source. Returns the entry on the miss that gives it up.
   function note (result) {
     const target = result?.target
@@ -54,7 +56,7 @@ function foodReach (shared, { now = Date.now } = {}) {
   }
   // The trip is over: the hunt gets its tries again from the new place.
   function walked (id) { const seen = entry(id); if (seen) { seen.tripped = true; seen.count = 0; seen.at = now() } }
-  return { given, note, trip, walked }
+  return { given, missed, note, trip, walked }
 }
 
 module.exports = { foodReach, MISSES, CHASES, REST_MS, NEAR_M }

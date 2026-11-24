@@ -95,3 +95,21 @@ test('hunts that walk without a hit give the source up after three in a row, wit
   assert.equal(f.hunts, CHASES, 'not hunted again after the give-up')
   assert.ok(f.logs.some(line => line.includes('歩いても当てられない')))
 })
+
+test('a source that already missed once does not cancel a search trip when its short foraging cooldown expires', async () => {
+  let cooldown = false
+  const f = scene({ hunt: () => { cooldown = true; return miss(COW) } })
+  f.ctx.operations.foraging.preview = () => cooldown
+    ? { ready: false, code: 'NO_KNOWN_FOOD_SOURCE' }
+    : { ready: true, kind: 'prey', target: COW, distance: 38 }
+  f.ctx.travelTo = async (input, options) => {
+    f.trips.push(input.destination)
+    // Simulate foraging's 15 s cooldown expiring mid-trip.
+    cooldown = false
+    if (options.until) f.untils.push(options.until())
+  }
+  await f.steps(2)
+  assert.equal(f.hunts, 1)
+  assert.equal(f.trips.length, 1)
+  assert.deepEqual(f.untils, [false], 'a previously missed source must not abort an ongoing search trip')
+})
