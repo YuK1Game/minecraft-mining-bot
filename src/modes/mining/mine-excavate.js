@@ -1,6 +1,7 @@
 'use strict'
 
 const { at, air, open, wet, solid, standY, centre, key, live, inventory, received, observe, action, feetAt, blocked, stopped, results } = require('./mine-common')
+const { mineSteps, stepCells } = require('./mine-geometry')
 const { FILL_BLOCKS } = require('./mine-observed')
 const SIDES = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]
 const {isMineNaturalBlock}=require('./mine-vein-geometry')
@@ -93,23 +94,47 @@ async function excavateSegment (ctx, branch, step, cells) {
     }
     if (!candidates.length) return digCell(ctx, branch, remaining[0])
 
-    const stands = cells.clear
-      .filter(p => open(at(ctx, p)) && open(at(ctx, cell(p, 0, 1, 0))) && solid(at(ctx, cell(p, 0, -1, 0))))
-      .map(p => ({ ...centre(p), y: standY(at(ctx, cell(p, 0, -1, 0)), p.y) }))
-    if (cells.approach) stands.push(cells.approach)
+    const standMap = new Map()
+    const addStand = p => {
+      if (!open(at(ctx, p)) || !open(at(ctx, cell(p, 0, 1, 0))) || !solid(at(ctx, cell(p, 0, -1, 0)))) return
+      const s = { ...centre(p), y: standY(at(ctx, cell(p, 0, -1, 0)), p.y) }
+      standMap.set(`${p.x},${p.z}`, s)
+    }
+    for (const p of cells.clear) addStand(p)
+    // Include already-confirmed floor cells of this layer (e.g. the prior 8-wide storage slice)
+    // within reach of remaining targets so wide rooms are never limited to a single approach column.
+    const layerSteps = branch?.plan && step?.layer ? mineSteps(branch.plan, { layer: step.layer }) : []
+    const layerY = branch?.plan?.layers?.find(l => l.id === step?.layer)?.y ?? null
+    const cursor = branch?.progress?.[step?.layer]?.cursor ?? 0
+    for (const prev of layerSteps.slice(0, cursor)) {
+      for (const p of stepCells(branch.plan, prev).clear) {
+        if ((layerY == null || p.y === layerY) && candidates.some(t => Math.hypot(p.x - t.x, p.z - t.z) <= 5)) addStand(p)
+      }
+    }
+    if (cells.approach) standMap.set(`${Math.floor(cells.approach.x)},${Math.floor(cells.approach.z)}`, cells.approach)
+    const stands = [...standMap.values()]
     stands.sort((a, b) => Math.hypot(a.x - feet.x, a.y - feet.y, a.z - feet.z) -
       Math.hypot(b.x - feet.x, b.y - feet.y, b.z - feet.z))
     const stand = stands.find(p => !triedStands.has(key(p)) && !feetAt(ctx, p) && candidates.some(target => {
       const ownFloor = Math.floor(p.x) === target.x && Math.floor(p.z) === target.z && target.y <= Math.floor(p.y)
       return !ownFloor && visibleFrom(target, p)
     }))
-    if (!stand || triedStands.size >= 3) {
+    if (!stand || triedStands.size >= 6) {
       const detail = ctx.hands.reason?.(candidates[0]) ?? '確認済みの足場から採掘面に届きません。'
+      const said = ctx.shared && (ctx.shared.mineDigRefusedSaid ??= {})
+      const sig = `${step?.id}:${key(candidates[0])}:${detail}`
+      if (said && said.sig !== sig) {
+        said.sig = sig
+        ctx.log?.(`採掘場: ${step?.id ?? '?'} の (${key(candidates[0])}) を掘れません（足元 ${feet.x.toFixed(1)},${feet.y.toFixed(1)},${feet.z.toFixed(1)}・足場候補 ${stands.length}・試行 ${triedStands.size}・理由: ${detail}）`)
+      }
       return blocked('MINE_DIG_REFUSED', detail, 'position_changed')
     }
     triedStands.add(key(stand))
     const walked = await walkCell(ctx, branch, stand)
-    if (!received(walked)) return walked
+    if (!received(walked)) {
+      if (['MINE_WALK_REFUSED', 'MINE_POSITION_UNCONFIRMED'].includes(walked.code) && triedStands.size < 6) continue
+      return walked
+    }
     moved = true
   }
   if (!live(ctx)) return stopped()

@@ -316,8 +316,14 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
       // Sand beside sand being dug: it rests on its own column, not on the target.
       if (target.accessPreparation === 'house_sand' && offset.y === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) continue
       if (!quarry && offset.y === 0 && FALLING_BELOW.test(blockName(neighbour)) && !neighbour.extra?.some(layer => !AIR.has(blockName(layer)))) {
-        const rest = world.getBlock(target.x + offset.x, target.y - 1, target.z + offset.z)
-        if (rest?.known === true && rest.boundingBox === 'block' && !AIR.has(blockName(rest)) && !HAZARDS.test(blockName(rest)) && !rest.extra?.some(layer => !AIR.has(blockName(layer)))) continue
+        let supported = false
+        for (let dy = 1; dy <= 8; dy++) {
+          const rest = world.getBlock(target.x + offset.x, target.y - dy, target.z + offset.z)
+          if (rest?.known !== true || rest.boundingBox !== 'block' || AIR.has(blockName(rest)) || rest.extra?.some(layer => !AIR.has(blockName(layer)))) break
+          if (!HAZARDS.test(blockName(rest))) { supported = true; break }
+          if (!FALLING_BELOW.test(blockName(rest))) break
+        }
+        if (supported) continue
       }
       if (hazards.test(blockName(neighbour)) || neighbour.extra?.some(layer => hazards.test(blockName(layer)))) {
         throw new Error('対象の隣に液体・落下ブロックなどがあります。')
