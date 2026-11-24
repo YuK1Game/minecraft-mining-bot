@@ -96,7 +96,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   // looked like "got nowhere", so the search turned 60 degrees each time and
   // circled a hexagon around the stale point).
   // A hostile near enough to stop a side job (storage, food, house...), and who it is (work-danger.js).
-  const dangerOf = require('./work-danger').createWorkDanger({ health: () => runtime.raw()?.health, where: () => where(), hostiles: () => runtime.hostiles(), nearest: () => runtime.nearestHostile(), unreachable: actor => knownUnreachable(runtime.raw(), actor), world: () => runtime.host().world })
+  const dangerOf = require('./work-danger').createWorkDanger({ health: () => runtime.raw()?.health, where: () => where(), hostiles: () => runtime.hostiles(), nearest: () => runtime.nearestHostile(), unreachable: actor => knownUnreachable({ ...runtime.raw(), position: where() }, actor), world: () => runtime.host().world })
   const danger = dangerOf.near
   const where = () => { const position = runtime.position?.(); return position && [position.x, position.y, position.z].every(Number.isFinite) ? position : runtime.raw().position ?? null }
   // Ordinary walking, mining, placement and the pillar step, shared by the scaffold and the climb out of a tunnel.
@@ -141,7 +141,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     return riseToSky({ ports: hands, floors: recordedFloors(shared, runtime.raw()), log, aborted: stop, sky: () => !underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), build: createBuildWalk({ hands, getHouse: () => shared.playerHouse, log }) })
   }
   // The keeper of the house: observed damage starts the repair, a repair out of time is held (house/house-damage.js).
-  const houseDamage = require('./house/house-damage').createHouseDamage({ shared, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: () => feetNow(), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), dimension: () => runtime.raw().dimension, scope: () => lifeKey(), save: house => writeDurableJson(houseFile(root), houseDoc(house)), log })
+  const houseDamage = require('./house/house-damage').createHouseDamage({ shared, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getFeet: () => feetNow(), getInventory: () => shared.inventoryUncertain ? null : runtime.inventory(), dimension: () => runtime.raw().dimension, scope: () => lifeKey(), building: () => house.status().active === true, save: house => writeDurableJson(houseFile(root), houseDoc(house)), log })
   // The long trip's own way on when no walk leads on (travel/travel-detour.js): lent only while the play mode plays.
   const tripDetour = require('../travel/travel-detour').createTravelDetour({ getFeet: () => feetNow(), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), covered: () => underCover((x, y, z) => runtime.host().world.getBlock(x, y, z), where()), climb: aborted => climbUp(aborted), wet: () => water.needed(), dry: aborted => water.exit(aborted), build: (target, options) => createBuildWalk({ hands, getHouse: () => shared.playerHouse, log })(target, options), log })
   shared.travelDetour = (destination, { signal } = {}) => disposed() || control.get() !== 'player' || shared.playerWanted !== true ? null : tripDetour(destination, { aborted: () => signal?.aborted === true || disposed() || shared.playerWanted !== true })

@@ -127,7 +127,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     // a corner block out of sight and the door called it home from the sand
     // after every single sand, one glass per round trip).
     if (left.every(step => step.id === DOOR)) return left.length > 0
-    return left.some(step => step.id !== DOOR && fresh(step) && (step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true))
+    return left.some(step => step.id !== DOOR && fresh(step) && (step.ground ? workable(step) : step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true))
   }
   const failedAt = new Map()
 
@@ -453,7 +453,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
           const filled = await fillYard({ origin, getBlock, hands, aborted, log, sleep, centre: (column, base) => centreOnColumn({ column, base, feet: hands.feet, block: hands.block, walk: hands.walk, aborted }) })
           placed += filled.placed
           progress += filled.placed
-          if (!filled.placed) for (const other of todo()) if (other.ground) { fails.set(other.id, TRIES); note(other, `まわりの地面を埋め戻せません（${String(filled.why ?? '不明').slice(0, 60)}）`) }
+          if (!filled.placed && !aborted()) for (const other of todo()) if (other.ground) { fails.set(other.id, TRIES); note(other, `まわりの地面を埋め戻せません（${String(filled.why ?? '不明').slice(0, 60)}）`) }
           // The fill ends outside, in the ring: the run ends there (the next one goes in by the entrance).
           if (filled.tried) { yardEnded = true; break }
           continue
@@ -473,8 +473,9 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
           const pair = chestPairs(origin).find(pair => pair.some(other => other.id === step.id))
           if (!pair || !await work.begin(pair.map(other => other.position)) || !work.canAttempt(step.position) || aborted()) { unsettled = true; break }
         }
-        if (!await make(step, origin, left)) { if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); const lacking = ports.why() ?? lack; note(step, `${step.item} を用意できません${lacking ? `: ${lacking}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${lacking ? `: ${lacking}` : ''}）`); continue }
+        if (!await make(step, origin, left)) { if (aborted()) break; if (settling()) { unsettled = true; break } fails.set(step.id, (fails.get(step.id) ?? 0) + 1); const lacking = ports.why() ?? lack; note(step, `${step.item} を用意できません${lacking ? `: ${lacking}` : ''}`); if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を用意できません（${step.id}${lacking ? `: ${lacking}` : ''}）`); continue }
         if (await put(step)) { if (step.id !== DOOR) placed++; progress++; continue }
+        if (aborted()) break
         if (settling()) { unsettled = true; break }
         fails.set(step.id, (fails.get(step.id) ?? 0) + 1)
         note(step, String(walkWhy ?? ports.why() ?? hands.why?.() ?? (clicks(getBlock, step).length ? '置けませんでした' : 'クリックできる面がありません')).slice(0, 80))
@@ -515,13 +516,19 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     return placed
   }
 
-  let repairSince = shared.playerHouse?.repair?.since ?? null
+  let repairSince = shared.playerHouse?.repair?.since ?? null, skipNote = null
   async function tick () {
     if (shared.playerHouse?.origin && JSON.stringify(shared.playerHouse.left ?? null) !== savedLeft) await save()
     // A repair begun or begun again is a new start: the wait after the last run that placed nothing belongs to the one before.
     const since = shared.playerHouse?.repair?.state === 'running' ? shared.playerHouse.repair.since : null
     if (since !== repairSince) { repairSince = since; if (since !== null) { waitUntil = 0; failedAt.clear() } }
-    if (!live() || busy || blocked() || hostile() || travel.status()?.busy || now() < waitUntil || !due()) return null
+    if (!live() || busy || travel.status()?.busy || now() < waitUntil || !due()) return null
+    if (blocked() || hostile()) {
+      const why = hostile() ? `敵が近い（${hostileWhy() ?? '不明'}）` : '体力・空腹・ほかの作業待ち'
+      if (skipNote !== why) { skipNote = why; say(`拠点の家: 開始を待っています（${why}）`) }
+      return null
+    }
+    skipNote = null
     busy = true
     let placed = 0
     try {

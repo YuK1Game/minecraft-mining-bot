@@ -108,3 +108,64 @@ test('a hostile at the bottom of a deep shaft is shut in even when the disk has 
   assert.equal(reach.shutIn(shallow, { x: -4.5, y: 67, z: 4.5 }, { x: 0.5, y: 69, z: 0.5 }), null)
   assert.equal(reach.shutIn(terrain(() => false), { x: -4.5, y: 64, z: 4.5 }, { x: 0.5, y: 69, z: 0.5 }, { maxMs: 1000 }), true)
 })
+
+test('a melee walker in a long cave tunnel >=4 blocks below the bot is unreachable when all cells within 10m stay deep; skeletons, stairs, or unknown blocks stay unknown', () => {
+  // Surface floor at y=63 (feet 64); a 1-wide cave tunnel running along x=-30..30 at z=6, y=58..59 (floor y=57, 6 below bot).
+  // Far surface cell unreceived so the surface flood fill stays unknown.
+  const makeCave = ({ stairs = false, unknownAt = () => false } = {}) => ({
+    getBlock: (x, y, z) => {
+      if (unknownAt(x, y, z)) return { known: false }
+      if (x === 22 && z === 0 && y === 64) return { known: false }
+      const inTunnel = z === 6 && x >= -30 && x <= 30 && (y === 58 || y === 59)
+      const stairFloor = stairs && z === 6 && x >= 5 && x <= 9 ? 57 + (x - 4) : null
+      if (stairs && z === 6 && x === 4 && y === 60) return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+      if (stairFloor !== null) {
+        if (y <= stairFloor) return { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }
+        if (y <= stairFloor + 3) return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+      }
+      if (inTunnel) return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+      if (y <= 63) return { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }
+      return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+    }
+  })
+  const bot = { phase: 'spawned', dimension: 'overworld', position: { x: 0.5, y: 65.62, z: 0.5 }, threatPolicy: 'balanced_mining', health: 20, runtimeEntityId: '1' }
+  const mob = (id, entityType) => ({ runtimeId: id, kind: 'mob', entityType, hostile: true, alive: true, positionKnown: true, dimension: 'overworld', position: { x: 0.5, y: 58, z: 6.5 } })
+  const calm = { fillMs: 5000, pitMs: 5000 }
+  const zombie = mob('901', 'minecraft:zombie')
+  const archer = mob('902', 'minecraft:skeleton')
+  const creeper = mob('903', 'minecraft:creeper')
+
+  // Long cave tunnel (> PIT_RADIUS): shutIn returns null, undergroundWalker proves the zombie unreachable, while skeleton stays unknown.
+  reach.clear()
+  const cave = makeCave()
+  assert.equal(reach.shutIn(cave, zombie.position, { x: 0.5, y: 64, z: 0.5 }, { maxMs: 1000 }), null)
+  reach.refresh(bot, [zombie, archer, creeper], { world: cave, now: 1000, ...calm })
+  assert.equal(reach.knownUnreachable(bot, zombie, 1200), true)
+  assert.equal(reach.knownUnreachable(bot, archer, 1200), false)
+  assert.equal(reach.knownUnreachable(bot, creeper, 1200), false)
+
+  // Stairs rising above botFeet.y - 4 within 10 m: zombie is NOT marked unreachable.
+  reach.clear()
+  reach.refresh(bot, [zombie], { world: makeCave({ stairs: true }), now: 1000, ...calm })
+  assert.equal(reach.knownUnreachable(bot, zombie, 1200), false)
+
+  // An unreceived block inside the 10 m cave tunnel: conservative unknown.
+  reach.clear()
+  reach.refresh(bot, [zombie], { world: makeCave({ unknownAt: (x, y, z) => x === 4 && y === 58 && z === 6 }), now: 1000, ...calm })
+  assert.equal(reach.knownUnreachable(bot, zombie, 1200), false)
+
+  // Live 2026-11-25 04:52-05:08 JST: a stepped pit (drop 3 from y=64 to y=61, then drop 2 to y=59)
+  // lets the bot's flood fill drop in (asymmetric MAX_DROP=3 vs step-up=1), yet the zombie cannot
+  // climb back out to the bot. It must be proven unreachable rather than blocking work forever.
+  const steppedPit = {
+    getBlock: (x, y, z) => {
+      if (x === 4 && z === 0) return y <= 60 ? { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] } : { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+      if (x === 5 && z === 0) return y <= 58 ? { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] } : { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+      return y <= 63 ? { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] } : { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+    }
+  }
+  const pitZombie = { ...zombie, runtimeId: '904', position: { x: 5.5, y: 59, z: 0.5 } }
+  reach.clear()
+  reach.refresh(bot, [pitZombie], { world: steppedPit, now: 1000, ...calm })
+  assert.equal(reach.knownUnreachable(bot, pitZombie, 1200), true)
+})

@@ -107,6 +107,56 @@ test('a walker within 12 m counts unless there is fresh evidence of no route; an
   assert.equal(f.danger.near(), true, 'no time of the position: counted')
 })
 
+test('an enemy abort mid-put or mid-yard-fill does not lock out those steps in failedAt for 10 minutes', async () => {
+  const f = scene()
+  // Place a hostile mid-walk during put(WALL), then remove it before the 2-minute retry.
+  const origWalk = f.build
+  assert.ok(origWalk)
+  const w = createHouseWorld()
+  w.take(WALL)
+  const feet = { x: ORIGIN.x + 3.5, y: ORIGIN.y + 1, z: ORIGIN.z + 4.5 }
+  const held = [stack('iron_pickaxe', 1, 0), stack('oak_planks', 4, 1)]
+  const getBlock = (x, y, z) => y < ORIGIN.y ? { known: true, name: 'minecraft:stone', boundingBox: 'block' } : w.getBlock(x, y, z)
+  const eye = () => ({ ...feet, y: feet.y + 1.62 })
+  let clock = 1e6, actors = [], placeCalls = 0
+  const logs = [], placed = []
+  const danger = createWorkDanger({ health: () => 20, where: eye, hostiles: () => actors, world: () => ({ getBlock }), now: () => clock })
+  const shared = { playerWanted: true, playerHouse: { origin: ORIGIN, done: false, spawn: true, built: true, repair: { state: 'running', since: 1e6 } } }
+  const build = createHouseBuild({
+    getMode: () => 'player', shared, log: line => logs.push(line),
+    ports: {
+      craft: async () => false, why: () => null, reset () {}, mine: async () => false,
+      inspectChest: async () => ({ status: 'completed', evidence: { slotCount: 54 } }),
+      place: async (name, plan) => {
+        placeCalls++
+        if (placeCalls === 1) {
+          actors = [mob('skeleton', LAWN, { positionUpdatedAt: new Date(clock - 1000).toISOString() })]
+          return false
+        }
+        const step = w.steps.find(one => one.position.x === plan.position.x && one.position.y === plan.position.y && one.position.z === plan.position.z)
+        const pile = held.find(item => item.name === name && item.count > 0)
+        assert.ok(pile, name); pile.count--; placed.push(step.id); w.mend(step.id)
+        return true
+      }
+    },
+    hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
+    getBlock, getFeet: () => ({ ...feet }), getPosition: eye, getInventory: () => ({ known: true, items: held }),
+    agent: { objective: {}, stop () {}, start: async () => {}, settled: () => true }, climb: async () => ({ ok: true }),
+    travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} }, now: () => clock, sleep: async ms => { clock += ms },
+    hostile: () => danger.near(), hostileWhy: () => danger.text()
+  })
+  await build.tick()
+  assert.deepEqual(placed, [])
+  assert.ok(logs.some(line => /敵が近いため中断しました（2分後に続けます）/.test(line)))
+  assert.equal(logs.some(line => /置けなかった理由/.test(line)), false, 'aborted step is not logged as a placement failure')
+  // Two minutes later (far short of the 10-minute AGAIN_MS lockout): the retry actually runs and places WALL.
+  actors = []
+  clock += 125000
+  await build.tick()
+  assert.deepEqual(placed, [WALL])
+  assert.equal(shared.playerHouse.done, true)
+})
+
 test('health lost counts for ten seconds, with no enemy in sight', () => {
   const f = scene()
   assert.equal(f.danger.near(), false)

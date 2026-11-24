@@ -216,3 +216,35 @@ test('a repair looked at again only because its time was up, and held with the s
   const seen = hold(resume(hold(house, { now, missing: 1 }), { now, getBlock, why: 'OBSERVED' }), { now, missing: 1 })
   assert.equal(seen.repair.until - now, AGAIN_MS)
 })
+
+test('while house-build is actively running, the keeper does not hold mid-run or treat own door removal as new damage', () => {
+  let active = false
+  const w = createHouseWorld()
+  const clock = { now: 1e6 }
+  const shared = { playerHouse: { origin: ORIGIN, done: true, spawn: true } }
+  const keeper = createHouseDamage({ shared, getBlock: w.getBlock, getFeet: () => w.porch(), building: () => active, now: () => clock.now })
+  w.take('p_039')
+  keeper.tick(); clock.now += 5000
+  assert.equal(keeper.tick(), 'reopened')
+  active = true
+  // Even past GIVE_UP_MS, do not hold while the builder is mid-run.
+  clock.now += GIVE_UP_MS + 1000
+  assert.equal(keeper.tick(), null)
+  assert.equal(shared.playerHouse.repair.state, 'running')
+  // Builder temporarily removes its own door while working, then finishes and puts it back.
+  w.take('oak_door')
+  clock.now += 5000
+  assert.equal(keeper.tick(), null)
+  w.mend('oak_door')
+  active = false
+  // Once the builder stops, the keeper holds cleanly with the steady-state missing count (1).
+  assert.equal(keeper.tick(), 'held')
+  assert.equal(shared.playerHouse.repair.state, 'held')
+  assert.equal(shared.playerHouse.repair.basis.missing, 1)
+  // If another builder run were somehow active while held, transient door removal still does not wake the repair.
+  active = true
+  w.take('oak_door')
+  keeper.tick(); clock.now += 5000
+  assert.equal(keeper.tick(), null)
+  assert.equal(shared.playerHouse.repair.state, 'held')
+})

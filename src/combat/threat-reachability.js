@@ -52,8 +52,9 @@ function verdict (state, entity, now = Date.now()) {
   const feet = { ...state.position, y: state.position.y - 1.62 }
   if (!nearSeen(fill.seen, feet)) return null
   if (Math.hypot(entity.position.x - fill.origin.x, entity.position.z - fill.origin.z) > ENGAGE_RADIUS) return null
-  if (nearSeen(fill.seen, entity.position)) return true
   const sought = fill.targets?.get(String(idOf(entity)))
+  if (sought?.shutIn === true && Math.hypot(entity.position.x - sought.position.x, entity.position.y - sought.position.y, entity.position.z - sought.position.z) <= SEEK_REUSE_DISTANCE) return false
+  if (nearSeen(fill.seen, entity.position)) return true
   if (sought && Math.hypot(entity.position.x - sought.position.x, entity.position.y - sought.position.y, entity.position.z - sought.position.z) <= SEEK_REUSE_DISTANCE && sought.result !== null) return sought.result
   return fill.truncated || fill.unknown ? null : false
 }
@@ -206,6 +207,9 @@ function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK
 const PIT_RADIUS = 8
 const PIT_MAX_NODES = 300
 const PIT_TIME_LIMIT_MS = 6
+const CAVE_WALKER_RADIUS = 10
+const CAVE_WALKER_MAX_NODES = 350
+const CAVE_WALKER = /(?:^|:)(?:zombie|husk|drowned|zombie_villager|zombified_piglin|piglin|vindicator|silverfish)$/
 function shutIn (world, position, botFeet, { maxMs = PIT_TIME_LIMIT_MS } = {}) {
   // A quarter block up: a mob standing at y = 63.9999 is in the cell above.
   const feet = { x: position.x, y: position.y + 0.25, z: position.z }
@@ -222,6 +226,41 @@ function shutIn (world, position, botFeet, { maxMs = PIT_TIME_LIMIT_MS } = {}) {
     if (y > Math.floor(botFeet.y) - MAX_DROP - 1) return null
   }
   return true
+}
+
+// Single-pass pit/cave check from the hostile's cell:
+// - For any hostile: enclosed within PIT_RADIUS and deeper than MAX_DROP.
+// - For a non-climbing melee walker (zombie/husk/drowned/etc.): even in a long
+//   cave tunnel past PIT_RADIUS, if every received cell within CAVE_WALKER_RADIUS
+//   stays at least MAX_DROP + 1 below botFeet (with no unknown blocks), it cannot
+//   climb to the bot without walking > 10 m away (invalidating the 3 m reuse window).
+function checkTrapped (world, position, botFeet, { walker = false, maxMs = PIT_TIME_LIMIT_MS } = {}) {
+  const feet = { x: position.x, y: position.y + 0.25, z: position.z }
+  const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
+  const ceilingY = Math.floor(botFeet.y) - MAX_DROP - 1
+  if (start.y > ceilingY) return { trapped: null, why: 'shallow_start' }
+  const probe = walkGrid(world)
+  if (!probe.body(start.x, start.y, start.z) || probe.unknown()) return { trapped: null, why: probe.unknown() ? 'start_unknown' : 'start_blocked' }
+  const radius = walker ? CAVE_WALKER_RADIUS : PIT_RADIUS
+  const maxNodes = walker ? CAVE_WALKER_MAX_NODES : PIT_MAX_NODES
+  const region = walkableCells(world, feet, { radius, maxNodes, maxMs })
+  if (region.truncated) return { trapped: null, why: `truncated:${region.seen.size}` }
+  if (region.unknown) return { trapped: null, why: `unknown:${region.seen.size}` }
+  if (nearSeen(region.seen, botFeet)) return { trapped: null, why: 'reached_bot' }
+  let maxY = -Infinity, maxDist = 0
+  for (const id of region.seen) {
+    const [x, y, z] = id.split(',').map(Number)
+    if (y > maxY) maxY = y
+    if (y > ceilingY) return { trapped: null, why: `rose_y=${y}>${ceilingY}` }
+    const d = Math.hypot(x - start.x, z - start.z)
+    if (d > maxDist) maxDist = d
+  }
+  if (!walker && maxDist >= PIT_RADIUS - 1.5) return { trapped: null, why: `open_r=${maxDist.toFixed(1)}` }
+  return { trapped: true, why: 'trapped' }
+}
+
+function undergroundWalker (world, position, botFeet, { maxMs = PIT_TIME_LIMIT_MS } = {}) {
+  return checkTrapped(world, position, botFeet, { walker: true, maxMs }).trapped
 }
 
 // One bounded flood fill per interval. Callers read state many times per tick
@@ -251,13 +290,23 @@ function refresh (state, entities, { world, isHostile = e => e?.hostile === true
     fill.elapsedMs = Math.round((performance.now() - started) * 10) / 10
   }
   const feet = { ...state.position, y: state.position.y - 1.62 }
+  const pitDeadline = performance.now() + Math.max(pitMs, pitMs * 2)
+  const pitReasons = new Map()
   for (const { e } of due.slice().sort((a, b) => a.d - b.d).slice(0, SEEK_TARGETS)) {
-    if (verdict(state, e, now) !== null) continue
-    let shut = null
-    try { shut = shutIn(world, e.position, feet, { maxMs: pitMs }) } catch { shut = null }
-    if (shut === true) fill.targets.set(String(idOf(e)), { position: { ...e.position }, result: false, shutIn: true })
+    const current = verdict(state, e, now)
+    // A one-way drop (MAX_DROP = 3) lets the bot's flood fill reach a pit/cave
+    // >= 4 blocks below, while the hostile cannot climb back up (step-up = 1).
+    // Verify trap/cave status from the hostile's cell in that asymmetric case too.
+    const deepBelow = Math.floor(e.position.y + 0.25) <= Math.floor(feet.y) - MAX_DROP - 1
+    if (current === false || (current === true && !deepBelow)) { pitReasons.set(String(idOf(e)), `verdict=${current}`); continue }
+    const remain = Math.min(pitMs, pitDeadline - performance.now())
+    if (remain <= 0.5) { pitReasons.set(String(idOf(e)), 'budget'); break }
+    let res = { trapped: null, why: 'error' }
+    try { res = checkTrapped(world, e.position, feet, { walker: CAVE_WALKER.test(String(e.entityType ?? '')), maxMs: remain }) } catch {}
+    pitReasons.set(String(idOf(e)), res.why)
+    if (res.trapped === true) fill.targets.set(String(idOf(e)), { position: { ...e.position }, result: false, shutIn: true })
   }
-  verdicts = due.map(({ e, d }) => ({ runtimeId: String(idOf(e)), entityType: e.entityType ?? null, distance: d, reachable: verdict(state, e, now) }))
+  verdicts = due.map(({ e, d }) => ({ runtimeId: String(idOf(e)), entityType: e.entityType ?? null, distance: d, reachable: verdict(state, e, now), pitWhy: pitReasons.get(String(idOf(e))) ?? null }))
   // A slow fill backs off so it stays a small share of the event loop.
   if (elapsed > BUDGET_MS) nextRefreshAt = now + Math.min(4000, elapsed * 20)
 }
@@ -265,4 +314,4 @@ function refresh (state, entities, { world, isHostile = e => e?.hostile === true
 function snapshot () { return fill ? { policy: fill.policy, createdAt: fill.createdAt, cells: fill.cells, truncated: fill.truncated, unknownTouched: fill.unknown, elapsedMs: fill.elapsedMs, origin: fill.origin, hostiles: verdicts } : null }
 function clear () { fill = null; verdicts = []; nextRefreshAt = -Infinity; lastForcedAt = -Infinity }
 
-module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh: require('../common/work-spans').wrap('reachability.refresh', refresh), verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, shutIn, snapshot, clear }
+module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh: require('../common/work-spans').wrap('reachability.refresh', refresh), verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, shutIn, undergroundWalker, snapshot, clear }
