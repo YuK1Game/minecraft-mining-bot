@@ -34,6 +34,7 @@ const { createDigWorld } = require('./helpers/dig-world')
 const { createBuildWalk, createMemo } = require('../src/modes/player-build-walk')
 const { createHouseBuild } = require('../src/modes/house/house-build')
 const { placements, remaining } = require('../src/modes/house/house-blueprint')
+const { yardSteps } = require('../src/modes/house/house-yard')
 const { toEntrance } = require('../src/modes/house/house-entry')
 const { createHouseDamage, GIVE_UP_MS } = require('../src/modes/house/house-damage')
 const { stationVisibleFace } = require('../src/actions/action-access')
@@ -108,7 +109,7 @@ function scene (feet, { build = true, door = false, from = null, extra = [] } = 
     agent: { objective: {}, stop () {}, start: async () => {}, settled: () => true }, climb: async () => ({ ok: true }),
     travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} }, now: () => 1e6 + w.at, sleep: async ms => { w.at += ms }
   })
-  w.left = () => remaining(w.getBlock, origin).map(step => step.id)
+  w.left = () => remaining(w.getBlock, origin).map(step => step.id).filter(id => !id.startsWith('yard_')) // the dug ground round the house: house-yard-fill.test.js
   return w
 }
 
@@ -194,6 +195,7 @@ test('21:32 JST: outside the west wall, 7 m from the porch and 3 m from the tabl
 test('00:08 JST: a run that can place nothing puts the door back, and the keeper holds the repair at once', async () => {
   const w = scene({ x: 9875.5, y: 64, z: 10141.5 }, { from: west, extra: [{ name: 'minecraft:wooden_door', count: 1 }, { name: 'minecraft:glass', count: 2 }] })
   w.shared.playerHouse.repair = { state: 'running', since: 1e6 }
+  for (const step of yardSteps(w.getBlock, origin)) w.put(step.position, 'cobblestone') // the dug ground filled already: nothing to place there either
   const keeper = createHouseDamage({ shared: w.shared, getBlock: w.getBlock, getFeet: () => w.ctx.hands.feet(), getInventory: () => ({ known: true, items: w.pack() }), now: () => 1e6 + w.at, log: line => w.log.push(line) })
   assert.equal(keeper.tick(), null, 'the repair runs')
   await w.house.tick()
@@ -217,4 +219,35 @@ test('a run that failed with a raw material short is not held early: the materia
   await w.house.tick()
   assert.equal(keeper.tick(), null, w.log.join(' / '))
   assert.equal(w.shared.playerHouse.repair.state, 'running')
+})
+
+// 2026-11-24 19:26-19:33 JST: the return walked into the pit south of the door, four under the floor, found no way up
+// and was shot dead there. User 20:05 JST (card): the Bot fills the dug ground round the house itself (house-yard.js).
+// Here the house is whole but for the slab; the pits of 16:20 JST are as received. One run: the slab first, then the
+// door back, then the ring from the outside, nearest the porch first, each column from its floor up by the pillar.
+test('the dug ground round the house: after the house, the ring is filled from the pit floors up, the porch front first', async () => {
+  const w = scene(SOUTH_EAST, { door: true, extra: [{ name: 'minecraft:cobblestone', count: 64 }, { name: 'minecraft:cobblestone', count: 64 }] })
+  const before = yardSteps(w.getBlock, origin)
+  assert.ok(before.length > 40, `the pits are received as gaps: ${before.length}`)
+  assert.ok(before.every(step => step.item === 'cobblestone' && step.ground === true && step.position.y < origin.y))
+  await w.house.tick()
+  assert.equal(w.left().includes('p_154'), false, `the house goes first: ${w.log.join(' / ')}`)
+  const after = new Set(yardSteps(w.getBlock, origin).map(step => step.id))
+  for (let dx = 0; dx <= 5; dx++) assert.equal([...after].some(id => id.startsWith(`yard_${dx}_8_`)), false, `the porch front (${dx}, 8) is filled to the ground: ${w.log.join(' / ')}`)
+  assert.ok(before.length - after.size >= 20, `a run fills ${before.length - after.size}`)
+  assert.ok(w.placed.filter(cell => cell.name === 'cobblestone' && cell.y < origin.y).length >= 20)
+  assert.ok(w.log.some(line => /まわりの掘られた地面を \d+ 個埋め戻しました/.test(line)), w.log.join(' / '))
+  houseUntouched(w)
+})
+
+test('a ring cell not received, or a column with no received floor, is not counted as dug', () => {
+  const air = { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+  const stone = { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }
+  const at = (rule) => (x, y, z) => rule(x, y, z)
+  const o = { x: 0, y: 64, z: 0 }
+  assert.deepEqual(yardSteps(at(() => ({ known: false })), o), [])
+  assert.deepEqual(yardSteps(at(() => air), o), [], 'air all the way down: no floor within reach, nothing claimed')
+  assert.deepEqual(yardSteps(at((x, y) => y < 64 ? stone : air), o), [], 'ground standing: no step')
+  const one = yardSteps(at((x, y, z) => x === 3 && z === 8 && y >= 61 ? air : y < 64 ? stone : air), o)
+  assert.deepEqual(one.map(step => step.position.y), [61, 62, 63], 'one pit, filled from its floor up')
 })

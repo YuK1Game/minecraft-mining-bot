@@ -36,6 +36,8 @@ const { focusOf } = require('./house-repair')
 const { doorOf } = require('./house-door')
 const { inside } = require('./house-exit')
 const { toEntrance } = require('./house-entry')
+const { fillYard } = require('./house-yard')
+const { centreOnColumn } = require('../pillar-centre')
 
 const AGAIN_MS = 600000, SHORT_MS = 3000, TRIES = 3, RUN_MS = 20 * 60000
 const BLIND = /視線/
@@ -66,8 +68,8 @@ const doorItem = kind => kind === 'oak' ? 'minecraft:wooden_door' : `minecraft:$
 // early the Bot stood outside the south wall, 72 steps left, nothing placed).
 const DOOR = 'p_172'
 const order = steps => {
-  const rest = steps.filter(step => step.phase !== 'foundation' && !EARLY.includes(step.id) && step.id !== DOOR)
-  return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR)]
+  const rest = steps.filter(step => step.phase !== 'foundation' && !EARLY.includes(step.id) && step.id !== DOOR && !step.ground)
+  return [...steps.filter(step => step.phase === 'foundation'), ...EARLY.map(id => steps.find(step => step.id === id)).filter(Boolean), ...rest, ...steps.filter(step => step.id === DOOR), ...steps.filter(step => step.ground)]
 }
 
 function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null, openEntrance = async () => false, climb, travel, getBlock, getPosition, getFeet, getInventory, chestWork = null, file = null, write = null, blocked = () => false, hostile = () => false, hostileWhy = () => null, onDone = async () => {}, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
@@ -107,10 +109,15 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     const all = origin ? remaining(getBlock, origin) : placements()
     if (origin && !all.length) return shared.playerHouse?.done !== true
     // One thing of the house asked for: only its steps bring the Bot back, and only their materials are waited for.
+    const fresh = step => !(now() - (failedAt.get(step.id) ?? -Infinity) < AGAIN_MS)
     const focus = focusOf(shared.playerHouse)
     const left = focus ? all.filter(step => focus.has(step.id)) : all
     if (!left.length) return false
-    const needs = houseNeeds(inventory, counts(left))
+    // The dug ground round the house (house-yard.js) starts the run while any of its material is held; the
+    // house's own steps start it on their logs and cobblestone, as before.
+    const house = left.filter(step => !step.ground)
+    if (!house.length) return left.some(step => fresh(step) && workable(step))
+    const needs = houseNeeds(inventory, counts(house))
     // Logs and cobblestone start it; the glass waits for sand and the bed for
     // wool, so a house is not held back by a desert-less or sheep-less area
     // (live 2026-11-17 03:32 JST: no sand in sight, the build never began).
@@ -119,7 +126,6 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     // the rest: neither brings the Bot back (live 2026-11-17 14:06-14:11 JST:
     // a corner block out of sight and the door called it home from the sand
     // after every single sand, one glass per round trip).
-    const fresh = step => !(now() - (failedAt.get(step.id) ?? -Infinity) < AGAIN_MS)
     if (left.every(step => step.id === DOOR)) return left.length > 0
     return left.some(step => step.id !== DOOR && fresh(step) && (step.item === 'glass' ? needs.need.sand === 0 : step.item === 'white_bed' ? needs.need.wool === 0 : true))
   }
@@ -159,6 +165,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
   // down by ordinary mining (it drops back) and placed again last.
   // Steps that can go on now: the glass waits for sand and the bed for wool.
   function workable (step) {
+    if (step.ground) return held(ITEM.cobblestone) > 0 || held(name => /^minecraft:(?:dirt|cobbled_deepslate)$/.test(name)) > 0
     if (step.item === 'glass') return held(ITEM.glass) > 0 || held(name => /^minecraft:(?:red_)?sand$/.test(name)) > 0
     if (step.item === 'white_bed') return held(ITEM.white_bed) > 0 || bestWool(items()) >= 3
     return true
@@ -167,7 +174,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
   async function openDoorway (origin, todo = null) {
     const door = placements(origin).find(step => step.id === DOOR)
     const left = remaining(getBlock, origin)
-    if (!door || left.some(step => step.id === DOOR) || !(todo ?? left).some(workable)) return false
+    if (!door || left.some(step => step.id === DOOR) || !(todo ?? left).some(step => !step.ground && workable(step))) return false
     const at = door.position
     if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
     if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
@@ -408,7 +415,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
       // A site the Bot cannot walk to twice running, with little built yet, is
       // given up for one near the Bot (live 2026-11-17 05:28-05:36 JST: the
       // site lay 9-23 blocks below a steep slope, 「No safe route found」).
-      const built = placements(origin).length - remaining(getBlock, origin).length
+      const built = placements(origin).length - remaining(getBlock, origin).filter(step => !step.ground).length
       if (++unreached >= 2 && built < 30) {
         say(`拠点の家の場所 (${origin.x}, ${origin.y}, ${origin.z}) へ歩けないため、別の場所に建て直します（置いた ${built} 個は残します）`)
         shared.playerHouse = null
@@ -420,13 +427,14 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     }
     unreached = 0
     // The steps of this run: the whole blueprint, or the one thing a job asked for (and the door again when this run took it down).
+    const fresh = step => !(now() - (failedAt.get(step.id) ?? -Infinity) < AGAIN_MS)
     const focus = focusOf(shared.playerHouse)
     const todo = () => { const all = remaining(getBlock, origin); return focus ? all.filter(step => focus.has(step.id)) : all }
     if (verificationOnly) {
       await enterForChests(origin, aborted)
     } else if (await openDoorway(origin, todo()) && focus) focus.add(DOOR)
     const fails = new Map(), started = now()
-    let placed = 0, closing = false
+    let placed = 0, closing = false, yardPass = -1, yardEnded = false
     let largeChests = []
     const verifyChests = async () => { largeChests = await verifyHouseChests({ origin, getBlock, getFeet, hands, ports, aborted, build, confirmed: largeChests, complete: work.complete }); return largeChests.length === chestPairs(origin).length }
     const reasons = new Map()
@@ -437,10 +445,23 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
       for (const step of order(todo())) {
         if (aborted() || now() - started > RUN_MS) break
         if ((fails.get(step.id) ?? 0) >= TRIES) continue
+        // The ground round the house: all its columns at once, from outside (house-yard.js), once a pass.
+        // It is the last thing of a run, after the door is back (the closing pass): the fill leaves the Bot outside, in the ring.
+        if (step.ground) {
+          if (yardPass === pass || !closing || todo().some(other => other.id === DOOR && (fails.get(other.id) ?? 0) < TRIES)) continue
+          yardPass = pass
+          const filled = await fillYard({ origin, getBlock, hands, aborted, log, sleep, centre: (column, base) => centreOnColumn({ column, base, feet: hands.feet, block: hands.block, walk: hands.walk, aborted }) })
+          placed += filled.placed
+          progress += filled.placed
+          if (!filled.placed) for (const other of todo()) if (other.ground) { fails.set(other.id, TRIES); note(other, `まわりの地面を埋め戻せません（${String(filled.why ?? '不明').slice(0, 60)}）`) }
+          // The fill ends outside, in the ring: the run ends there (the next one goes in by the entrance).
+          if (filled.tried) { yardEnded = true; break }
+          continue
+        }
         // The door only once nothing else is left: placed while slabs or glass
         // wait it is taken down again on the next run (live 07:22-07:23 JST).
-        if (step.id === DOOR && !closing && todo().some(other => other.id !== DOOR && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
-        if (closing && step.id !== DOOR) continue
+        if (step.id === DOOR && !closing && todo().some(other => other.id !== DOOR && !other.ground && workable(other) && (fails.get(other.id) ?? 0) < TRIES)) continue
+        if (closing && step.id !== DOOR) continue // (the ground is above)
         if (step.id === DOOR && !await verifyChests()) continue
         const left = todo()
         ports.reset?.()
@@ -460,10 +481,12 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
         if (fails.get(step.id) === TRIES) say(`拠点の家: ${step.item} を (${step.position.x}, ${step.position.y}, ${step.position.z}) に置けません（${ports.why() ?? hands.why?.() ?? '不明'}）`)
       }
       if (unsettled) break
+      // After the fill only the door is put back in this run (the house's steps wait for the next run, from inside).
+      if (yardEnded) break
       // Nothing more goes up in this run of a repair: the door is put back before the run ends, so the house is not left open
       // for the hour until the rest is looked at again (live 2026-11-23 23:05-2026-11-24 00:08 JST: one roof slab
       // out of sight from every stand, the door down since 22:57).
-      if (!progress) { if (closing || !stood || aborted() || !todo().some(step => step.id === DOOR)) break; closing = true }
+      if (!progress) { if (closing || aborted() || !todo().some(step => (stood && step.id === DOOR) || (step.ground && (fails.get(step.id) ?? 0) < TRIES))) break; closing = true }
     }
     // A run that failed on every step it could still work on: the keeper holds the repair on it (house-damage.js).
     const rest = todo().filter(step => step.id !== DOOR && workable(step))

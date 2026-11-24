@@ -68,7 +68,8 @@ function createHouseDamage ({ shared, getBlock, getFeet, getInventory = () => nu
   function shortNow (house, left) {
     const focus = Array.isArray(house.repair?.focus) && house.repair.focus.length ? new Set(house.repair.focus) : null
     const steps = left ? (focus ? left.filter(step => focus.has(step.id)) : left) : focus ? placements(house.origin).filter(step => focus.has(step.id)) : null
-    const wanted = steps ? counts(steps) : house.left ?? null
+    // The dug ground round the house (house-yard.js) is filled with what is held: it is not a material short.
+    const wanted = steps ? counts(steps.filter(step => !step.ground)) : house.left ?? null
     return wanted ? houseNeeds(getInventory(), wanted)?.need ?? null : null
   }
 
