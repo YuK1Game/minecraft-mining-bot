@@ -19,7 +19,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     const end = now() + 10000
     for (;;) {
       try { return await run() } catch (error) {
-        if (!retry() || !/待って|待機|使用中|確認しています/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
+        if (!retry() || !/待って|待機|使用中|確認しています|停止してから/.test(String(error?.message ?? '')) || now() >= end || disposed()) throw error
         await sleep(100)
       }
     }

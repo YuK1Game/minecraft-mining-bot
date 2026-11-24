@@ -32,7 +32,7 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // tried again for a few seconds (real Realm 2026-11-15: every scaffold job
   // began in the same millisecond as the autonomy's stop and was refused with
   // 「前の操作の終了処理を待ってください。」).
-  const WAIT = /待って|待機|使用中|確認しています/
+  const WAIT = /待って|待機|使用中|確認しています|停止してから/
   async function begin (start) {
     const end = now() + 10000
     for (;;) {
