@@ -81,7 +81,9 @@ test('a centre that rejects after its visit leaves the next one its own visit', 
   f.ctx.travelTo = async ({ destination }) => {
     made.push({ ...destination })
     const cx = Math.floor(destination.x / 16), cz = Math.floor(destination.z / 16)
-    if (made.length === 1) { for (let x = cx - 2; x <= cx + 2; x++) for (let z = cz - 2; z <= cz + 2; z++) { f.announce(x, z); for (let y = 0; y <= 5; y++) f.section(x, y, z, y >= 4 ? 'air' : 'stone') } } else f.receiveSite(cx, cz)
+    // The host asks for a view distance of 4 chunks (host.js), so the columns 4 chunks round the arrival are
+    // announced; a 64-block site with its 8-block shift reaches 44 blocks from the centre.
+    if (made.length === 1) { for (let x = cx - 4; x <= cx + 4; x++) for (let z = cz - 4; z <= cz + 4; z++) { f.announce(x, z); for (let y = 0; y <= 5; y++) f.section(x, y, z, y >= 4 ? 'air' : 'stone') } } else f.receiveSite(cx, cz)
     f.setFeet({ x: destination.x + 12.5, y: 64, z: destination.z + 0.5 })
     return { phase: 'arrived', ended: 'finished' }
   }

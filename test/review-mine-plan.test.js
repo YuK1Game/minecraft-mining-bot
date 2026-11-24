@@ -137,7 +137,8 @@ test('planner compares upper heights, directions and rectangles with uncapped ac
   assert.equal(result.code, 'MINE_TARGET_REACHABLE')
   assert.equal(result.plan.layers[0].y, 32)
   assert.ok(result.diagnostics.observedOres > 256)
-  assert.equal(result.diagnostics.dimensions.length, 6)
+  assert.deepEqual(result.diagnostics.dimensions, [[48, 48], [48, 64], [64, 64]], 'sites are planned 48 or 64 blocks a side')
+  assert.ok(result.plan.site.width >= 48 && result.plan.site.length >= 48)
   assert.equal(result.diagnostics.evaluated, result.diagnostics.prefiltered)
   assert.ok(result.diagnostics.work < 8000000)
   assert.ok(performance.now() - start < 15000)
@@ -147,6 +148,22 @@ test('planner compares upper heights, directions and rectangles with uncapped ac
   assert.ok(e.costs.excavationBlocks > 0 && e.costs.floorPlacements > 0 && e.costs.ladderPlacements > 0 && e.costs.shaftBackfill > 0 && e.costs.torchPlacements > 0 && e.costs.chestPlacements > 0 && e.costs.haulDistance > 0)
   assert.ok(Buffer.byteLength(JSON.stringify(result.plan)) < 500000)
   t.diagnostic(JSON.stringify({ generated: result.diagnostics.candidates, evaluated: result.diagnostics.evaluated, work: result.diagnostics.work, elapsedMs: Math.round(performance.now() - start), planBytes: Buffer.byteLength(JSON.stringify(result.plan)) }))
+})
+
+// Real Realm 2026-11-23/24: ten 16 to 32 block sites in a day, each retired with 10 to 15 raw_iron against 33.
+// At 48 and 64 blocks every candidate costs more work; 96 of them spent the 8 000 000 budget (MINE_PLAN_BUDGET).
+test('a large site is planned within the evaluation budget from scattered iron', { timeout: 30000 }, async () => {
+  const f = fixture({ full: true })
+  for (let x = -30; x < 30; x += 3) for (let z = -30; z < 30; z += 2) f.put({ x, y: 32, z }, 'iron_ore')
+  const start = performance.now()
+  const result = await planMine({ ...f, origin: { x: 0.5, y: 64, z: 0.5 }, resource: 'raw_iron', targetCount: 33 })
+  assert.equal(result.status, 'planned', JSON.stringify(result))
+  assert.equal(result.code, 'MINE_TARGET_REACHABLE')
+  assert.deepEqual([result.plan.site.width, result.plan.site.length], [64, 64])
+  assert.ok(result.diagnostics.work < 8000000 && result.diagnostics.evaluated === result.diagnostics.prefiltered)
+  assert.ok(result.plan.segments.filter(segment => segment.kind === 'branch').length >= 36)
+  assert.ok(Buffer.byteLength(JSON.stringify(result.plan)) < 100000)
+  assert.ok(performance.now() - start < 15000)
 })
 
 test('quantity completion cost grows with the needed prefix; unavailable quantity remains an explicit shortfall', async () => {

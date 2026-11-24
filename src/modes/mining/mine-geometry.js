@@ -4,6 +4,9 @@ const { createHash } = require('node:crypto')
 // ladderMove permits at most 192 vertical blocks. A lower bottom-slab stand
 // is half a block below its layer Y, leaving 191 whole blocks for the shaft.
 const MAX_SHAFT_DEPTH = 191
+// The longest side a plan may have. Terrain arrives about three chunks around the player, so a 64-block site
+// with the planner's 8-block shift still lies within what can be received from its centre.
+const MAX_SIDE = 64
 const DIRECTIONS = Object.freeze({ east: { x: 1, z: 0 }, south: { x: 0, z: 1 }, west: { x: -1, z: 0 }, north: { x: 0, z: -1 } })
 const key = p => `${p.x},${p.y},${p.z}`
 const faceOf = p => p.x === 1 ? 5 : p.x === -1 ? 4 : p.z === 1 ? 3 : 2
@@ -47,7 +50,7 @@ function inSegment (segment, p) {
 // feet at Y-0.5. The saved plan contains lines, never a whole terrain snapshot.
 function createMineGeometry ({ scope, anchor, direction = 'east', width = 24, length = 24, surfaceY, upperY = 16, lowerY = null, expectedDrops = {}, cargoSlots = 43 } = {}) {
   const hasLower = lowerY != null, bottomY = hasLower ? lowerY : upperY
-  if (!scope?.profile || !scope.realmId || scope.dimension !== 'overworld' || !anchor || !Number.isSafeInteger(anchor.x) || !Number.isSafeInteger(anchor.z) || !DIRECTIONS[direction] || ![width, length].every(n => Number.isInteger(n) && n >= 12 && n <= 32) || ![surfaceY, upperY, bottomY].every(Number.isInteger) || surfaceY < upperY + 3 || hasLower && upperY < lowerY + 6 || bottomY < -60 || surfaceY > 316 || !Number.isInteger(cargoSlots) || cargoSlots < 1 || cargoSlots > 54) throw Error('MINE_GEOMETRY_INVALID')
+  if (!scope?.profile || !scope.realmId || scope.dimension !== 'overworld' || !anchor || !Number.isSafeInteger(anchor.x) || !Number.isSafeInteger(anchor.z) || !DIRECTIONS[direction] || ![width, length].every(n => Number.isInteger(n) && n >= 12 && n <= MAX_SIDE) || ![surfaceY, upperY, bottomY].every(Number.isInteger) || surfaceY < upperY + 3 || hasLower && upperY < lowerY + 6 || bottomY < -60 || surfaceY > 316 || !Number.isInteger(cargoSlots) || cargoSlots < 1 || cargoSlots > 54) throw Error('MINE_GEOMETRY_INVALID')
   if (surfaceY - bottomY > MAX_SHAFT_DEPTH) throw Error('MINE_SHAFT_DEPTH_EXCEEDED')
   const plan = { version: 1, scope: copy(scope), site: { anchor: { ...anchor }, direction, width, length, surfaceY }, layers: [{ id: 'upper', y: upperY }, ...(hasLower ? [{ id: 'lower', y: lowerY }] : [])], segments: [], storage: [], finish: { floor: 'bottom_slab', torchSpacing: 6, storageTorchSpacing: 4, lightTarget: 8 }, vein: { radius: 3, maxBlocks: 32 }, ...(!hasLower ? { revision: 1, lowerPending: true } : {}) }
   const mid = Math.floor((width - 2) / 2), f = DIRECTIONS[direction], r = { x: -f.z, z: f.x }
@@ -179,4 +182,4 @@ function classifyMineCell (plan, p) {
   return { allowedDig: false, protected: !within, role: within ? 'vein_candidate' : 'outside' }
 }
 
-module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, key }
+module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, key }
