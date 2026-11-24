@@ -16,6 +16,16 @@ async function enterMine(ctx,branch){
   const before = scope(ctx), { shaft } = branch.plan, to = shaft.approach
   const distance = feet => feet ? Math.hypot(feet.x - to.x, feet.z - to.z) : Infinity
   const noRoute = (detail = '採掘場の入口へ安全な地上路が見つかりません。') => blocked('MINE_ENTRY_UNREACHABLE', detail, 'position_changed')
+  // Below the entrance and outside the mine (a pit the gathering dug, a cave): every way on from here is a surface
+  // approach, so the shared way up runs first (the expedition's `climbUp`, dragon-rise.js: own tunnel, a walk to
+  // the open sky, or straight up; nothing under the open sky). Live 2026-11-24 16:35:53 JST: from the bottom of
+  // the stone pit at (9862, 52, 10245), 14 below the entrance and 15m from it, 「採掘場の入口へ安全な地上路が
+  // 見つかりません」 every two seconds and the feet did not move.
+  const start = ctx.getFeet()
+  if (start && start.y < to.y - 3 && typeof ctx.climbUp === 'function') {
+    try { await ctx.climbUp() } catch {}
+    if (!live(ctx, before)) return stopped()
+  }
   // Supply work can end well beyond the local approach and build budgets.
   // Travel only to the saved surface entrance, then check its exact arrival.
   const feet = ctx.getFeet()
