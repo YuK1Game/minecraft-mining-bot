@@ -5,6 +5,7 @@ const { performance } = require('node:perf_hooks')
 const { isSupportedFood } = require('../actions/food')
 const { evaluateThreats } = require('../combat/threats')
 const { resourceMinHealth } = require('../safety/learning-health')
+const { velocityOf, leadPoint, offTrack } = require('./prey-lead')
 
 const PREY = new Set(['minecraft:cow', 'minecraft:pig', 'minecraft:sheep'])
 const AIR = new Set(['air', 'cave_air', 'void_air'])
@@ -294,8 +295,10 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
     }
     return null
   }
-  async function moveTo (run, candidate, interrupt = null) {
-    const options = { allowWater: false, emergency: true, maxDistance: 12, maxTicks: 180 }
+  async function moveTo (run, candidate, interrupt = null, { sprint } = {}) {
+    // A chase asks for a sprint (prey-lead.js); the movement still grants it only with server hunger above six on a
+    // known dry route.
+    const options = { allowWater: false, emergency: true, maxDistance: 12, maxTicks: 180, ...(sprint ? { sprint: true } : {}) }
     run.attempted.add(stanceKey(candidate))
     while (true) {
       check(run)
@@ -445,18 +448,22 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
         if (!supported(current, latest.state)) continue
         let moved = false
         try {
-          const proposed = candidates(latest.state, current.position, selected.kind, run.attempted)
+          // A fleeing animal is run to where it will be, not where it was received (prey-lead.js).
+          const prey = selected.kind === 'prey'
+          const aim = prey ? leadPoint(latest.state.position, current.position, velocityOf(entities, current)) : current.position
+          const proposed = candidates(latest.state, aim, selected.kind, run.attempted)
           status.candidateCount += proposed.length
-          const from = copy(current.position)
           // Prey (sheep, cows...) moves while the Bot walks: the walk stops as
-          // soon as it is in reach, or 3 m from where the stand was chosen
+          // soon as it is in reach, or when the animal left the track the stand was chosen for
           // (user 2026-11-16 20:44 JST: 「止まってから殴るまで時間あるのでその間に羊が移動して失敗している。リアルタイムで追尾して殴る必要がある」).
-          const chase = selected.kind !== 'prey' ? null : observed => {
-            const prey = observed.actors.find(entity => String(idOf(entity)) === String(idOf(target)))
-            return !!prey?.position && (spatial(observed.state.position, prey.position) <= 2.6 || spatial(prey.position, from) > 3)
+          // An animal running straight on keeps its track, so the walk is not stopped and replanned each second.
+          const chase = !prey ? null : observed => {
+            const now = observed.actors.find(entity => String(idOf(entity)) === String(idOf(target)))
+            if (!now?.position) return false
+            return spatial(observed.state.position, now.position) <= 2.6 || offTrack(aim, leadPoint(observed.state.position, now.position, velocityOf(entities, now)))
           }
           for (const candidate of proposed) {
-            if (await moveTo(run, candidate.position, chase)) { moved = true; break }
+            if (await moveTo(run, candidate.position, chase, { sprint: prey })) { moved = true; break }
           }
         } catch (error) {
           if (!['MOVEMENT_FAILED', 'NO_MOVEMENT_PROGRESS'].includes(error.code)) throw error
