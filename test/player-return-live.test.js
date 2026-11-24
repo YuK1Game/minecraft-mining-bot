@@ -583,8 +583,8 @@ test('held while the house work keeps a new chest from being made, the goal is n
   assert.equal(sim.goal(runtime)?.hold.code, 'HOUSE_WORK', sim.log.join('\n'))
   assert.ok(sim.goal(runtime).hold.kinds.includes('build_free'))
   assert.equal(lines(sim, /新しいチェストを作る木がありません/).length, 0, sim.log.join('\n'))
-  await sim.run(runtime, { ms: 120000 })
-  assert.equal(sim.goal(runtime)?.wakes, 0, 'nothing changed: still held')
+  await sim.run(runtime, { ms: 700000 })
+  assert.equal(sim.goal(runtime)?.wakes, 0, 'still held past HOLD_MS while house work is active')
   repairing = false
   await sim.run(runtime, { until: () => sim.goal(runtime)?.wakes === 1, ms: 30000 })
   assert.equal(sim.goal(runtime)?.wakes, 1, sim.log.join('\n'))

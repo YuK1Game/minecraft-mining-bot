@@ -118,6 +118,10 @@ test('a held goal wakes for what it waits for, or at the latest when its time is
   assert.equal(wakeReason(goal, seen({ supplies: 3 })), 'SUPPLIES_CHANGED')
   goal.hold.supplies = '1/0/0/0'
   assert.equal(wakeReason(goal, seen({ supplies: 1 })), 'SUPPLIES_CHANGED', 'a hold stored before the count was a number wakes once and is stored again as a number')
+  // A build_free hold (house repair / pending chest) must not wake by HOLD_TIME while buildFree is still false.
+  goal.hold = { code: 'HOUSE_WORK', at: 0, until: 600000, position: { x: 0, y: 64, z: 0 }, supplies: 1, kinds: ['build_free'] }
+  assert.equal(wakeReason(goal, seen({ now: 900000, buildFree: false })), null)
+  assert.equal(wakeReason(goal, seen({ now: 900000, buildFree: true })), 'BUILD_FREE')
 })
 
 test('the open click: the face towards the eye, within reach, with a clear line; the code says which of them failed', () => {

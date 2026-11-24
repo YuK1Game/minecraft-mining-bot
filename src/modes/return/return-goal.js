@@ -107,7 +107,7 @@ function wakeReason (goal, seen) {
   if (kinds.includes('terrain_received') && seen.terrain === true) return 'TERRAIN_RECEIVED'
   if (kinds.includes('owner_released') && seen.settled === true) return 'OWNER_RELEASED'
   if (kinds.includes('owner_free') && seen.owner === null) return 'OWNER_FREE'
-  if (seen.now >= hold.until) return 'HOLD_TIME'
+  if (seen.now >= hold.until && !(kinds.includes('build_free') && seen.buildFree === false)) return 'HOLD_TIME'
   return null
 }
 
