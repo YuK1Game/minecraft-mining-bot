@@ -43,7 +43,8 @@ function inView (ctx, name) {
   const re = SOURCES[name]
   if (!re) return []
   const rested = cellRest(ctx.shared, ctx.runtime?.raw?.().dimension, { now: ctx.now })
-  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) && !unavailableAt(ctx, b, p) &&
+  const taken = unavailable(ctx)
+  return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) && !taken(b, p) &&
     (name !== 'cobblestone' || exposedStone(ctx, p)))
 }
 
@@ -59,6 +60,7 @@ async function receivedWoodDestination (ctx, feet) {
   const origin = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
   const approached = cellRest(ctx.shared, 'overworld:wood-approach', { now: ctx.now })
   let destination = null, at = null, best = ROAM_M ** 2
+  const taken = unavailable(ctx)
   for (let dx = -ROAM_M; dx <= ROAM_M; dx++) {
     if (ctx.cancelled()) return null
     for (let dz = -ROAM_M; dz <= ROAM_M; dz++) {
@@ -69,7 +71,7 @@ async function receivedWoodDestination (ctx, feet) {
       for (let y = origin.y - 8; y <= origin.y + 8; y++) {
         const p = { ...column, y }, block = ctx.getBlock(p.x, p.y, p.z)
         if (block?.known !== true || !SOURCES.log.test(bare(block.name)) ||
-            unavailableAt(ctx, block, p)) continue
+            taken(block, p)) continue
         destination = column
         at = y
         best = distance
@@ -145,18 +147,20 @@ async function explore (ctx, resource) {
   await roam(ctx, resource, step, feet, visible, { findWood, buildTo })
 }
 
-function protectedAt (ctx, p) {
-  const origin = ctx.shared.playerHouse?.origin
-  if (ctx.runtime.raw().dimension !== 'overworld' || !origin) return false
+function protectedAt (origin, p) {
   // Keep the blueprint and immediate entryway intact even if the raw terrain
   // source has no attribution for a placed block.
-  return p.x >= origin.x - 1 && p.x <= origin.x + 10 && p.z >= origin.z - 1 && p.z <= origin.z + 10 && p.y >= origin.y - 1 && p.y <= origin.y + 5
+  return !!origin && p.x >= origin.x - 1 && p.x <= origin.x + 10 && p.z >= origin.z - 1 && p.z <= origin.z + 10 && p.y >= origin.y - 1 && p.y <= origin.y + 5
 }
 
 // Also the ground the house stands in (safety/house-protection.js `inYard`): not a source of stone, dirt or sand.
-function unavailableAt (ctx, block, position) {
-  return block.protected || !!block.protectionSource || protectedAt(ctx, position) ||
-    (ctx.runtime.raw().dimension === 'overworld' && inYard(ctx.shared.playerHouse?.origin, position, block))
+// One test per scan: the dimension and the house are read once, not for each of the thousands of cells a scan
+// visits (`raw()` copies the whole server state; 2026-11-24 16:34 JST it was 400〜600ms stalls every 10 s).
+function unavailable (ctx) {
+  const overworld = ctx.runtime.raw().dimension === 'overworld'
+  const origin = overworld ? ctx.shared.playerHouse?.origin ?? null : null
+  return (block, position) => block.protected || !!block.protectionSource ||
+    (!!origin && (protectedAt(origin, position) || inYard(origin, position, block)))
 }
 
 async function collect (ctx, name) {
@@ -198,9 +202,9 @@ async function collect (ctx, name) {
     // A block that was tried and not taken rests (supply-cell-rest.js): the next nearest ones get their turn.
     const rested = cellRest(ctx.shared, ctx.runtime.raw().dimension, { now: ctx.now })
     const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
-    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !unavailableAt(ctx, b, p) &&
+    const skip = unavailable(ctx)
+    const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !skip(b, p) &&
       !rested.resting(p) && (name !== 'cobblestone' || exposedStone(ctx, p)))
-    const skip = (b, p) => unavailableAt(ctx, b, p)
     for (const seen of cells.slice(0, 6)) {
       // A log is taken as the first of its tree (dragon-tree.js): the lowest one standing, walked to at the trunk's
       // foot (the nearest stand at the height of a log in the crown is on the leaves).

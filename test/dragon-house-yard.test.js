@@ -1,7 +1,7 @@
 'use strict'
 
 // The gathering does not take the ground the house stands in (src/safety/house-protection.js `inYard`; read by
-// dragon-supply-gather.js `unavailableAt`, which the candidates, the "in view" count and the uncovering all use).
+// dragon-supply-gather.js `unavailable`, which the candidates, the "in view" count and the uncovering all use).
 // Real Realm 2026-11-23, starter house (origin 9877,64,10138), cobblestone for the mine's supplies:
 //   11:50:25 「採掘場の資材を準備しています（cobblestone 0/88）」 … 12:02:59 「cobblestone 63/64」, with 97 lines
 //   「stone (x, 53..60, z) を掘れなかったため…」 at x 9873..9893, z 10127..10158;
@@ -70,4 +70,18 @@ test('with no house there the nearest ground is taken, as before: the soil over 
   await collect(w.ctx, 'cobblestone')
   assert.deepEqual(w.taken, [{ x: 9880, y: 61, z: 10136 }], w.lines.join('\n'))
   assert.equal(fromWalls(w.taken[0]), 2)
+})
+
+// Real Realm 2026-11-24 16:34:01〜16:35:41 JST: while the Bot gathered cobblestone, 13 stalls of 373〜591ms every
+// ~10 s; the profile named `snapshot` (host state.js:158) under `raw` under `unavailableAt` under `findCells`
+// (60〜76%). The test read the dimension through `raw()`, which copies the whole server state, for each of the
+// stones a scan of 25×25×11 cells passes. Before: one scan from the pit read `raw()` about once per stone in view.
+test('one scan reads the server state a fixed number of times, not once per cell', () => {
+  const w = scene()
+  const raw = w.ctx.runtime.raw
+  let reads = 0
+  w.ctx.runtime.raw = (...a) => { reads++; return raw(...a) }
+  const cells = inView(w.ctx, 'cobblestone')
+  assert.ok(cells.length > 50, `stones are in view (${cells.length})`)
+  assert.ok(reads <= 3, `server state read ${reads} times for ${cells.length} stones in view`)
 })
