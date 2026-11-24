@@ -3,7 +3,7 @@
 const { setImmediate: immediate } = require('node:timers/promises')
 const { surveyMine } = require('./mine-survey')
 const { evaluateMineGeometry, lowerLevels, resourceName, withClosed } = require('./mine-plan')
-const { extendMineGeometry, point, MAX_SHAFT_DEPTH } = require('./mine-geometry')
+const { extendMineGeometry, defaultDropEstimate, point, MAX_SHAFT_DEPTH } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope, sameWorld } = require('./mine-state')
 const fail = code => { throw Object.assign(new Error(code), { code }) }
 
@@ -19,11 +19,11 @@ function extensionBounds (plan) {
 // does not confirm the existing upper route; the movement owner checks it from
 // current receipts before either descent or return.
 async function planMineExtension ({ world, getState, plan, origin = plan?.shaft?.approach, resource = 'diamond', targetCount = 1,
-  ownedFills = [], isProtected = () => false, maxLowerLevels = 4, maxWork = 2000000, maxCells = 1500000, yieldNow = immediate } = {}, { signal } = {}) {
+  ownedFills = [], isProtected = () => false, maxLowerLevels = 4, maxWork = 6000000, maxCells = 2500000, yieldNow = immediate } = {}, { signal } = {}) {
   const current = getState?.(), liveScope = mineLiveScope(current), scope = mineWorldScope(current)
   if (!liveScope || !sameWorld(plan?.scope, scope)) return { status: 'blocked', code: 'MINE_SCOPE_UNKNOWN' }
   resource = resourceName(resource)
-  if (plan.layers?.length !== 1 || plan.layers[0].id !== 'upper' || !['diamond', 'raw_gold', 'redstone'].includes(resource) || !Number.isSafeInteger(targetCount) || targetCount < 1 || targetCount > 4096 || !Number.isInteger(maxLowerLevels) || maxLowerLevels < 1 || maxLowerLevels > 8 || !Number.isInteger(maxWork) || maxWork < 1 || maxWork > 8000000 || !origin || !['x', 'y', 'z'].every(axis => Number.isFinite(origin[axis]))) return { status: 'blocked', code: 'MINE_EXTENSION_INVALID' }
+  if (plan.layers?.length !== 1 || plan.layers[0].id !== 'upper' || !['diamond', 'raw_gold', 'redstone'].includes(resource) || !Number.isSafeInteger(targetCount) || targetCount < 1 || targetCount > 4096 || !Number.isInteger(maxLowerLevels) || maxLowerLevels < 1 || maxLowerLevels > 8 || !Number.isInteger(maxWork) || maxWork < 1 || maxWork > 20000000 || !origin || !['x', 'y', 'z'].every(axis => Number.isFinite(origin[axis]))) return { status: 'blocked', code: 'MINE_EXTENSION_INVALID' }
   const survey = await surveyMine({ world, getState, bounds: extensionBounds(plan), maxCells, yieldNow, isProtected }, { signal })
   if (!['ready', 'partial'].includes(survey.status)) return survey
   let work = 0, nextYield = 512, evaluated = 0, rejectedUnknown = 0, rejectedHazard = 0
@@ -47,7 +47,7 @@ async function planMineExtension ({ world, getState, plan, origin = plan?.shaft?
     for (const lowerY of lowers) {
       let candidate = extendMineGeometry(plan, { lowerY })
       let evaluation = await evaluateMineGeometry(candidate, survey, { origin, resource, targetCount, checkpoint, read, account, existingPlan: plan, ownedFills })
-      let expected = 0
+      let expected = defaultDropEstimate(plan.site.width, plan.site.length)
       for (let adjustment = 0; evaluation.eligible && adjustment < 8; adjustment++) {
         expected = Math.max(expected, evaluation.estimatedDrops.lower)
         let resized

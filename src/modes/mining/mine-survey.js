@@ -16,7 +16,7 @@ function validBounds (bounds, maxCells) {
 // cap and no saved ore cache can hide a candidate. The typed palette is only an
 // ephemeral observation; it is deliberately absent from the persisted plan.
 async function surveyMine ({ world, getState, bounds, requestSections = null, maxRequests = 18, maxCells = 450000, batchSize = 512, yieldNow = immediate, isProtected = () => false } = {}, { signal } = {}) {
-  if (typeof world?.getBlock !== 'function' || typeof getState !== 'function' || !Number.isInteger(maxCells) || maxCells < 1 || maxCells > 1500000 || !validBounds(bounds, maxCells) || !Number.isInteger(batchSize) || batchSize < 1 || batchSize > 2048 || !Number.isInteger(maxRequests) || maxRequests < 0 || maxRequests > 64) return { status: 'blocked', code: 'MINE_SURVEY_BUDGET_INVALID' }
+  if (typeof world?.getBlock !== 'function' || typeof getState !== 'function' || !Number.isInteger(maxCells) || maxCells < 1 || maxCells > 3000000 || !validBounds(bounds, maxCells) || !Number.isInteger(batchSize) || batchSize < 1 || batchSize > 2048 || !Number.isInteger(maxRequests) || maxRequests < 0 || maxRequests > 64) return { status: 'blocked', code: 'MINE_SURVEY_BUDGET_INVALID' }
   const state = getState(), scope = mineWorldScope(state), liveScope = mineLiveScope(state)
   if (!scope || !liveScope) return { status: 'blocked', code: 'MINE_SCOPE_UNKNOWN' }
   let witness = null, capturedRevision = null, requests = 0

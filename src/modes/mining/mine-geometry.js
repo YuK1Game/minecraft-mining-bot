@@ -4,9 +4,13 @@ const { createHash } = require('node:crypto')
 // ladderMove permits at most 192 vertical blocks. A lower bottom-slab stand
 // is half a block below its layer Y, leaving 191 whole blocks for the shaft.
 const MAX_SHAFT_DEPTH = 191
-// The longest side a plan may have. Terrain arrives about three chunks around the player, so a 64-block site
-// with the planner's 8-block shift still lies within what can be received from its centre.
-const MAX_SIDE = 64
+// The longest side a plan may have. Sites up to 128x128 keep the entrance,
+// shaft and full storage room within the initially received view radius while
+// outer corridors are verified live cell-by-cell as the Bot approaches them.
+const MAX_SIDE = 128
+const MAX_STORAGE_PAIRS = 16
+// Main (width 2 x (height 3 + 1 floor)) + branches (width/3 rows x (height 2 + 1 floor) = width) + lobby/veins.
+const defaultDropEstimate = (width, length) => Math.ceil(length * (8 + width) + 320)
 const DIRECTIONS = Object.freeze({ east: { x: 1, z: 0 }, south: { x: 0, z: 1 }, west: { x: -1, z: 0 }, north: { x: 0, z: -1 } })
 const key = p => `${p.x},${p.y},${p.z}`
 const faceOf = p => p.x === 1 ? 5 : p.x === -1 ? 4 : p.z === 1 ? 3 : 2
@@ -60,12 +64,12 @@ function createMineGeometry ({ scope, anchor, direction = 'east', width = 24, le
     plan.segments.push({ id: `${layer.id}:${id}`, layer: layer.id, kind, from, to, width: w, height: h, forward, right: { x: -forward.z, z: forward.x }, walkOffset })
   }
   for (const layer of plan.layers) {
-    // Design allowance: excavated rock plus bounded vein drops. 43 usable
-    // slots per 54-slot pair leave room for item types and uneven stack sizes.
-    const estimate = expectedDrops[layer.id] ?? Math.ceil(length * (6 + 2 * width / 3) + 180)
+    // Design allowance: excavated rock (including floor slab cuts) plus bounded vein drops.
+    // 43 usable slots per 54-slot pair leave room for item types and uneven stack sizes.
+    const estimate = expectedDrops[layer.id] ?? defaultDropEstimate(width, length)
     if (!Number.isSafeInteger(estimate) || estimate < 0) throw Error('MINE_DROP_ESTIMATE_INVALID')
     const estimatedDropStacks = Math.ceil(estimate / 64), cargo = Math.max(1, Math.ceil(estimatedDropStacks / cargoSlots)), pairCount = cargo + 1
-    if (pairCount > 8) throw Error('MINE_STORAGE_CAPACITY_EXCEEDED')
+    if (pairCount > MAX_STORAGE_PAIRS) throw Error('MINE_STORAGE_CAPACITY_EXCEEDED')
     const roomLength = Math.max(4, (Math.ceil(pairCount / 2) - 1) * 3 + 2), roomEnd = 1 + roomLength
     if (roomEnd + 4 >= length) throw Error('MINE_STORAGE_ROOM_TOO_LARGE')
     add(layer, 'storage', 'lobby', 2, mid - 3, roomEnd, mid - 3, 8, 3, 3)
@@ -182,4 +186,4 @@ function classifyMineCell (plan, p) {
   return { allowedDig: false, protected: !within, role: within ? 'vein_candidate' : 'outside' }
 }
 
-module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, key }
+module.exports = { createMineGeometry, extendMineGeometry, mineSteps, stepCells, classifyMineCell, isMineTorchTarget, shaftSurfaceLayout, point, local, lineLength, segmentPoint, defaultDropEstimate, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, MAX_STORAGE_PAIRS, key }
