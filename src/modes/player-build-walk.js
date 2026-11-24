@@ -146,10 +146,10 @@ async function buildWalk ({ ports, target, done, log = () => {}, aborted = () =>
 
 // The port the jobs use: the hands, with the starter house read as built
 // (safety/house-protection.js), so its floor and walls are never part of a route.
-function createBuildWalk ({ hands, getHouse = () => null, log = () => {}, memo = sharedMemo }) {
+function createBuildWalk ({ hands, getHouse = () => null, log = () => {}, memo = sharedMemo, sleep = undefined }) {
   const overlay = createHouseProtection(getHouse)
   const ports = { ...hands, block: (x, y, z) => overlay(hands.block(x, y, z), x, y, z) }
-  return (target, { done, aborted = () => false, limits = {} } = {}) => buildWalk({ ports, target, done, log, aborted, limits, memo })
+  return (target, { done, aborted = () => false, limits = {} } = {}) => buildWalk({ ports, target, done, log, aborted, limits, memo, ...(sleep ? { sleep } : {}) })
 }
 
 module.exports = { buildWalk, createBuildWalk, createMemo, ROUNDS }

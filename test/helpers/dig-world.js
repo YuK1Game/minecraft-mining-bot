@@ -99,7 +99,10 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
       w.swaps++
       return { phase: 'completed', slot: SELECTED, sourceSlot: slot }
     } },
-    movement: { start (target, { maxTicks, ...options } = {}) {
+    movement: {
+      // The ordinary settle: ticks with no input, the body falls to what is under it.
+      settle ({ maxTicks = 40 } = {}) { for (let i = 0; i < maxTicks && !state.onGround; i++) state = navigator.physics.step(state, {}) },
+      start (target, { maxTicks, ...options } = {}) {
       const route = navigator.plan(state, target, options)
       if (!route.ready) throw new Error(route.reason)
       const stepper = navigator.createStepper(route, state)
