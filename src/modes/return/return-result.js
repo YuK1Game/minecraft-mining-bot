@@ -20,8 +20,9 @@ const STATUSES = Object.freeze(['completed', 'partial', 'blocked', 'failed', 'in
 // - terrain_received: the terrain in question is received.
 // - position_changed: the Bot stands somewhere else (another route).
 // - supplies_changed: wood, chests or tools are held that were not.
+// - build_free: the house work or the chest waiting to be received that kept a new chest from being made is over.
 // - time: only for the network and for things that move by themselves.
-const RETRIES = Object.freeze(['now', 'owner_released', 'inventory_update', 'container_update', 'terrain_received', 'position_changed', 'supplies_changed', 'time'])
+const RETRIES = Object.freeze(['now', 'owner_released', 'inventory_update', 'container_update', 'terrain_received', 'position_changed', 'supplies_changed', 'build_free', 'time'])
 
 function result (status, code, { progress = {}, remaining = null, evidence = null, retry = null, detail = null } = {}) {
   if (!STATUSES.includes(status)) throw new Error(`Unknown return status: ${status}`)

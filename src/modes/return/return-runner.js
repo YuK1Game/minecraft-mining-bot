@@ -63,7 +63,8 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
     const cells = terrainCells(required) ?? (at ? [-1, 0, 1].map(dy => ({ ...at, y: at.y + dy })) : null)
     return !!cells && cells.every(point => ports.getBlock(point.x, point.y, point.z)?.known === true)
   }
-  const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), inventoryKnown: !!ports.getInventory(), terrain: terrain(goal?.hold?.terrainCells), settled: settled(), owner: interrupter() ?? null, scope: scope(), now: now() })
+  const buildFree = () => { try { return typeof policy.buildHeld === 'function' && policy.buildHeld() === null } catch { return false } }
+  const seenNow = () => ({ position: ports.getPosition(), supplies: supplies(), buildFree: buildFree(), inventoryKnown: !!ports.getInventory(), terrain: terrain(goal?.hold?.terrainCells), settled: settled(), owner: interrupter() ?? null, scope: scope(), now: now() })
 
   function end (state, code, text) {
     say(`${text}（${code}・収納済み ${goal.progress.banked} 個${goal.progress.taken ? `・取り出し ${goal.progress.taken} 個` : ''}・試行 ${goal.budget.attempts} 回）`)
