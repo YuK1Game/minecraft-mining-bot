@@ -122,7 +122,15 @@ function createMineStorage (ctx, actions) {
     const room = roomOf(plan, layer)
     if (!room) return failed('MINE_STORAGE_LAYER_INVALID')
     const target = Object.fromEntries(Object.entries(needs).map(([name, n]) => [bare(name), n + (actions.inventory()?.items ?? []).filter(i => bare(i.name) === bare(name)).reduce((sum, i) => sum + i.count, 0)]))
-    for (const pair of room.pairs.filter(pair => pair.purpose === 'supply' && registry().pairs[pair.id])) {
+    // Cobblestone is banked with the cargo: when the supply chest is short of it, the cargo chests are read too, so
+    // the floor and fill stone is taken from the mine's own stock (live 2026-11-26 08:27 JST: 「cobblestone 21/64」
+    // dug out of the surface beside the entrance while the cargo chests held 2,758 cobblestone).
+    const bulk = /^(?:cobblestone|cobbled_deepslate)$/
+    const short = () => Object.entries(target).some(([name, count]) => bulk.test(name) && (held(actions.inventory(), name) ?? 0) < count)
+    const order = [...room.pairs.filter(pair => pair.purpose === 'supply'), ...room.pairs.filter(pair => pair.purpose === 'cargo')]
+    for (const pair of order.filter(pair => registry().pairs[pair.id])) {
+      if (pair.purpose === 'cargo' && !short()) break
+      if (pair.purpose === 'cargo' && memory.seen.get(key(pair.positions[0])) && !(memory.seen.get(key(pair.positions[0])) ?? []).some(slot => bulk.test(bare(slot.name)) && slot.count > 0)) continue
       const received = await inspect(pair)
       if (!confirmed(received)) return received
       const out = await box.withdraw(pair.positions[0], slots => pickDeficits(target, actions.inventory(), slots), { aborted: stopped })
