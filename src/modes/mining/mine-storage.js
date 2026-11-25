@@ -144,6 +144,7 @@ function createMineStorage (ctx, actions) {
     const pick = slots => pickDeficits(target, actions.inventory(), slots)
     // Earlier deposit receipts locate the material. The current window and
     // inventory must confirm each withdrawal through the ordinary chest port.
+    memory.ensure?.()
     for (const [id, slots] of memory.seen) {
       if (!pick(slots).length) continue
       const [x, y, z] = id.split(',').map(Number), position = { x, y, z }
@@ -185,7 +186,9 @@ function createMineStorage (ctx, actions) {
     if (!await approachHome(ctx, anchor, { open: true })) return wait('MINE_HOME_ACCESS_UNCONFIRMED', 'position_changed')
     if (stopped()) return stoppedResult()
     const visited = new Set()
-    for (const position of baseChests(ctx.getBlock, [ctx.shared.playerBase, anchor], { contents: box.contents })) {
+    // The chest that last showed room is opened first and one that showed none last (player-chest-index.js).
+    const { knownSlots } = require('../base-chests'), { roomFirst } = require('../player-chest-index')
+    for (const position of roomFirst(baseChests(ctx.getBlock, [ctx.shared.playerBase, anchor], { contents: box.contents }), at => knownSlots(ctx.getBlock, box.contents, at))) {
       if (stopped()) return stoppedResult()
       if (visited.has(key(position)) || pairs.pending(position)) continue
       if (!await approachHome(ctx, position, { open: true })) continue

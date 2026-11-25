@@ -23,6 +23,8 @@ const { discardJunk } = require('./player-discard')
 const { createChestPairs } = require('./player-chest-pairs')
 const { stands } = require('./house/house-steps')
 const { chestShut, lidFree } = require('./chest-lid')
+const { knownSlots } = require('./base-chests')
+const { roomFirst } = require('./player-chest-index')
 
 const CHEST = 'minecraft:chest'
 const TABLE = 'minecraft:crafting_table'
@@ -215,7 +217,9 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     // complete 54-slot window must have arrived from the server.
     let single = null, unconfirmed = false
     const seen = new Set()
-    for (const candidate of chests.filter(roomy)) {
+    // The chest that last showed room is opened first and one that showed none last (player-chest-index.js).
+    const ordered = roomFirst(chests.filter(roomy).map(chest => chest.position), at => knownSlots(getBlock, hands.contents, at)).map(at => chests.find(chest => chest.position === at))
+    for (const candidate of ordered) {
       if (seen.has(key(candidate.position))) continue
       seen.add(key(candidate.position))
       if (candidate.pair) seen.add(key(candidate.pair))
