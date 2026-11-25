@@ -1,7 +1,7 @@
 'use strict'
 
 const { setImmediate: immediate } = require('node:timers/promises')
-const { surveyMine } = require('./mine-survey')
+const { surveyMineRegions } = require('./mine-survey-regions')
 const { evaluateMineGeometry, lowerLevels, resourceName, withClosed } = require('./mine-plan')
 const { extendMineGeometry, defaultDropEstimate, point, MAX_SHAFT_DEPTH } = require('./mine-geometry')
 const { mineWorldScope, mineLiveScope, sameWorld } = require('./mine-state')
@@ -24,8 +24,9 @@ async function planMineExtension ({ world, getState, plan, origin = plan?.shaft?
   if (!liveScope || !sameWorld(plan?.scope, scope)) return { status: 'blocked', code: 'MINE_SCOPE_UNKNOWN' }
   resource = resourceName(resource)
   if (plan.layers?.length !== 1 || plan.layers[0].id !== 'upper' || !['diamond', 'raw_gold', 'redstone'].includes(resource) || !Number.isSafeInteger(targetCount) || targetCount < 1 || targetCount > 4096 || !Number.isInteger(maxLowerLevels) || maxLowerLevels < 1 || maxLowerLevels > 8 || !Number.isInteger(maxWork) || maxWork < 1 || maxWork > 20000000 || !origin || !['x', 'y', 'z'].every(axis => Number.isFinite(origin[axis]))) return { status: 'blocked', code: 'MINE_EXTENSION_INVALID' }
-  const survey = await surveyMine({ world, getState, bounds: extensionBounds(plan), maxCells, yieldNow, isProtected }, { signal })
+  const survey = await surveyMineRegions({ world, getState, bounds: extensionBounds(plan), maxCells, yieldNow, isProtected }, { signal })
   if (!['ready', 'partial'].includes(survey.status)) return survey
+  const observed = result => ({ ...result, terrainReceipt: survey.terrainReceipt })
   let work = 0, nextYield = 512, evaluated = 0, rejectedUnknown = 0, rejectedHazard = 0
   const guard = () => {
     if (signal?.aborted) fail('MINE_CANCELLED')
@@ -40,9 +41,9 @@ async function planMineExtension ({ world, getState, plan, origin = plan?.shaft?
     guard()
     const upperY = plan.layers[0].y
     const observedLowers = lowerLevels(survey, upperY, maxLowerLevels, -Infinity, resource)
-    if (!observedLowers.length) return { status: survey.unknown ? 'observing' : 'blocked', code: survey.unknown ? 'MINE_LOWER_ORE_OBSERVATION_NEEDED' : 'MINE_NO_OBSERVED_LOWER_ORE', needsObservation: survey.needsObservation, diagnostics: { known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length } }
+    if (!observedLowers.length) return observed({ status: survey.unknown ? 'observing' : 'blocked', code: survey.unknown ? 'MINE_LOWER_ORE_OBSERVATION_NEEDED' : 'MINE_NO_OBSERVED_LOWER_ORE', needsObservation: survey.needsObservation, diagnostics: { known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length } })
     const lowers = lowerLevels(survey, upperY, maxLowerLevels, plan.site.surfaceY - MAX_SHAFT_DEPTH, resource)
-    if (!lowers.length) return { status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED', diagnostics: { maximumShaftDepth: MAX_SHAFT_DEPTH, observedLowerYs: observedLowers, known: survey.known, unknown: survey.unknown } }
+    if (!lowers.length) return observed({ status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED', diagnostics: { maximumShaftDepth: MAX_SHAFT_DEPTH, observedLowerYs: observedLowers, known: survey.known, unknown: survey.unknown } })
     let best = null
     for (const lowerY of lowers) {
       let candidate = extendMineGeometry(plan, { lowerY })
@@ -68,11 +69,11 @@ async function planMineExtension ({ world, getState, plan, origin = plan?.shaft?
       await yieldNow(); guard()
     }
     const diagnostics = { candidates: lowers.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, upperYs: [upperY], lowerYs: lowers, extension: true }
-    if (!best) return { status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics }
+    if (!best) return observed({ status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics })
     withClosed(best.plan, best.evaluation)
     best.plan.evaluation = { ...best.evaluation, observationOnly: true, source: 'current_received_world', terrainRevision: survey.revision, scope: 'lower_extension_only', existingUpperRequiresLiveValidation: true, optimality: 'best_complete_candidate_in_bounded_search', ...diagnostics }
-    return { status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, diagnostics }
-  } catch (error) { return { status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } } }
+    return observed({ status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, diagnostics })
+  } catch (error) { return observed({ status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } }) }
 }
 
 module.exports = { planMineExtension, extensionBounds }

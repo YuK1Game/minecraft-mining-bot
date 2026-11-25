@@ -1,7 +1,8 @@
 'use strict'
 
 const { setImmediate: immediate } = require('node:timers/promises')
-const { surveyMine, oreResource } = require('./mine-survey')
+const { oreResource } = require('./mine-survey')
+const { surveyMineRegions } = require('./mine-survey-regions')
 const { createMineGeometry, mineSteps, stepCells, defaultDropEstimate, DIRECTIONS, MAX_SHAFT_DEPTH, MAX_SIDE, shaftSurfaceLayout, key } = require('./mine-geometry')
 // The sizes a site is planned at. User 2026-11-24 requested 128x128 sites with
 // the full required count of large chests per layer (typically 7 cargo + 1 supply
@@ -392,8 +393,9 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
   const surfaceRadius = Math.min(8, searchRadius)
   const radius = Math.min(Math.ceil(Math.max(...dimensions.flat()) / 2) + searchRadius + 4, 52)
   const bounds = { min: { x: Math.floor(origin.x) - radius, y: upperOnly ? Math.min(...uppers) - 2 : -60, z: Math.floor(origin.z) - radius }, max: { x: Math.floor(origin.x) + radius, y: Math.min(319, surfaceY + 3 + surfaceRadius), z: Math.floor(origin.z) + radius } }
-  const survey = suppliedSurvey ?? await surveyMine({ world, getState, bounds, requestSections, maxCells, yieldNow, isProtected }, { signal })
+  const survey = suppliedSurvey ?? await surveyMineRegions({ world, getState, bounds, requestSections, maxCells, yieldNow, isProtected }, { signal })
   if (!['ready', 'partial'].includes(survey.status)) return survey
+  const observed = result => ({ ...result, terrainReceipt: survey.terrainReceipt })
   let work = 0, nextYield = 512, evaluated = 0, rejectedUnknown = 0, rejectedHazard = 0
   const guard = () => { if (signal?.aborted) fail('MINE_CANCELLED'); if (mineLiveScope(getState()) !== liveScope || survey.liveScope !== liveScope) fail('MINE_SCOPE_CHANGED'); if (!survey.current()) fail('MINE_TERRAIN_CHANGED'); if (work > maxWork) fail('MINE_PLAN_BUDGET') }
   const account = () => { if (++work > maxWork) fail('MINE_PLAN_BUDGET') }
@@ -402,10 +404,10 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
   try {
     guard()
     const observedLowers = upperOnly ? [] : [...new Set(uppers.flatMap(upperY => lowerLevels(survey, upperY, maxLowerLevels, -Infinity, resource)))]
-    if (!upperOnly && !observedLowers.length) return { status: survey.unknown === 0 ? 'blocked' : 'observing', code: survey.unknown === 0 ? 'MINE_NO_OBSERVED_LOWER_ORE' : 'MINE_LOWER_ORE_OBSERVATION_NEEDED', needsObservation: survey.needsObservation, diagnostics: { known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length } }
+    if (!upperOnly && !observedLowers.length) return observed({ status: survey.unknown === 0 ? 'blocked' : 'observing', code: survey.unknown === 0 ? 'MINE_NO_OBSERVED_LOWER_ORE' : 'MINE_LOWER_ORE_OBSERVATION_NEEDED', needsObservation: survey.needsObservation, diagnostics: { known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, surveyRegions: survey.regions ?? 1 } })
     const lowersByUpper = new Map(uppers.map(upperY => [upperY, upperOnly ? [null] : lowerLevels(survey, upperY, maxLowerLevels, surfaceY - MAX_SHAFT_DEPTH, resource)]))
     const lowers = [...new Set([...lowersByUpper.values()].flat())]
-    if (!lowers.length) return { status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED', diagnostics: { surfaceY, observedLowerYs: observedLowers, maximumShaftDepth: MAX_SHAFT_DEPTH } }
+    if (!lowers.length) return observed({ status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED', diagnostics: { surfaceY, observedLowerYs: observedLowers, maximumShaftDepth: MAX_SHAFT_DEPTH } })
     const shifts = [...new Set([-searchRadius, 0, searchRadius])], candidates = [], surfaces = new Map()
     for (const [width, length] of dimensions) for (const dx of shifts) for (const dz of shifts) for (const direction of Object.keys(DIRECTIONS)) for (const upperY of uppers) for (const lowerY of lowersByUpper.get(upperY)) {
       const f = DIRECTIONS[direction], r = { x: -f.z, z: f.x }
@@ -472,12 +474,12 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
       // Geometry work itself also yields, including uniformly unknown areas.
       await yieldNow(); guard()
     }
-    const diagnostics = { candidates: candidates.length, prefiltered: selected.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, unsafeSamples, upperYs: uppers, lowerYs: lowers.filter(y => y != null), dimensions, upperOnly }
-    if (!best) return { status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics }
+    const diagnostics = { candidates: candidates.length, prefiltered: selected.length, evaluated, work, known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, rejectedUnknown, rejectedHazard, unsafeSamples, upperYs: uppers, lowerYs: lowers.filter(y => y != null), dimensions, upperOnly, surveyRegions: survey.regions ?? 1 }
+    if (!best) return observed({ status: rejectedUnknown ? 'observing' : 'blocked', code: rejectedUnknown ? 'MINE_TERRAIN_UNKNOWN' : 'MINE_NO_SAFE_RESOURCE_PLAN', needsObservation: survey.needsObservation, diagnostics })
     withClosed(best.plan, best.evaluation)
     best.plan.evaluation = { ...best.evaluation, observationOnly: true, source: 'current_received_world', terrainRevision: survey.revision, optimality: 'best_complete_candidate_in_bounded_search', ...diagnostics }
-    return { status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, needsObservation: survey.needsObservation, diagnostics }
-  } catch (error) { return { status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } } }
+    return observed({ status: 'planned', code: best.evaluation.meetsTarget ? 'MINE_TARGET_REACHABLE' : 'MINE_RESOURCE_SHORTFALL', plan: best.plan, needsObservation: survey.needsObservation, diagnostics })
+  } catch (error) { return observed({ status: error.code === 'MINE_CANCELLED' ? 'cancelled' : error.code === 'MINE_PLAN_BUDGET' ? 'blocked' : 'observing', code: error.code ?? 'MINE_PLAN_FAILED', reason: error.message, diagnostics: { evaluated, work } }) }
 }
 
 // What the planner accepts. A saved site search keeps the rejections of the rules that made them, so a search
@@ -486,6 +488,7 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
 // 3: a received void in the shaft's columns or under their bottom rejects the geometry.
 // 4: sites are 48 or 64 blocks a side (were 16 to 32).
 // 5: sites are 128x128 with full-size large-chest rooms and deferred outer corridors.
-const PLAN_RULES = 5
+// 6: tall survey volumes are partitioned; computation limits cannot reject terrain.
+const PLAN_RULES = 6
 
 module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed, PLAN_RULES }

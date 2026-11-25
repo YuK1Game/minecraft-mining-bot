@@ -8,6 +8,7 @@
 // Modules are loaded through rt.require, the runtime's own require.
 
 function createLongTravelRuntime (rt) {
+  rt = rt.require('./runtime/runtime-ports').bindRuntimePorts(rt, 'travel')
   let longTravel = null
   let playerCrafting = null
   const playerTravelCrafting = () => playerCrafting ??= rt.require('./travel/player-travel-crafting').createPlayerTravelCrafting(rt)

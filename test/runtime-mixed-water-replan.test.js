@@ -8,7 +8,7 @@ function load (filename, text) { const m = new Module(filename, module); m.filen
 async function scene (t) {
   const file = path.join(root, 'test/runtime-depot-resource-scope.test.js')
   const { hostScene, seed } = load(file, fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n').split('\ntest(')[0] + '\nmodule.exports={hostScene,seed};')
-  const movementSource = process.env.MIXED_MOVEMENT_TEST_SOURCE ?? (fs.existsSync(path.join(__dirname, '../src/movement/movement.js')) ? path.join(__dirname, '../src/movement/movement.js') : path.join(root, '.local/staged/mixed-water-correction-replan-r2/src/movement.js'))
+  const movementSource = process.env.MIXED_MOVEMENT_TEST_SOURCE ?? path.join(__dirname, '../src/movement/movement.js')
   const stagedMovement = load(path.join(root, 'src/movement/movement.js'), fs.readFileSync(movementSource, 'utf8'))
   const state = copy(seed.state)
   Object.assign(state, { health: 20, position: { x: .5, y: 66.62, z: .5 }, positionSource: 'server_post_move', positionUpdatedAt: new Date().toISOString(), inventory: { known: true, items: [] }, heldItem: null, selectedSlot: 0, rawSelectedSlot: 0, lifecycle: { phase: 'alive', deathId: 1 }, rotation: { yaw: -90, pitch: 0 } })

@@ -3,7 +3,7 @@
 const { evaluateCombatThreat, CONTACT_M } = require('./combat-threat-policy')
 const { PROVOKED_WINDOW_MS, PROVOKED_DISTANCE } = require('./combat-profiles')
 const threatReachability = require('./threat-reachability')
-const { createCombatSearchBudget } = require('./combat-search-budget')
+const { combatSearchBudgetFor } = require('./combat-search-budget')
 
 // Eye height of a standing two-block mob (skeleton 1.74, pillager 1.62).
 const TARGET_EYE = 1.6
@@ -81,7 +81,7 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false, r
     return value
   }
   const enemyAttackRoutes = new Map()
-  const combatSearchBudget = createCombatSearchBudget()
+  const combatSearchBudget = combatSearchBudgetFor(world)
   function evaluate (target, state) {
     let sight = null, routeToBot = null, motion = null
     try { sight = targetSight(target, state) } catch {}
@@ -93,16 +93,20 @@ function createCombatExposure ({ world, entities, scopeOf, solidCover = false, r
     if (provoked) result = evaluateCombatThreat({ target, state, sight, motion, provoked })
     if (result.accessKind === 'enemy_walk_route' && Number.isFinite(result.distance) && result.distance <= result.recognitionRadius) {
       const feet = state.position && { x: state.position.x, y: state.position.y - 1.62, z: state.position.z }
-      const key = JSON.stringify([scopeOf(state), String(target.runtimeId), String(target.uniqueId), world.revision?.(), ...['x', 'y', 'z'].map(k => Math.floor(feet?.[k])), ...['x', 'y', 'z'].map(k => Math.floor(target.position?.[k]))])
+      const key = JSON.stringify([scopeOf(state), String(target.runtimeId), String(target.uniqueId), ...['x', 'y', 'z'].map(k => Math.floor(feet?.[k])), ...['x', 'y', 'z'].map(k => Math.floor(target.position?.[k]))])
       const cached = enemyAttackRoutes.get(key), now = Date.now()
-      if (cached && now - cached.at >= 0 && now - cached.at < (cached.value === null ? 50 : 750)) routeToBot = cached.value
+      if (cached && cached.reader === world.getBlock && (cached.observer ? cached.observer.current() : Number.isSafeInteger(cached.revision) && cached.revision === world.revision?.()) && now - cached.at >= 0 && now - cached.at < (cached.value === null ? 50 : 750)) routeToBot = cached.value
       else {
         let searched = false
+        const observer = world.observeTerrain?.() ?? null, revision = world.revision?.(), reader = world.getBlock
         try {
-          const probe = combatSearchBudget.search(maxMs => threatReachability.seekCells(world, target.position, feet, { radius: result.recognitionRadius, maxNodes: 5000, maxMs }), { urgent: result.distance <= 3.5 || target.entityType === 'minecraft:creeper' && target.primed === true && result.distance <= 8 })
+          const probe = combatSearchBudget.search(maxMs => {
+            const run = () => threatReachability.seekCells(world, target.position, feet, { radius: result.recognitionRadius, maxNodes: 5000, maxMs })
+            return observer ? observer.run(run) : run()
+          }, { urgent: result.distance <= 3.5 || target.entityType === 'minecraft:creeper' && target.primed === true && result.distance <= 8 })
           searched = probe.executed; routeToBot = probe.value
         } catch {}
-        if (searched) enemyAttackRoutes.set(key, { at: now, value: routeToBot })
+        if (searched) enemyAttackRoutes.set(key, { at: now, value: routeToBot, observer, revision, reader })
         while (enemyAttackRoutes.size > 128) enemyAttackRoutes.delete(enemyAttackRoutes.keys().next().value)
       }
       result = evaluateCombatThreat({ target, state, routeToBot, sight, motion, provoked })

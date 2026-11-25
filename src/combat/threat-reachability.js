@@ -1,6 +1,8 @@
 'use strict'
 
 const { performance } = require('node:perf_hooks')
+const { createTerrainCache } = require('../common/terrain-cache')
+const { combatSearchBudgetFor } = require('./combat-search-budget')
 
 // Bounded walk-route evidence for hostiles. A hostile inside the engage radius
 // counts as engageable only while a walkable route from the bot to the
@@ -47,6 +49,7 @@ function nearSeen (seen, p) {
 // true = route, false = known no route, null = unknown.
 function verdict (state, entity, now = Date.now()) {
   if (!fill || !finite(state?.position) || !finite(entity?.position) || idOf(entity) == null) return null
+  if (fill.scope !== scope(state) || fill.reader !== fill.world.getBlock || (fill.observer ? !fill.observer.current() : fill.revision !== fill.world.revision?.())) return null
   if (now - fill.createdAt > TTL_MS || now < fill.createdAt - 50 || fill.dimension !== (state.dimension ?? null)) return null
   if (entity.dimension != null && entity.dimension !== state.dimension) return null
   const feet = { ...state.position, y: state.position.y - 1.62 }
@@ -88,14 +91,14 @@ function kind (block) {
   return 'unknown'
 }
 
-// Cell kinds shared between fills while the world revision is unchanged (any
-// received world packet bumps it). Worlds without a revision get a fresh map.
-let shared = { world: null, revision: null, getBlock: null, map: new Map() }
+// Derived cell kinds survive unrelated packets; receipt/eviction of a section
+// they actually read still invalidates them, including previously unknown cells.
+let caches = new WeakMap()
 function cellCache (world) {
-  const revision = typeof world?.revision === 'function' ? world.revision() : null
-  if (revision == null) return new Map()
-  if (shared.world !== world || shared.revision !== revision || shared.getBlock !== world.getBlock) shared = { world, revision, getBlock: world.getBlock, map: new Map() }
-  return shared.map
+  if (!caches.has(world)) caches.set(world, createTerrainCache(world, { maxEntries: CELL_CACHE_LIMIT }))
+  const cache = caches.get(world)
+  cache.begin()
+  return cache
 }
 
 // Both searches must preserve the same three-way evidence. In particular,
@@ -104,12 +107,7 @@ function walkGrid (world) {
   const cache = cellCache(world)
   let unknown = false
   const at = (x, y, z) => {
-    const id = `${x},${y},${z}`
-    let value = cache.get(id)
-    if (value === undefined) {
-      value = kind(world.getBlock(x, y, z)); cache.set(id, value)
-      if (cache.size > CELL_CACHE_LIMIT) cache.clear()
-    }
+    const value = cache.read(x, y, z, () => kind(world.getBlock(x, y, z)))
     if (value === 'unknown') unknown = true
     return value
   }
@@ -131,17 +129,15 @@ function walkGrid (world) {
 }
 
 // Flood fill of standable cells from the bot's feet cell within the radius.
-function walkableCells (world, feet, { radius = ENGAGE_RADIUS, maxNodes = MAX_NODES, maxMs = FILL_TIME_LIMIT_MS } = {}) {
-  // Hard time budget: a fill that runs out is truncated (unknown evidence),
-  // so it can never hold the input/heartbeat loop for long.
-  const deadline = performance.now() + maxMs
+function * walkableCellSteps (world, feet, { radius = ENGAGE_RADIUS, maxNodes = MAX_NODES } = {}) {
   const grid = walkGrid(world), { at, body, stand } = grid
   const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
   if (!grid.originKnown(start)) return { seen: new Set(), truncated: false, unknown: true, origin: start }
   const seen = new Set([`${start.x},${start.y},${start.z}`]); const queue = [start]
   let truncated = false
   for (let i = 0; i < queue.length; i++) {
-    if (seen.size >= maxNodes || (i & 63) === 0 && performance.now() > deadline) { truncated = true; break }
+    if (seen.size >= maxNodes) { truncated = true; break }
+    yield { seen, truncated: true, unknown: grid.unknown(), origin: start }
     const c = queue[i]
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = c.x + dx, nz = c.z + dz
@@ -164,8 +160,7 @@ function walkableCells (world, feet, { radius = ENGAGE_RADIUS, maxNodes = MAX_NO
 // standable-cell moves). Used when the radius flood fill ran out of budget on
 // rough terrain: it answers that hostile without scanning the whole disk.
 // true = reached, false = searched out over known terrain, null = unknown/budget.
-function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK_MAX_NODES, maxMs = SEEK_TIME_LIMIT_MS } = {}) {
-  const deadline = performance.now() + maxMs
+function * seekCellSteps (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK_MAX_NODES } = {}) {
   const grid = walkGrid(world), { at, body, stand } = grid
   const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
   if (!grid.originKnown(start)) return null
@@ -174,9 +169,9 @@ function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK
   const heap = [], push = c => { c.f = h(c); heap.push(c); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p].f <= heap[i].f) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p } }
   const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l].f < heap[m].f) m = l; if (r < heap.length && heap[r].f < heap[m].f) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m } } return top }
   const seen = new Set([`${start.x},${start.y},${start.z}`]); push(start)
-  let n = 0
   while (heap.length) {
-    if (seen.size >= maxNodes || (++n & 31) === 0 && performance.now() > deadline) return null
+    if (seen.size >= maxNodes) return null
+    yield null
     const c = pop()
     if (Math.hypot(c.x - g.x, c.z - g.z) <= 1.5 && Math.abs(c.y - g.y) <= 2) return true
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -194,6 +189,32 @@ function seekCells (world, feet, goal, { radius = ENGAGE_RADIUS, maxNodes = SEEK
   }
   return grid.unknown() ? null : false
 }
+
+// CPU accounting excludes the time a continuation spends waiting for its next
+// event-loop slice. Budget exhaustion preserves partial/unknown evidence.
+function * boundedSteps (iterator, maxMs, progress = null) {
+  let used = 0
+  try {
+    for (;;) {
+      const started = performance.now(), next = iterator.next()
+      used += performance.now() - started
+      progress?.(next.value)
+      if (next.done || used >= maxMs) return next.value
+      yield next.value
+    }
+  } finally { iterator.return() }
+}
+function drain (iterator) { let next; do { next = iterator.next() } while (!next.done); return next.value }
+function drainTimed (iterator, maxMs) {
+  const deadline = performance.now() + maxMs
+  let next
+  try {
+    do { next = iterator.next() } while (!next.done && performance.now() < deadline)
+    return next.value
+  } finally { iterator.return() }
+}
+function walkableCells (world, feet, options = {}) { return drainTimed(walkableCellSteps(world, feet, options), options.maxMs ?? FILL_TIME_LIMIT_MS) }
+function seekCells (world, feet, goal, options = {}) { return drainTimed(seekCellSteps(world, feet, goal, options), options.maxMs ?? SEEK_TIME_LIMIT_MS) }
 
 // The other direction, for a hostile the fills above could not answer (an
 // unreceived block anywhere in the 32 m disk makes them "unknown"): a small
@@ -234,7 +255,7 @@ function shutIn (world, position, botFeet, { maxMs = PIT_TIME_LIMIT_MS } = {}) {
 //   cave tunnel past PIT_RADIUS, if every received cell within CAVE_WALKER_RADIUS
 //   stays at least MAX_DROP + 1 below botFeet (with no unknown blocks), it cannot
 //   climb to the bot without walking > 10 m away (invalidating the 3 m reuse window).
-function checkTrapped (world, position, botFeet, { walker = false, maxMs = PIT_TIME_LIMIT_MS } = {}) {
+function * checkTrappedSteps (world, position, botFeet, { walker = false, maxMs = PIT_TIME_LIMIT_MS } = {}) {
   const feet = { x: position.x, y: position.y + 0.25, z: position.z }
   const start = { x: Math.floor(feet.x), y: Math.floor(feet.y), z: Math.floor(feet.z) }
   const ceilingY = Math.floor(botFeet.y) - MAX_DROP - 1
@@ -243,7 +264,7 @@ function checkTrapped (world, position, botFeet, { walker = false, maxMs = PIT_T
   if (!probe.body(start.x, start.y, start.z) || probe.unknown()) return { trapped: null, why: probe.unknown() ? 'start_unknown' : 'start_blocked' }
   const radius = walker ? CAVE_WALKER_RADIUS : PIT_RADIUS
   const maxNodes = walker ? CAVE_WALKER_MAX_NODES : PIT_MAX_NODES
-  const region = walkableCells(world, feet, { radius, maxNodes, maxMs })
+  const region = yield * boundedSteps(walkableCellSteps(world, feet, { radius, maxNodes }), maxMs)
   if (region.truncated) return { trapped: null, why: `truncated:${region.seen.size}` }
   if (region.unknown) return { trapped: null, why: `unknown:${region.seen.size}` }
   if (nearSeen(region.seen, botFeet)) return { trapped: null, why: 'reached_bot' }
@@ -260,58 +281,76 @@ function checkTrapped (world, position, botFeet, { walker = false, maxMs = PIT_T
 }
 
 function undergroundWalker (world, position, botFeet, { maxMs = PIT_TIME_LIMIT_MS } = {}) {
-  return checkTrapped(world, position, botFeet, { walker: true, maxMs }).trapped
+  return drain(checkTrappedSteps(world, position, botFeet, { walker: true, maxMs })).trapped
 }
 
-// One bounded flood fill per interval. Callers read state many times per tick
-// and the fill must never starve the input/packet loop.
-function refresh (state, entities, { world, isHostile = e => e?.hostile === true && e?.alive !== false, now = Date.now(), force = false, fillMs = FILL_TIME_LIMIT_MS, pitMs = PIT_TIME_LIMIT_MS } = {}) {
-  if (typeof world?.getBlock !== 'function' || !finite(state?.position) || !Array.isArray(entities)) return
-  if (!force && now < nextRefreshAt) return
-  nextRefreshAt = now + REFRESH_MS
-  const due = entities.filter(e => isHostile(e) && e.positionKnown !== false && finite(e.position) && idOf(e) != null && (e.dimension == null || e.dimension === state.dimension))
-    .map(e => ({ e, d: distance(state.position, e.position) })).filter(({ d }) => d > MELEE_REACH && d <= ENGAGE_RADIUS)
-  if (!due.length) return
-  const started = performance.now()
-  let grid
-  try { grid = walkableCells(world, { ...state.position, y: state.position.y - 1.62 }, { maxMs: fillMs }) } catch { return }
-  const elapsed = performance.now() - started
-  fill = { policy: POLICY, createdAt: now, dimension: state.dimension ?? null, ...grid, cells: grid.seen.size, elapsedMs: Math.round(elapsed * 10) / 10, targets: new Map() }
-  // A truncated fill leaves far hostiles unknown: answer the nearest few with
-  // a targeted search instead (each bounded; the total stays small).
-  if (grid.truncated) {
-    const feet = { ...state.position, y: state.position.y - 1.62 }
-    for (const { e } of due.slice().sort((a, b) => a.d - b.d).slice(0, SEEK_TARGETS)) {
-      if (nearSeen(grid.seen, e.position)) continue
-      let result = null
-      try { result = seekCells(world, feet, e.position) } catch { result = null }
-      fill.targets.set(String(idOf(e)), { position: { ...e.position }, result })
-    }
-    fill.elapsedMs = Math.round((performance.now() - started) * 10) / 10
-  }
+// Refresh is a resumable search, charged to the same normal allowance as
+// attack-access searches. Each node is an interruption point; contact keeps
+// its separate urgent allowance. No timer or state read drains the whole job.
+let pending = null
+const scope = state => JSON.stringify([state.profile, state.realm?.id, state.connectionId, state.startedAt, state.runtimeEntityId, state.dimension, state.lifecycle?.deathId])
+function * refreshSteps (job) {
+  const { state, due, world, fillMs, pitMs, evidence } = job
   const feet = { ...state.position, y: state.position.y - 1.62 }
-  const pitDeadline = performance.now() + Math.max(pitMs, pitMs * 2)
-  const pitReasons = new Map()
-  for (const { e } of due.slice().sort((a, b) => a.d - b.d).slice(0, SEEK_TARGETS)) {
-    const current = verdict(state, e, now)
-    // A one-way drop (MAX_DROP = 3) lets the bot's flood fill reach a pit/cave
-    // >= 4 blocks below, while the hostile cannot climb back up (step-up = 1).
-    // Verify trap/cave status from the hostile's cell in that asymmetric case too.
-    const deepBelow = Math.floor(e.position.y + 0.25) <= Math.floor(feet.y) - MAX_DROP - 1
-    if (current === false || (current === true && !deepBelow)) { pitReasons.set(String(idOf(e)), `verdict=${current}`); continue }
-    const remain = Math.min(pitMs, pitDeadline - performance.now())
-    if (remain <= 0.5) { pitReasons.set(String(idOf(e)), 'budget'); break }
-    let res = { trapped: null, why: 'error' }
-    try { res = checkTrapped(world, e.position, feet, { walker: CAVE_WALKER.test(String(e.entityType ?? '')), maxMs: remain }) } catch {}
-    pitReasons.set(String(idOf(e)), res.why)
-    if (res.trapped === true) fill.targets.set(String(idOf(e)), { position: { ...e.position }, result: false, shutIn: true })
+  const nearest = due.slice().sort((a, b) => a.d - b.d).slice(0, SEEK_TARGETS)
+  // Deep one-way drops need the reverse proof before a forward fill can be
+  // interpreted as attack access. These small probes also finish promptly
+  // when a distant unknown section makes the larger disk inconclusive.
+  for (const { e } of nearest) {
+    if (Math.floor(e.position.y + 0.25) > Math.floor(feet.y) - MAX_DROP - 1) continue
+    let result = { trapped: null, why: 'error' }
+    try { result = yield * checkTrappedSteps(world, e.position, feet, { walker: CAVE_WALKER.test(String(e.entityType ?? '')), maxMs: pitMs }) } catch {}
+    job.pitReasons.set(String(idOf(e)), result.why)
+    if (result.trapped === true) evidence.targets.set(String(idOf(e)), { position: { ...e.position }, result: false, shutIn: true })
   }
-  verdicts = due.map(({ e, d }) => ({ runtimeId: String(idOf(e)), entityType: e.entityType ?? null, distance: d, reachable: verdict(state, e, now), pitWhy: pitReasons.get(String(idOf(e))) ?? null }))
-  // A slow fill backs off so it stays a small share of the event loop.
-  if (elapsed > BUDGET_MS) nextRefreshAt = now + Math.min(4000, elapsed * 20)
+  let grid
+  try { grid = yield * boundedSteps(walkableCellSteps(world, feet), fillMs, part => { Object.assign(evidence, part, { cells: part.seen.size }) }) } catch { return }
+  Object.assign(evidence, grid, { cells: grid.seen.size })
+  if (grid.truncated) for (const { e } of nearest) {
+    if (nearSeen(grid.seen, e.position) || evidence.targets.get(String(idOf(e)))?.shutIn) continue
+    let result = null
+    try { result = yield * boundedSteps(seekCellSteps(world, feet, e.position), SEEK_TIME_LIMIT_MS) } catch {}
+    evidence.targets.set(String(idOf(e)), { position: { ...e.position }, result })
+  }
+}
+function refresh (state, entities, { world, isHostile = e => e?.hostile === true && e?.alive !== false, now = Date.now(), force = false, fillMs = FILL_TIME_LIMIT_MS, pitMs = PIT_TIME_LIMIT_MS, budget = null } = {}) {
+  if (typeof world?.getBlock !== 'function' || !finite(state?.position) || !Array.isArray(entities)) return
+  const valid = job => job.world === world && job.reader === world.getBlock && job.scope === scope(state) && distance(state.position, job.state.position) <= SEEK_REUSE_DISTANCE && (job.observer ? job.observer.current() : job.revision === world.revision?.())
+  if (pending && !valid(pending)) { pending.iterator.return(); pending = null }
+  if (!pending) {
+    if (!force && now < nextRefreshAt) return
+    nextRefreshAt = now + REFRESH_MS
+    const due = entities.filter(e => isHostile(e) && e.positionKnown !== false && finite(e.position) && idOf(e) != null && (e.dimension == null || e.dimension === state.dimension))
+      .map(e => ({ e: { ...e, position: { ...e.position } }, d: distance(state.position, e.position) })).filter(({ d }) => d > MELEE_REACH && d <= ENGAGE_RADIUS)
+    if (!due.length) return
+    const origin = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62), z: Math.floor(state.position.z) }
+    const observer = world.observeTerrain?.() ?? null
+    const evidence = { policy: POLICY, createdAt: now, dimension: state.dimension ?? null, scope: scope(state), observer, world, reader: world.getBlock, revision: world.revision?.(), seen: new Set([`${origin.x},${origin.y},${origin.z}`]), origin, truncated: true, unknown: false, cells: 1, elapsedMs: 0, targets: new Map(), pending: true }
+    pending = { state: { ...state, position: { ...state.position } }, due, world, reader: world.getBlock, revision: world.revision?.(), scope: scope(state), observer, evidence, fillMs, pitMs, cpuMs: 0, pitReasons: new Map() }
+    pending.iterator = refreshSteps(pending)
+    fill = evidence
+  }
+  const job = pending, sharedBudget = budget ?? combatSearchBudgetFor(world)
+  let complete = false
+  const result = sharedBudget.search(maxMs => {
+    const started = performance.now(), deadline = started + maxMs
+    try {
+      do {
+        const next = job.observer ? job.observer.run(() => job.iterator.next()) : job.iterator.next()
+        if (next.done) { complete = true; break }
+      } while (performance.now() < deadline)
+    } finally { job.cpuMs += performance.now() - started }
+  }, { maxMs: 8 })
+  if (!result.executed) return
+  fill.elapsedMs = Math.round(job.cpuMs * 10) / 10
+  verdicts = job.due.map(({ e, d }) => ({ runtimeId: String(idOf(e)), entityType: e.entityType ?? null, distance: d, reachable: verdict(state, e, now), pitWhy: job.pitReasons.get(String(idOf(e))) ?? null }))
+  if (complete) {
+    fill.pending = false; pending = null
+    nextRefreshAt = now + (job.cpuMs > BUDGET_MS ? Math.min(4000, job.cpuMs * 20) : REFRESH_MS)
+  }
 }
 
-function snapshot () { return fill ? { policy: fill.policy, createdAt: fill.createdAt, cells: fill.cells, truncated: fill.truncated, unknownTouched: fill.unknown, elapsedMs: fill.elapsedMs, origin: fill.origin, hostiles: verdicts } : null }
-function clear () { fill = null; verdicts = []; nextRefreshAt = -Infinity; lastForcedAt = -Infinity }
+function snapshot () { return fill ? { policy: fill.policy, createdAt: fill.createdAt, cells: fill.cells, truncated: fill.truncated, pending: fill.pending, unknownTouched: fill.unknown, elapsedMs: fill.elapsedMs, origin: fill.origin, hostiles: verdicts } : null }
+function clear () { pending?.iterator.return(); pending = null; fill = null; verdicts = []; nextRefreshAt = -Infinity; lastForcedAt = -Infinity; caches = new WeakMap() }
 
 module.exports = { ENGAGE_RADIUS, MELEE_REACH, refresh: require('../common/work-spans').wrap('reachability.refresh', refresh), verdict, knownReachable, knownUnreachable, reachableNow, walkableCells, seekCells, shutIn, undergroundWalker, snapshot, clear }

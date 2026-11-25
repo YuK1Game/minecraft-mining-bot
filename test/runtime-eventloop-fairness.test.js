@@ -3,7 +3,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), Module = require('node:module')
 const { performance } = require('node:perf_hooks')
-const { patchRuntimeEventloop } = require('../.local/runtime-eventloop-transform.cjs')
+const { replaceOnce } = require('./helpers/runtime-fixture')
 const copy = value => structuredClone(value)
 
 function fixture (t, { mode = 'normal', watchHook = null, observationHook = null } = {}) {
@@ -14,12 +14,14 @@ function fixture (t, { mode = 'normal', watchHook = null, observationHook = null
     './combat/terrain-threats': { ...nativeRequire('./combat/terrain-threats'), annotateTerrainThreats: (...args) => { if (observationHook?.active) { observationHook.reads++; const end = performance.now() + observationHook.ms; while (performance.now() < end) {} }; return nativeRequire('./combat/terrain-threats').annotateTerrainThreats(...args) } },
     './combat/threats': { ...nativeRequire('./combat/threats'), evaluateThreats: (...args) => { if (watchHook?.active) watchHook.assessments++; return nativeRequire('./combat/threats').evaluateThreats(...args) } },
     './movement/guarded-route': { createGuardedRoute: options => ({ snapshot: () => ({ busy: false }), stop: async () => {}, escape: async (nodes, bounds) => { guardCalls.push({ nodes, bounds }); return { ok: false, arrived: false, escaped: false, movementStarts: 0, code: 'SUPPORT_UNKNOWN', serverConfirmed: false } } }) },`)
-  source = source.replace("fs.readFileSync(filename, 'utf8')", "runtimeForTest(process.env.RUNTIME_TEST_SOURCE ? fs.readFileSync(process.env.RUNTIME_TEST_SOURCE, 'utf8') : require('./helpers/runtime-source').runtimeSource())")
-  source = source.replace('  const target = { exports: {} };', "  overrides['./movement/movement'] = { createMovement: options => nativeRequire('./movement/movement').createMovement(options) }\n  const target = { exports: {} };")
+  source = replaceOnce(source, `  const target = { exports: {} }; const compiled = new vm.Script(Module.wrap(fs.readFileSync(filename, 'utf8')), { filename }).runInThisContext()\n  compiled(target.exports, name => overrides[name] ?? nativeRequire(name), target, filename, path.dirname(filename))`, `  overrides['./movement/movement'] = { createMovement: options => nativeRequire('./movement/movement').createMovement(options) }
+  const target = new Module(filename)
+  target.filename = filename; target.paths = Module._nodeModulePaths(path.dirname(filename))
+  require('./helpers/runtime-fixture').installRuntimeFixture(target, overrides)
+  target._compile(fs.readFileSync(filename, 'utf8'), filename)`)
   source = source.replace('return { runtime, create, host, raw, shared,', 'return { guardCalls, runtime, create, host, raw, shared,')
   const loaded = { exports: {} }
-  const runtimeForTest = value => value.includes('const yieldCandidatePlanning = async') ? value : patchRuntimeEventloop(value)
-  new vm.Script('(function(require,module,__filename,__dirname,runtimeForTest,watchHook,observationHook){' + source + '\nmodule.exports={fixture};})', { filename: file }).runInThisContext()(Module.createRequire(file), loaded, file, path.dirname(file), runtimeForTest, watchHook, observationHook)
+  new vm.Script('(function(require,module,__filename,__dirname,watchHook,observationHook){' + source + '\nmodule.exports={fixture};})', { filename: file }).runInThisContext()(Module.createRequire(file), loaded, file, path.dirname(file), watchHook, observationHook)
   const f = loaded.exports.fixture(t)
   t.mock.method(globalThis, 'fetch', () => assert.fail('Runtime fairness fixtures remain entirely offline'))
   f.shared.loadingScreenEnded = true

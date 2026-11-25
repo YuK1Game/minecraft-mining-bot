@@ -2,7 +2,7 @@
 // Independent QA. Static current terrain + historical same-world L196 actors,
 // with exact one-leaf before/after receipts. No live movement is asserted.
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=process.env.DROWNED_STEP_ROOT??process.cwd(),canonical=path.join(root,'src/safety/protective-drowned-step.js'),helperSource=process.env.DROWNED_STEP_SOURCE??(fs.existsSync(canonical)?canonical:path.join(root,'.local/staged/protective-drowned-step/src/protective-drowned-step.js')),loaded=new Module(canonical,module);loaded.filename=canonical;loaded.paths=Module._nodeModulePaths(path.join(root,'src'));loaded._compile(fs.readFileSync(helperSource,'utf8'),canonical)
+const root=process.env.DROWNED_STEP_ROOT??process.cwd(),canonical=path.join(root,'src/safety/protective-drowned-step.js'),helperSource=process.env.DROWNED_STEP_SOURCE??canonical,loaded=new Module(canonical,module);loaded.filename=canonical;loaded.paths=Module._nodeModulePaths(path.join(root,'src'));loaded._compile(fs.readFileSync(helperSource,'utf8'),canonical)
 const helper=loaded.exports,{createPhysics}=require(path.join(root,'src/movement/physics')),{createNavigator}=require(path.join(root,'src/movement/navigation')),{evaluateThreats}=require(path.join(root,'src/combat/threats')),fixture=require('./ledge-drowned-step-fixture.json'),copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
 const originals=new Map(fixture.blocks.map(b=>[key(b.position),b])),prepared=createPhysics({world:{getBlock:(x,y,z)=>originals.get(`${x},${y},${z}`)??{known:false,position:{x,y,z}}},version:'1.26.60'})
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z)

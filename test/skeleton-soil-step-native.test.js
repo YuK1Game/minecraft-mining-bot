@@ -3,7 +3,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
 const root=process.env.SKELETON_STEP_ROOT??process.cwd(),canonical=path.join(root,'src/safety/protective-drowned-step.js'),source=process.env.SKELETON_STEP_SOURCE??process.env.DROWNED_STEP_SOURCE??canonical,m=new Module(canonical,module);m.filename=canonical;m.paths=Module._nodeModulePaths(path.dirname(canonical));m._compile(fs.readFileSync(source,'utf8'),canonical)
 const helper=m.exports,{evaluateThreats}=require(path.join(root,'src/combat/threats')),{createNavigator}=require(path.join(root,'src/movement/navigation')),copy=v=>structuredClone(v),key=p=>`${p.x},${p.y},${p.z}`
-const fixturePath=process.env.SKELETON_STEP_FIXTURE??(fs.existsSync(path.join(__dirname,'skeleton-soil-capture235.json'))?path.join(__dirname,'skeleton-soil-capture235.json'):path.join(root,'.local/staged/skeleton-soil-step/test/skeleton-soil-capture235.json')),saved=JSON.parse(fs.readFileSync(fixturePath,'utf8'))
+const fixturePath=process.env.SKELETON_STEP_FIXTURE??path.join(__dirname,'skeleton-soil-capture235.json'),saved=JSON.parse(fs.readFileSync(fixturePath,'utf8'))
 function actualScene(offset=false){
  const data=offset?saved.offsetScene:saved;if(!data)throw Error('Actual offset-scene fixture not yet provided')
  const state=copy(data.state),blocks=new Map(data.blocks.map(b=>[key(b.position),copy(b)])),changes=new Map(),world={getBlock:(x,y,z)=>copy(changes.get(`${x},${y},${z}`)??blocks.get(`${x},${y},${z}`)??{known:false,position:{x,y,z}})}

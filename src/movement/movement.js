@@ -8,6 +8,7 @@ const { buildStationaryInput } = require('./input')
 const { createInputReplay } = require('./input-replay')
 const { normalizePlayerCorrection } = require('./server-physics')
 const { previewCriticalHop, createCriticalHopStepper } = require('./critical-hop')
+const { createPreparedRouteCache } = require('./prepared-route')
 
 const INTERVAL = 50
 const { finitePoint: finite } = require('../common/vec3')
@@ -36,6 +37,8 @@ function movementInput (controls, previous, predicted) {
 }
 
 function createMovement ({ client, getState, world, startGame, startGameReceivedAt, version, allowWater = false, physics = null, waterPhysics = null, clock = () => performance.now(), onPrediction = () => {}, onQueuedFrame = null, getQueuedCursor = null, onError = () => {}, replanMixedAfterReplay = false }) {
+  const preparedRoutes = createPreparedRouteCache({ world })
+  let planningEpoch = 0
   let criticalHopSequence = 0
   let criticalQueuedFrame = null
   if (version !== '1.26.60') throw new Error('Movement prediction supports Bedrock 1.26.60 only')
@@ -197,7 +200,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     if (enabled || !emergency || !policy.sprintAllowed || entry?.source !== 'server_attribute' || !state.connectionId || !Number.isFinite(sessionStarted) || !matchingScope || !Number.isFinite(stamp) || stamp > Date.now() || stamp < sessionStarted) throw new Error('Bounded jump requires current-session server hunger above six and explicit dry emergency sprint')
   }
 
-  function prepare (target, options = {}, onStateRead = null) {
+  function preparation (target, options = {}, onStateRead = null) {
     const enabled = options.allowWater ?? allowWater
     if (typeof enabled !== 'boolean') throw new Error('allowWater must be an explicit boolean')
     const emergency = options.emergency ?? false
@@ -213,13 +216,70 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     if (options.boundedJump != null) requireJumpHunger(state, sprintPolicy(state, sprint), enabled, emergency)
     const candidate = navigatorFor(enabled)
     const initial = candidate.physics.fromServer(state)
-    const route = candidate.plan(initial, target, { maxDistance: options.maxDistance ?? 12, maxExpanded: options.maxExpanded ?? 1500, avoidance: options.avoidance, directFlat: options.directFlat ?? false, directSurface: options.directSurface ?? false, exactGoal: options.exactGoal ?? false, partialDrop: options.partialDrop ?? false, partialRecenter: options.partialRecenter ?? false, controlledDrop: options.controlledDrop ?? false, dropLimit: options.dropLimit ?? 3, shoreRecenter: options.shoreRecenter ?? false, stablePartialOrigin: options.stablePartialOrigin ?? (options.boundedJump != null), boundedJump: options.boundedJump ?? null, waterExit: options.waterExit === true, lowStepDown: options.lowStepDown === true })
+    const settings = { maxDistance: options.maxDistance ?? 12, maxExpanded: options.maxExpanded ?? 1500, avoidance: options.avoidance, directFlat: options.directFlat ?? false, directSurface: options.directSurface ?? false, exactGoal: options.exactGoal ?? false, partialDrop: options.partialDrop ?? false, partialRecenter: options.partialRecenter ?? false, controlledDrop: options.controlledDrop ?? false, dropLimit: options.dropLimit ?? 3, shoreRecenter: options.shoreRecenter ?? false, stablePartialOrigin: options.stablePartialOrigin ?? (options.boundedJump != null), boundedJump: options.boundedJump ?? null, waterExit: options.waterExit === true, lowStepDown: options.lowStepDown === true }
+    return { state, candidate, initial, settings, target, sprint, automatic, allowWater: enabled, emergency, allowLowHealth: lowHealth, requestedDirectSurface: options.directSurface === true, continueAfterReplay, beforeInput: options.beforeInput ?? null }
+  }
+
+  function finishPreparation (context, route) {
+    const { state, initial, sprint, automatic } = context
     let sprintRouteDry = null
     if (automatic) { try { sprintRouteDry = knownDryRoute(initial, route) } catch { sprintRouteDry = false } }
     const policy = routeSprintPolicy(state, sprint, sprintRouteDry, automatic)
     if (!route.ready && !initial.onGround && !initial.isInWater) route.settleRequired = true
     Object.assign(route, policy, { sprintRouteDry, sprintAutomatic: automatic })
-    return { state, candidate, initial, route, allowWater: enabled, emergency, allowLowHealth: lowHealth, requestedDirectSurface: options.directSurface === true, continueAfterReplay, beforeInput: options.beforeInput ?? null, sprintRouteDry, sprintAutomatic: automatic, ...policy }
+    return { ...context, route, sprintRouteDry, sprintAutomatic: automatic, ...policy }
+  }
+
+  function checkPlanning (options) {
+    options.signal?.throwIfAborted()
+    const checked = options.check?.()
+    if (checked?.then) { Promise.resolve(checked).catch(() => {}); throw new TypeError('Movement planning guard must be synchronous') }
+    if (checked === false) throw Object.assign(new Error('Movement planning guard rejected the current context'), { code: 'NAVIGATION_CONTEXT_CHANGED' })
+  }
+
+  function prepare (target, options = {}, onStateRead = null, required = false) {
+    checkPlanning(options)
+    const context = preparation(target, options, onStateRead)
+    const cached = preparedRoutes.get(context)
+    if (cached) return finishPreparation(context, cached)
+    if (required) throw Object.assign(new Error('Prepared route context changed before movement start'), { code: 'NAVIGATION_CONTEXT_CHANGED' })
+    const witness = preparedRoutes.observe()
+    const run = () => finishPreparation(context, context.candidate.plan(context.initial, target, context.settings))
+    const prepared = witness.run(run)
+    preparedRoutes.set(context, prepared.route, witness)
+    return prepared
+  }
+
+  async function prepareAsync (target, options = {}) {
+    checkPlanning(options)
+    const context = preparation(target, options), epoch = planningEpoch
+    const cached = preparedRoutes.get(context)
+    if (cached) return finishPreparation(context, cached)
+    const witness = preparedRoutes.observe(), key = preparedRoutes.key(context)
+    const check = () => {
+      checkPlanning(options)
+      if (epoch !== planningEpoch || key !== preparedRoutes.key(preparation(target, options))) return false
+      return true
+    }
+    // Observe each synchronous planning slice, not an async promise. The
+    // navigator's witness captures all section/cache reads across the slices.
+    const route = await context.candidate.planAsync(context.initial, target, { ...context.settings, signal: options.signal, check, observe: witness })
+    if (!check() || !witness.current()) throw Object.assign(new Error('Movement context changed during preparation'), { code: 'NAVIGATION_CONTEXT_CHANGED' })
+    const prepared = witness.run(() => finishPreparation(context, route))
+    preparedRoutes.set(context, prepared.route, witness)
+    return prepared
+  }
+
+  async function previewAsync (target, options = {}) {
+    const started = performance.now()
+    try {
+      const prepared = await prepareAsync(target, options)
+      lastPreviewTiming = { at: Date.now(), elapsedMs: performance.now() - started, ready: prepared.route.ready === true, asynchronous: true }
+      return structuredClone(prepared.route)
+    } catch (error) {
+      if (options.signal?.aborted || ['NAVIGATION_CONTEXT_CHANGED', 'NAVIGATION_TERRAIN_CHANGED'].includes(error.code)) throw error
+      return { ready: false, code: error.code ?? null, reason: error.message, waypoints: [], serverConfirmed: false, predictionOnly: true }
+    }
   }
 
   function preview (target, options = {}) {
@@ -347,11 +407,13 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
   }
 
   function stop (reason = 'Movement stopped') {
+    planningEpoch++; preparedRoutes.clear()
     stepper?.stop(reason)
     return finish('stopped', reason, { release: true })
   }
 
   function resetLifecycle (reason = 'Authoritative lifecycle reset') {
+    planningEpoch++; preparedRoutes.clear()
     inputReplay?.clear('authoritative_lifecycle_reset')
     stepper?.stop(reason)
     finish('stopped', reason)
@@ -506,7 +568,7 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
     return snapshot()
   }
 
-  function start (target, options = {}) {
+  function start (target, options = {}, required = false) {
     const started = performance.now(), timing = { at: Date.now(), target: finite(target) ? copy(target) : null, outcome: 'preparing', entryCursor: null }
     lastStartTiming = timing
     try { const value = getQueuedCursor?.(); if (value) timing.entryCursor = { tick: String(value.tick), queuedAt: value.queuedAt, ageMs: Date.now() - value.queuedAt } } catch (error) { timing.entryCursorError = String(error.message ?? error).slice(0, 120) }
@@ -518,7 +580,9 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
         const entry = require('./end-portal-entry').portalEntry(world, currentState(), target, version, options.signal)
         return begin({ ...entry.prepared, beforeInput: options.beforeInput }, entry.stepper, 'moving')
       }
-      const prepared = prepare(target, options)
+      const prepared = prepare(target, options, null, required || options.requirePrepared === true)
+      preparedRoutes.clear()
+      planningEpoch++
       timing.prepareMs = performance.now() - mark
       if (!prepared.route.ready) throw new Error(prepared.route.reason ?? 'No safe navigation route')
       const maxTicks = options.maxTicks ?? 400
@@ -623,7 +687,8 @@ function createMovement ({ client, getState, world, startGame, startGameReceived
   }
 
   function snapshot () { return structuredClone({ ...status, correctionReplan:correctionRun?{replans:correctionRun.replans,usedTicks:correctionRun.usedTicks,maxTicks:correctionRun.maxTicks,deadline:correctionRun.deadline}:null, timingDiagnostics: { preview: lastPreviewTiming, start: lastStartTiming }, running: timer !== null && active() }) }
-  return { preview, start, previewHop, startHop, settle, stop, resetLifecycle, applyPacket, snapshot, stats: snapshot, diagnostics: () => startDiagnostics || lastPreviewFailure ? structuredClone({ ...startDiagnostics, lastPreviewFailure }) : null }
+  const cooperative = typeof world?.revision === 'function' ? { previewAsync, startPrepared: (target, options) => start(target, options, true), startAsync: async (target, options = {}) => { await prepareAsync(target, options); return start(target, options, true) } } : {}
+  return { preview, ...cooperative, start, previewHop, startHop, settle, stop, resetLifecycle, applyPacket, snapshot, stats: snapshot, diagnostics: () => startDiagnostics || lastPreviewFailure ? structuredClone({ ...startDiagnostics, lastPreviewFailure }) : null }
 }
 
 module.exports = { createMovement, movementInput }

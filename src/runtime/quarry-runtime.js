@@ -10,7 +10,7 @@ function createQuarryRuntime (rt) {
   const quarryStorage = rt.createQuarryStore({
     directory: quarryDir(),
     onSaved: doc => {
-      if (!rt.disposed && rt.quarryJob?.document()?.instanceId === doc.instanceId) rt.host.shared.quarryDocument = doc
+      if (!rt.disposed && rt.quarryJob?.instance?.() === doc.instanceId) rt.host.shared.quarryDocument = doc
     }
   })
   let quarryLoadSequence = 0
@@ -538,6 +538,7 @@ function createQuarryRuntime (rt) {
       inventoryDetails: () => rt.inventoryInspection.snapshot(rt.working()),
       attackAnimal: (runtimeId, options) => { if (!rt.combat) throw new Error('戦闘モジュールが未準備です。'); return rt.combat.animalAttack(runtimeId, options) },
       worldRevision: () => rt.host.world.revision?.() ?? null,
+      observeTerrain: () => rt.host.world.observeTerrain?.(),
       entities: () => rt.host.entities.snapshot({ kind: 'all' }),
       mining: ports.mining, getMining: ports.getMining, movement: ports.movement, getMovement: ports.getMovement,
       previewStorageRoute: (target, options) => live().previewStorageRoute(target, options),
@@ -657,8 +658,8 @@ function createQuarryRuntime (rt) {
     if (rt.host.shared.quarryDocument) { try { rt.quarryJob.load(rt.host.shared.quarryDocument) } catch (error) { rt.host.shared.quarryLoadError = String(error.message).slice(0, 200) } }
     return rt.quarryJob
   }
-  function quarrySnapshot () {
-    try { return rt.quarryJob ? rt.quarryJob.status() : rt.host.shared.quarryDocument ? { state: rt.host.shared.quarryDocument.state, jobId: rt.host.shared.quarryDocument.config?.jobId ?? null, pauseReason: rt.host.shared.quarryDocument.pauseReason ?? null, loaded: false } : null } catch (error) { return { error: String(error.message).slice(0, 200) } }
+  function quarrySnapshot (options) {
+    try { return rt.quarryJob ? rt.quarryJob.status(options) : rt.host.shared.quarryDocument ? { state: rt.host.shared.quarryDocument.state, jobId: rt.host.shared.quarryDocument.config?.jobId ?? null, pauseReason: rt.host.shared.quarryDocument.pauseReason ?? null, loaded: false } : null } catch (error) { return { error: String(error.message).slice(0, 200) } }
   }
   async function loadQuarryFile (jobId) {
     const ticket = ++quarryLoadSequence, generation = rt.quarryPorts

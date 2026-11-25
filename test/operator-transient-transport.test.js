@@ -1,8 +1,6 @@
 'use strict'
-const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=process.env.OPERATOR_HELPER_TEST_ROOT??process.cwd(),canonical=path.join(root,'.local/operator-live-helpers.cjs'),loaded=new Module(canonical,module)
-loaded.filename=canonical;loaded.paths=Module._nodeModulePaths(path.dirname(canonical));loaded._compile(fs.readFileSync(process.env.OPERATOR_HELPER_TEST_SOURCE??canonical,'utf8'),canonical)
-const {createOperatorHelpers}=loaded.exports
+const {test}=require('node:test'),assert=require('node:assert/strict')
+const {createOperatorHelpers}=require('../scripts/lib/operator-helpers')
 
 function scene({previewReady=true,replacement=null,dangerAfterPreview=false,renewHoldAfterStart=false}={}){
  const issuedLeaseId='controlled-returned-lease-7',calls=[],target={x:2.5,y:65,z:.5}

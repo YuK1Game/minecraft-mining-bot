@@ -32,12 +32,23 @@
 | 信頼性 | 同一プロフィールでの二重起動を防ぐロック（`src/host/process-lock.js`）、`host.shared` のライフサイクル別スコープ（`src/common/shared-scopes.js`）、共通タイマースケジューラ（`src/common/runtime-scheduler.js`）、停滞・保留時の診断スナップショット自動保存（`src/modes/incident-snapshot.js` → `.local/incidents/`）を導入。`idle-safety-runtime.js` の直接 `require` を `rt.require` へ修復し `runtime-source-helper.test.js` を復旧 | `test/review-process-lock.test.js`、`test/review-shared-scopes.test.js`、`test/review-runtime-scheduler.test.js`、`test/player-incident-snapshot.test.js`、`test/runtime-source-helper.test.js` |
 | 自律性 | プレイヤーモード段階0の未着手3項目（拠点半径16m・8m間隔の湧き潰し、松明16本の常備在庫と木炭フォールバック、仮設チェストの場所記憶と集約）および作業調停（`work-dispatcher.js`）・ネザー〜エンドのステージ別ドライラン検証を実装 | `src/modes/player-base-lighting.js`、`player-torch-supply.js`、`player-field-chests.js`、`work-dispatcher.js`、`test/player-stage0-foundations.test.js`、`test/dragon-stage-dryrun.test.js` |
 
+## ボトルネック監査の品質修正（2026-11-26）
+
+- 採掘の操作予定・受信結果はそれぞれ耐久保存する一方、ドラゴン遠征の計画・過去の採掘場と、露天掘りのセル記録を不変の参照ファイルへ分離した。露天掘りはセル記録の版が変わらなければ複製も書き直しもしない。共有の `checkpoint-parts.js` がサイズ上限、ハッシュ照合、参照先の先行保存、原子的な本体更新、不要な旧版の整理を担う。別の保存世代が参照先を整理した場合も存在を照合し、露天掘りの読み取りは保存と同じキューを取得する。旧形式の読み取りを維持し、壊れた参照先から新規ジョブへ黙って戻さない。操作後の保存失敗では未完了操作を保持する。`review-checkpoint-parts.test.js` は実際の採掘操作窓口とファイルI/Oをつなぎ、保存前の入力禁止・受信後の保存失敗・世代間の読み書き・移行を検証する。
+- 管理画面は必要な概要だけを取得し、詳細な診断スナップショットは明示的な `/status` に残した。表示用の露天掘り集計は区画ごとの地形依存で再利用し、完了判定は現状を独立して走査する。`review-dashboard-summary.test.js` は実HTTPの取得経路、無関係な地形更新で走査0件、対象1区画の変更でその4096セルだけの再走査、取消時の実行権譲渡を検証する。
+
+- `runtime-ports.js` を待機保護・戦闘操作権・API操作・長距離移動の4つの本番 factory に接続した。`runtime-port-contracts.js` が環境・観測・ライフサイクル・持ち物・移動・保護・作業の依存を宣言する。既存の `rt.*` と相対 `rt.require` は維持し、値は毎回現在のクロージャーから読む。機械的抽出で付いていた setter をそのまま渡さず、実際に代入する変数だけを書き込み可にした（待機保護8、戦闘操作権8、API操作6、長距離移動5）。共有 Host・受信状態関数・破棄状態の差し替えは拒否する。読み取り依存の数そのものはまだ多く、各ポート内部の責務を小さくする余地は残る。
+- 持ち物ポートは本番の inventory controller を関数として呼ばず、受信状態の inventory と操作 controller を分けて扱う。
+- 無視される `.local/` の helper に依存していた5つのテストファイルを復旧し、厳格な安全回帰レーンへ入れた。手動操作 helper は `scripts/lib/operator-helpers.js` として管理し、正確な期限付き操作権・保護の優先・Nativeプレビュー・開始印による後始末を検証する。イベントループ回帰はソース変換パッチを適用せず、現在の Runtime と分割モジュールを共通 fixture で読み込む。
+- テストの `.local/staged/` フォールバックも取り除いた。`test/review-test-dependencies.test.js` は `test:audit -- --strict` と同じ依存監査を毎回実行する。以前の監査が見落とした `../.local/` の文字列参照も検出する。過去の比較失敗を許容する仕組みで読み込み失敗が隠れないよう、復旧したファイルは全件成功を要求する。
+- 診断スナップショットを schema 2 にした。地形はブロック状態の palette と全セルの16bit index で保存し、既知の空気、未知セルの座標、階段の向き、液体の追加レイヤーを保持する。`incident-terrain.js` の `replayTerrain` で同じ `getBlock` を再生でき、実 navigator の判断も比較する。保存範囲外と旧 schema の省略セルは未知のままにする。ファイル数とcooldownを維持し、半径は16までに制限する。
+
 ## 残っていること（優先順）
 
 | 順 | 内容 | 軸 | 補足 |
 | --- | --- | --- | --- |
-| 1 | 移した部分と元のクロージャーの間のやり取り（アクセサの一覧）を減らす | 可読性・保守性 | いまは機械的に移しただけで、各モジュールが元の変数を 25〜140個使う。話題ごとに必要な値を引数や小さなオブジェクトにまとめ、単体でテストできる形にする。アクセサの一覧がそのまま依存の一覧になっている |
-| 2 | 全件比較に残る既存失敗の整理 | 信頼性 | 共通fixtureで検証前に止まる12ファイルは修復済み。残りは古い期待値、他の切り出しfixture、負荷で変わる退避テスト、実処理の不具合を分ける。欠落したローカル専用helperや旧自律実行の再開テストも残る。現在の件数と分類は各CIの比較レポートを基準に再確認し、仕様を弱めて通さない |
+| 1 | 移した部分と元のクロージャーの間のやり取り（アクセサの一覧）を減らす | 可読性・保守性 | 4つの主要factoryには用途別のportと明示write権限を導入済み。次はport内部に残る多くの読み取り依存や作業サービスを、入力と結果の小さな単位へ分ける |
+| 2 | 全件比較に残る既存失敗の整理 | 信頼性 | 共通fixtureで検証前に止まる12ファイルは修復済み。残りは古い期待値、他の切り出しfixture、負荷で変わる退避テスト、実処理の不具合を分ける。欠落したローカル専用helperは復旧済み。旧自律実行の再開テスト等は残る。現在の件数と分類は各CIの比較レポートを基準に再確認し、仕様を弱めて通さない |
 | 3 | `src/runtime/idle-safety-runtime.js`（130KB）の設定表の残り: `partialEscape`（約210行）、`onEmergencyStop`（約120行）、`clearEscape`（約110行） | 可読性 | `escape` は段階に分けた。残りは同じ道具（`scripts/extract-stage.js`）で分けられる |
 | 4 | 段階どうしが共有する変数を減らす。`src/quarry/quarry-job.js` の計画・採掘部分を分ける | 可読性・保守性 | 段階は元の関数の変数を共有オブジェクト経由で読み書きしている（退避は約150個）。1 と同じ課題で、段階ごとの入力と結果を値として受け渡す形にすると単体でテストできる。挙動に関わるため実Realm での確認が必要 |
 | 5 | 長距離移動の「詰まった場所ごとの修正」を、危険地帯・水場・夜間を1つの経路評価で扱う形にまとめる | 保守性・信頼性 | 配線は `src/runtime/long-travel-runtime.js` にまとまっている |

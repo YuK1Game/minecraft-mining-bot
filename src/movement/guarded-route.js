@@ -540,7 +540,7 @@ function createGuardedRoute ({ getState, movement, getMovement, inventory, comba
       }
       const planning = baseState(before, run).threats
       const options = { allowWater: false, emergency: evading, sprint: evading, directFlat: run.escaping, exactGoal: run.escaping, stablePartialOrigin: run.escaping, maxDistance: run.maxLegDistance, maxTicks: 240, avoidance: planningAvoidance(before, target, run.escaping ? escapeEvaluation(planning, run.escapeIds) : planning, evading), ...(run.boundedJump ? { boundedJump: run.boundedJump } : {}) }
-      const preview = await invoke(run, 'Live route preview', signal => movement.preview(copy(target), { ...options, signal }), { policy })
+      const preview = await invoke(run, 'Live route preview', signal => (movement.previewAsync ?? movement.preview)(copy(target), { ...options, signal }), { policy })
       const latest = await read(run, policy)
       if (!safeRoute(preview, latest.state, target, latest.threats, evading)) throw new GuardedRouteError('No known route stays clear of the observed dangers', 'NO_SAFE_RETREAT')
       if (evading) { policy.escapePath = routePoints(preview, latest.state, target); policy.preparing = false; if (run.escaping) run.lastEscapePolicy = policy }
@@ -571,7 +571,10 @@ function createGuardedRoute ({ getState, movement, getMovement, inventory, comba
           return [actor.runtimeId, { name: actor.name, radius: actor.dangerRadius, uniqueId: entity?.uniqueId == null ? null : String(entity.uniqueId) }]
         }))
       }
-      await invoke(run, 'Route movement start', signal => movement.start(copy(target), { ...options, signal }), { policy, mutation: true })
+      // The live safety proof above applies to this exact preview. If its
+      // receipt became stale, abort the leg rather than silently planning a
+      // different route after safeRoute and escapePath were established.
+      await invoke(run, 'Route movement start', signal => (movement.startPrepared ?? movement.start)(copy(target), { ...options, signal }), { policy, mutation: true })
       const phaseDeadline = Math.min(run.deadline, clock() + operationTimeoutMs)
       let polls = 0
       while (clock() < phaseDeadline && polls++ <= Math.ceil(operationTimeoutMs / pollMs)) {

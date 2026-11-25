@@ -67,3 +67,13 @@ test('runtime-ports: exposes grouped port views backed by live rt bindings', () 
   disposed = true
   assert.equal(ports.lifecycle.isDisposed(), true)
 })
+
+test('runtime-ports: inventory reads received state while the production inventory action controller remains separate', () => {
+  let inventory = { known: false, items: [] }
+  const actions = { snapshot: () => ({ busy: false }) }
+  const ports = createRuntimePorts({ inventory: actions, working: () => ({ inventory }) })
+  assert.equal(ports.inventory.actions, actions)
+  assert.equal(ports.inventory.read().known, false)
+  inventory = { known: true, items: [{ name: 'minecraft:stone', count: 3 }] }
+  assert.equal(ports.inventory.read(), inventory)
+})

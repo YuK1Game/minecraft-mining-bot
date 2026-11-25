@@ -37,14 +37,14 @@ function ledgeCellsKnown (physics, cell) {
   } catch { return false }
 }
 
-function planWaterExit ({ physics, initial, target }) {
+function * planWaterExitSteps ({ physics, initial, target, control = null }) {
   const empty = reason => ({ ready: false, reason, waypoints: [], predictionOnly: true, serverConfirmed: false })
   // Bobbing at the surface counts: the feet cell or the one below is water.
   const wet = p => { try { const b = physics.blockAt({ x: Math.floor(p.x), y: Math.floor(p.y + 1e-6), z: Math.floor(p.z) }), u = physics.blockAt({ x: Math.floor(p.x), y: Math.floor(p.y + 1e-6) - 1, z: Math.floor(p.z) }); return /water/.test(b?.name ?? '') || /water/.test(u?.name ?? '') } catch { return false } }
   if (!initial?.isInWater && !(initial?.position && wet(initial.position))) return empty('Water exit starts only in water')
   if (!target || ![target.x, target.y, target.z].every(Number.isFinite)) return empty('Water exit needs an exact ledge cell')
   // A water cell as the target is a swim across open water toward a far shore (water-swim.js).
-  if (swim.target(physics, target)) return swim.plan({ physics, initial, target })
+  if (swim.target(physics, target)) return yield * swim.planSteps({ physics, initial, target, control })
   const cell = { x: Math.floor(target.x), y: Math.round(target.y), z: Math.floor(target.z) }
   const feet = initial.position
   // The rise is measured from the water surface above a sunken body (live
@@ -68,6 +68,7 @@ function planWaterExit ({ physics, initial, target }) {
     const frames = []
     try {
       for (let tick = 0; tick < tape.ticks; tick++) {
+        if (control?.shouldYield()) yield
         const controls = { forward: true, jump: true }
         predicted = physics.step({ ...predicted, yaw: tape.yaw(predicted.position), pitch: 0 }, controls)
         frames.push({ controls, state: copy(predicted) })
@@ -121,4 +122,6 @@ function createWaterExitStepper ({ route, initial, physics, maxTicks = route.wat
   return { next, snapshot, stop, reconcile, resumeReplay, setSprint: () => {} }
 }
 
-module.exports = { planWaterExit, createWaterExitStepper, ledgeCellsKnown }
+function planWaterExit (options) { const iterator = planWaterExitSteps(options); let next; do { next = iterator.next() } while (!next.done); return next.value }
+
+module.exports = { planWaterExit, planWaterExitSteps, createWaterExitStepper, ledgeCellsKnown }

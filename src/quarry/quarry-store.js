@@ -2,7 +2,8 @@
 
 const fs = require('node:fs/promises')
 const path = require('node:path')
-const { readJsonBounded, writeDurableJson } = require('../common/durable-json')
+const { readJsonBounded, writeDurableJson, MAX_BYTES } = require('../common/durable-json')
+const { createCheckpointParts } = require('../common/checkpoint-parts')
 const { validateJobId, documentInstance, documentWorld, sameWorld, failure } = require('./quarry-job-identity')
 // Serializes callers of this loaded module. Runtime disposal drains outstanding
 // writes before hot reload. Separate processes must use separate work directories.
@@ -12,17 +13,28 @@ const writes = new Map()
 // blocked the event loop for hundreds of ms; the alias/collision checks only
 // need to run until the file is known to belong to this job instance.
 const verified = new Map()
+async function enqueue (file, operation) {
+  const key = file.toLowerCase(), previous = writes.get(key) ?? Promise.resolve()
+  const task = previous.catch(() => {}).then(operation)
+  writes.set(key, task)
+  try { return await task } finally { if (writes.get(key) === task) writes.delete(key) }
+}
 function createQuarryStore ({ directory, onSaved = () => {}, io = fs, write = writeDurableJson } = {}) {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)) throw new TypeError('Quarry store requires an absolute directory')
   const filename = id => path.join(directory, `${validateJobId(id)}.json`)
+  const parts = new Map()
+  const checkpoint = file => {
+    if (!parts.has(file)) parts.set(file, createCheckpointParts({ filename: file, paths: [['records']], limit: MAX_BYTES, write, io }))
+    return parts.get(file)
+  }
+  const persist = (file, doc) => checkpoint(file).save(doc, core => ({ ...core, checkpointParts: 1 }))
   async function save (id, doc) {
     const file = filename(id)
     if (doc?.config?.jobId !== id || !documentWorld(doc)) throw failure('JOB_DOCUMENT_IDENTITY_INVALID')
-    const key = file.toLowerCase(), previous = writes.get(key) ?? Promise.resolve()
-    const task = previous.catch(() => {}).then(async () => {
+    return enqueue(file, async () => {
       const known = verified.get(file)
       if (known && known.io === io && known.instance === documentInstance(doc) && sameWorld(known.world, documentWorld(doc))) {
-        const receipt = await write(file, doc, { io })
+        const receipt = await persist(file, doc)
         onSaved(doc, receipt)
         return receipt
       }
@@ -34,18 +46,26 @@ function createQuarryStore ({ directory, onSaved = () => {}, io = fs, write = wr
       let existing
       try { existing = await readJsonBounded(file, { io }) } catch (error) { if (error.code !== 'ENOENT') throw error }
       if (existing && (existing.config?.jobId !== id || documentInstance(existing) !== documentInstance(doc) || !sameWorld(documentWorld(existing), documentWorld(doc)))) throw failure('JOB_ID_COLLISION')
-      const receipt = await write(file, doc, { io })
+      const receipt = await persist(file, doc)
       verified.set(file, { io, instance: documentInstance(doc), world: documentWorld(doc) })
       onSaved(doc, receipt)
       return receipt
     })
-    writes.set(key, task)
-    try { return await task } finally { if (writes.get(key) === task) writes.delete(key) }
   }
   async function load (id) {
-    const doc = await readJsonBounded(filename(id), { io })
-    if (doc?.config?.jobId !== id) throw failure('JOB_DOCUMENT_IDENTITY_INVALID')
-    return doc
+    const file = filename(id)
+    // Own the queue through manifest AND part reads, so a subsequent save
+    // cannot collect a part that this reader is still about to open.
+    return enqueue(file, async () => {
+      const doc = await readJsonBounded(file, { io })
+      if (doc?.config?.jobId !== id) throw failure('JOB_DOCUMENT_IDENTITY_INVALID')
+      if (doc.checkpointParts !== undefined && doc.checkpointParts !== 1) throw failure('JOB_DOCUMENT_IDENTITY_INVALID')
+      if (doc.checkpointParts === 1) {
+        delete doc.checkpointParts
+        return checkpoint(file).restore(doc)
+      }
+      return doc
+    })
   }
   async function list () {
     let names

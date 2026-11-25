@@ -8,12 +8,11 @@
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { writeDurableJson } = require('../common/durable-json')
+const { sampleTerrain } = require('./incident-terrain')
 
 const DEFAULT_MAX_FILES = 20
 const DEFAULT_COOLDOWN_MS = 10 * 60 * 1000
 const DEFAULT_RADIUS = 5
-const DY_MIN = -2
-const DY_MAX = 3
 
 function formatJstStamp (ms) {
   const jst = new Date(ms + 9 * 60 * 60 * 1000)
@@ -24,27 +23,6 @@ function formatJstStamp (ms) {
 function safeTag (value, fallback = 'unknown') {
   const cleaned = String(value ?? '').replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48)
   return cleaned || fallback
-}
-
-function sampleTerrain (getBlock, feet, radius = DEFAULT_RADIUS) {
-  if (typeof getBlock !== 'function' || !feet || ![feet.x, feet.y, feet.z].every(Number.isFinite)) return null
-  const cx = Math.floor(feet.x), cy = Math.floor(feet.y + 0.05), cz = Math.floor(feet.z)
-  const blocks = []
-  let unknown = 0
-  for (let dy = DY_MIN; dy <= DY_MAX; dy++) {
-    for (let dx = -radius; dx <= radius; dx++) {
-      for (let dz = -radius; dz <= radius; dz++) {
-        const x = cx + dx, y = cy + dy, z = cz + dz
-        let block = null
-        try { block = getBlock(x, y, z) } catch { block = null }
-        if (block?.known !== true) { unknown++; continue }
-        const name = String(block.name ?? 'unknown')
-        if (name === 'minecraft:air' || name === 'minecraft:cave_air') continue
-        blocks.push([x, y, z, name])
-      }
-    }
-  }
-  return { center: { x: cx, y: cy, z: cz }, radius, dy: [DY_MIN, DY_MAX], nonAirKnown: blocks, unknownCount: unknown }
 }
 
 function summarizeInventory (inventory) {
@@ -125,7 +103,7 @@ function createIncidentRecorder ({
     const hunger = Number.isFinite(hungerRaw) ? hungerRaw : Number.isFinite(hungerRaw?.value) ? hungerRaw.value : null
 
     const doc = {
-      version: 1,
+      version: 2,
       capturedAt: new Date(at).toISOString(),
       source: String(source),
       code: String(code),

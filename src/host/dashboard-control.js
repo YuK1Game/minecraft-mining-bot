@@ -162,7 +162,7 @@ function createDashboardControl ({ getState, getQuarry, getReset = () => null, g
       doc?.egress?.checkpoint && !doc.surfaceReturnedAt) throw error('QUARRY_BUSY', '既存の作業と未確認の回収が終了してから移動してください。')
   }
   function snapshot () {
-    const s = getState(), engine = getQuarry(), q = engine?.status() ?? null
+    const s = getState(), engine = getQuarry(), q = engine?.summary?.() ?? engine?.status() ?? null
     const position = s?.position && ['x', 'y', 'z'].every(k => Number.isFinite(s.position[k])) ? { x: s.position.x, y: s.position.y - 1.62, z: s.position.z } : null
     return { protocol: 1, phase: text(s?.phase), ready: s?.phase === 'spawned' && s.loadingScreenEnded === true && !s.dead && !s.isDead && !s.lifecycle?.dead && !s.spawnPending && s.health > 0 && s.inventory?.known === true && !s.inventory.uncertain,
       session: scope(s), profile: text(s?.profile), realm: s?.realm ? { id: String(s.realm.id), name: text(s.realm.name) } : null, dimension: text(s?.dimension), position,

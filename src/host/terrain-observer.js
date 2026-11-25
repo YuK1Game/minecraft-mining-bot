@@ -25,6 +25,15 @@ function createTerrainObservers ({ epoch, version }) {
         if (!valid || epoch() !== generation) return false
         for (const [id, value] of sections) if (version(id) !== value) return false
         return true
+      },
+      // A cached calculation still depends on its original reads. Replaying
+      // that witness into an enclosing observation keeps cache hits visible
+      // without decoding every block again. Validation and replay are one
+      // synchronous operation, so a packet cannot intervene between them.
+      reuse () {
+        if (!this.current()) return false
+        for (const id of sections.keys()) reading?.(id)
+        return true
       }
     }
   }

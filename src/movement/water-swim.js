@@ -76,7 +76,7 @@ function target (physics, to) {
 const yawTo = (from, to) => Math.atan2(-(to.x - from.x), to.z - from.z) * 180 / Math.PI
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 
-function plan ({ physics, initial, target: to }) {
+function * planSteps ({ physics, initial, target: to, control = null }) {
   const empty = reason => ({ ready: false, reason, waypoints: [], predictionOnly: true, serverConfirmed: false })
   const goal = { x: Math.floor(to.x) + 0.5, y: Math.round(to.y), z: Math.floor(to.z) + 0.5 }
   if (flat(initial.position, goal) > REACH) return empty('Water swim reaches only a water cell within ten blocks')
@@ -84,6 +84,7 @@ function plan ({ physics, initial, target: to }) {
   const frames = [], controls = { forward: true, jump: true }
   try {
     for (let tick = 0; tick < TICKS; tick++) {
+      if (control?.shouldYield()) yield
       predicted = physics.step({ ...predicted, yaw: yawTo(predicted.position, goal), pitch: 0 }, controls)
       frames.push({ controls, state: copy(predicted) })
       if (predicted.isInLava) return empty('Water swim tape enters lava')
@@ -120,4 +121,6 @@ function stepper ({ route, initial, physics, maxTicks = TICKS + 60 }) {
   return { next, snapshot, stop, reconcile, resumeReplay, setSprint: () => {} }
 }
 
-module.exports = { way, target, plan, stepper, RANGE, LEG }
+function plan (options) { const iterator = planSteps(options); let next; do { next = iterator.next() } while (!next.done); return next.value }
+
+module.exports = { way, target, plan, planSteps, stepper, RANGE, LEG }
