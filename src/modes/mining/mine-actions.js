@@ -88,8 +88,10 @@ function createMineActions (ctx) {
       if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
       ctx.log?.(`採掘場: 前の生存回か離れた場所の ${String(left.name).replace('minecraft:', '')} 設置待ち (${key(left.position)}) は採掘場の構造ではないため、記録を外して作業を続けます`)
     }
-    if (state.pendingAction) return wait('MINE_ACTION_UNCONFIRMED', 'inventory_update', { evidence: state.pendingAction })
-    state.pendingAction = { ...intent, scope, stage: 'attempting' }
+    // Looked at again in a few seconds: the reconciliation (reconcilePlacement) runs on the next tick, and a wait for an
+    // inventory change alone held the expedition for ten minutes when nothing in the bag changed (live 2026-11-26 08:37-08:47 JST).
+    if (state.pendingAction) return blocked('MINE_ACTION_UNCONFIRMED', { kind: 'time', ms: 5000 }, { evidence: state.pendingAction })
+    state.pendingAction = { ...intent, scope, stage: 'attempting', at: (ctx.now ?? Date.now)() }
     if (!await save() || !same(scope)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
     return { scope }
   }
@@ -121,11 +123,15 @@ function createMineActions (ctx) {
     if ((name !== 'minecraft:ladder' || Number.isInteger(face)) && matches(position, name, { face })) {
       evidence = { kind: 'current_structure_received' }
     } else {
+      // The count may stay short for good when the material was used for other work after the unanswered send (live
+      // 2026-11-26 08:37-08:42 JST: cobblestone 70 -> 30 by crafting, place:9739,16,10216 held every dig). After a minute
+      // the server's own audit of the cell, received as air, is the evidence; before that the count still guards.
+      const old = (ctx.now ?? Date.now)() - (Number.isFinite(pending.at) ? pending.at : 0) > 60000
       if (pending.retryAfterAudit || !Number.isSafeInteger(before) || before <= 0 ||
-        (held(inventory(), name) ?? 0) < before || !air(block(position))) return false
+        (!old && (held(inventory(), name) ?? 0) < before) || !air(block(position))) return false
       const audit = await ctx.runtime.minePlacementAudit?.(position, { signal: ctx.signal })
       if (audit?.target?.serverConfirmed !== true || !same(scope) || state.pendingAction !== pending || !air(block(position)) ||
-        (held(inventory(), name) ?? 0) < before) return false
+        (!old && (held(inventory(), name) ?? 0) < before)) return false
       evidence = { kind: 'current_target_air', count: held(inventory(), name), ...audit }
     }
 
