@@ -137,7 +137,16 @@ function createDragonSupplies (ctx) {
   // A stone sword when no weapon is carried (carry-weapon.js), by the same ways.
   function weapon () {
     const want = getInventory() ? weaponWanted(rows(), held, { table: () => held('crafting_table') > 0 || !!bench.tableNear() }) : false
-    return want ? wayTo(want, SWORD, SWORD_WOOD) : null
+    if (!want) return null
+    const way = wayTo(want, SWORD, SWORD_WOOD)
+    if (way || want !== 'make') return way
+    // Unarmed with the parts carried, a spent way is tried again every five minutes: being unarmed is what kills
+    // (live 2026-11-26 05:17-05:33 JST: the way spent after three tries, then sixteen minutes unarmed in the mine
+    // among spiders, zombies and skeletons at 12 health).
+    const at = (ctx.now ?? Date.now)()
+    if (at < (ctx.shared.dragonSwordRetryAt ?? 0)) return null
+    ctx.shared.dragonSwordRetryAt = at + 5 * 60000
+    return SWORD
   }
   // One try at such a tool. A look that brought it no nearer (no log, no stick made, no table put down) is a failed
   // try; after three the way is left. True once the tool is in the bag.
