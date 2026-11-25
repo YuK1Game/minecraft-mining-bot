@@ -175,4 +175,11 @@ test('three failed attempts cannot skip a branch whose opening still needs finis
   assert.equal(w.branch.progress.upper.cursor,index)
   assert.equal(w.branch.segmentTask.stepId,step.id)
   assert.equal(w.branch.progress.upper.blocked.length,0)
+  // On the 4th MINE_HAZARD attempt, the opened cell is refilled solid and only then is the branch skipped.
+  const closed=await stepLayer(w.ctx,w.branch,'upper')
+  assert.equal(closed.code,'MINE_SEGMENT_CLOSED',JSON.stringify(closed))
+  assert.equal(w.getBlock(p.x,p.y,p.z).name,'minecraft:cobblestone')
+  assert.ok(w.branch.progress.upper.cursor>index)
+  assert.equal(w.branch.segmentTask,undefined)
+  assert.ok(w.branch.progress.upper.blocked.length>0)
 })

@@ -7,7 +7,7 @@ const {bottomSlab}=require('./mine-observed')
 const {excavateSegment,inspectDig}=require('./mine-excavate')
 const {blockRule}=require('../../quarry/quarry-rules')
 const {retainStorageTorchSupport}=require('./mine-storage-layout')
-const {ensureShaft}=require('./mine-shaft')
+const {ensureShaft,fillCell}=require('./mine-shaft')
 const {walkLayer,reachLayer,leaveMine,enterMine:entry}=require('./mine-route')
 const {workVein,restoreVein,observedVeinStep}=require('./mine-veins')
 const {cellRest}=require('../supply-cell-rest')
@@ -79,8 +79,27 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
   // The first room grows out of the shaft doorway. Other runs return along the received corridor before digging.
   if(Math.hypot(feet.x-cells.approach.x,feet.z-cells.approach.z)>3.6){const moved=await walkLayer(ctx,branch,layer,cells.approach);if(!received(moved))return moved}
   const before=scope(ctx)
-  branch.segmentTask={layer,stepId:step.id,cursor:progress.cursor,lobbyOnly,...(retained?{retainedTorchSupport:retained.retainedTorchSupport}:{})}
+  const closingHazard=branch.segmentTask?.closingHazard===true,hazardCode=branch.segmentTask?.hazardCode
+  branch.segmentTask={layer,stepId:step.id,cursor:progress.cursor,lobbyOnly,...(retained?{retainedTorchSupport:retained.retainedTorchSupport}:{}),...(closingHazard?{closingHazard:true,hazardCode}:{})}
   if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','施工する区間を保存します。','owner_released')
+  async function closeHazardBranch(code,attempts){
+    const far=p=>Math.hypot(p.x+0.5-cells.approach.x,p.z+0.5-cells.approach.z)
+    const opened=cells.clear.filter(p=>air(at(ctx,p))).sort((a,b)=>far(b)-far(a) || a.y-b.y)
+    for(const p of opened){
+      const sealed=await fillCell(ctx,branch,p,'hazard_close')
+      if(!received(sealed))return sealed
+    }
+    if(!cells.clear.every(p=>!air(at(ctx,p))))return blocked('MINE_HAZARD_SEAL_UNCONFIRMED','ハザード支線の埋戻しを確認します。','position_changed')
+    branch.progress[layer]=state.skipMineSegment(progress,{segmentId:step.segmentId,code,attempts,plan:branch.plan,liveScope:before})
+    delete branch.segmentTask
+    delete branch.failures[step.segmentId]
+    if(!await save(ctx,branch,before)){branch.progress[layer]=progress;return blocked('MINE_CHECKPOINT','ハザード封鎖後の支線記録を保存します。','owner_released')}
+    ctx.log?.(`プレイヤーモード: 採掘場の支線 ${step.id} の奥に掘れない地形（${code}）があるため、掘った空間を埋め戻して次の支線へ進みます`)
+    return {...results.partial('MINE_SEGMENT_CLOSED',{progress:{layer,cursor:branch.progress[layer].cursor}}),serverConfirmed:true}
+  }
+  if(closingHazard && step.kind==='branch' && typeof state.skipMineSegment==='function'){
+    return closeHazardBranch(hazardCode??'MINE_HAZARD',branch.failures[step.segmentId]??4)
+  }
   const out=await excavateSegment(ctx,branch,step,cells)
   if(!live(ctx,before))return stopped()
   if(!received(out)){
@@ -94,6 +113,13 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
         branch.progress[layer]=state.skipMineSegment(progress,{segmentId:id,code:out.code,attempts,plan:branch.plan,liveScope:before})
         delete branch.segmentTask
         await save(ctx,branch,before)
+      } else if(attempts>=4 && step.kind==='branch' && ['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE'].includes(out.code) && typeof state.skipMineSegment==='function'){
+        // A partially opened branch hit water/lava/overhead gravel or an unminable structure block
+        // (live 2026-11-25: 2,370 loops on upper:branch-35-left:15). Persist closingHazard so retries
+        // finish refilling opened cells without trying to re-dig placed cobblestone, then skip.
+        branch.segmentTask={...branch.segmentTask,closingHazard:true,hazardCode:out.code}
+        if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','ハザード支線の埋戻し状態を保存します。','owner_released')
+        return closeHazardBranch(out.code,attempts)
       }
     }
     return out

@@ -26,7 +26,7 @@ async function fillCell (ctx,branch,target,purpose = 'shaft') {
   return action(ctx,branch,{kind:'fill',purpose,target},async()=>{
     const request={position:target,name,supportPurpose:purpose}
     // The cell is clicked from a stand that sees it: the shaft for a ladder's wall, the pocket for a vein (mine-ports.js).
-    const approach={ladder_support:ctx.minePorts.approachLadderSupport,vein_restore:ctx.minePorts.approachVeinFill}[purpose]
+    const approach={ladder_support:ctx.minePorts.approachLadderSupport,vein_restore:ctx.minePorts.approachVeinFill,hazard_close:ctx.minePorts.lighting?.placementStand?request=>ctx.minePorts.lighting.placementStand(request):null}[purpose]
     if(!approach || branch.pendingAction)return ctx.minePorts.place(request)
     const access=await approach(request)
     return access.result??ctx.minePorts.place(access.plan)
