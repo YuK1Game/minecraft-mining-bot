@@ -14,11 +14,13 @@ const AIR = new Set(['air', 'cave_air', 'void_air'])
 const STRONGHOLD = new Set(['minecraft:mob_spawner', 'minecraft:stonebrick', 'minecraft:stone_bricks', 'minecraft:cracked_stone_bricks', 'minecraft:mossy_stone_bricks'])
 const HAND = new Set(['dirt', 'grass_block', 'grass', 'coarse_dirt', 'rooted_dirt', 'moss_block', 'vine'])
 const PICK = new Map([
-  ...['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'netherrack', 'coal_ore', 'deepslate_coal_ore', 'nether_quartz_ore'].map(name => [name, 1]),
+  ...['stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'dripstone_block', 'netherrack', 'coal_ore', 'deepslate_coal_ore', 'nether_quartz_ore'].map(name => [name, 1]),
   ...['iron_ore', 'deepslate_iron_ore', 'copper_ore', 'deepslate_copper_ore', 'lapis_ore', 'deepslate_lapis_ore'].map(name => [name, 2]),
   ...['gold_ore', 'deepslate_gold_ore', 'redstone_ore', 'deepslate_redstone_ore', 'diamond_ore', 'deepslate_diamond_ore', 'emerald_ore', 'deepslate_emerald_ore'].map(name => [name, 3])
 ])
-const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding)/
+// dripstone_block is mined like stone (live 2026-11-26 02:31 JST: a branch cell refused 「自動採掘の対象外です: dripstone_block」
+// held the mine for 10+ minutes); a pointed dripstone beside the target may fall or drop, so it still denies.
+const HAZARDS = /(?:water|lava|sand$|gravel$|concrete_powder$|anvil$|dragon_egg|scaffolding|pointed_dripstone)/
 const QUARRY_HAZARDS = /(?:water|lava|bubble_column)/
 // Plain rock a hand breaks within the block timeout (no ore, nothing that drops something worth a tool).
 const HAND_ROCK = new Set(['stone', 'andesite', 'diorite', 'granite', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'tuff'])
