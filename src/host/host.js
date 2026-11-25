@@ -407,9 +407,9 @@ async function main () {
   if (managed && process.env.DASHBOARD_RESTORE_QUARRY === '1') shared.quarryRestoreAfterReconnect = true
   let stopping = false; let nextOdd = -1; let nextEven = -2; let lastInputTick = -1n; let loginSwim = null
   const current = () => reloader?.current
-  // Keep local JST output and the dashboard file, with optional remote delivery.
-  // Creating the sinks here keeps importing the host free of background work.
-  const { log, liveLog, cloudLog } = createBotLog({ file: path.resolve(__dirname, '..', '..', '.local', 'bot.log') })
+  // Keep local JST output and the dashboard file.
+  // Creating the sink here keeps importing the host free of background work.
+  const { log, liveLog } = createBotLog({ file: path.resolve(__dirname, '..', '..', '.local', 'bot.log') })
   const reportResumeError = receipt => log(`行動の再開を見送り、接続を保持します: ${receipt.source}: ${receipt.message}`)
   const onlineEmergency = createOnlineEmergencyHandler({ getState: () => state, getShared: () => shared, getCurrent: current, getLife: () => lifecycle?.stats().deathId, now: Date.now, report: receipt => log(formatOnlineEmergency(receipt)) })
   const deathRespawn = createDeathRespawnReflex({ getState: () => state, getShared: () => shared, getLifecycle: () => lifecycle, getCurrent: current, isStopping: () => stopping, report: result => log(`死亡後の通常リスポーン: ${result.phase}${result.reason ? ` (${result.reason})` : ''}`) })
@@ -523,7 +523,7 @@ async function main () {
     process.exitCode = code
     const deadline = setTimeout(() => process.exit(code), 5000).unref()
     const finish = () => { clearTimeout(deadline); process.exit(code) }
-    void Promise.all([Promise.resolve(cleanup).finally(() => shared.flushDragonCheckpoints?.()), cloudLog.close().finally(() => liveLog.close())]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
+    void Promise.all([Promise.resolve(cleanup).finally(() => shared.flushDragonCheckpoints?.()), Promise.resolve(liveLog.close())]).then(finish, error => { console.error(`終了時の記録確認: ${errorText(error)}`); finish() })
   }
   process.once('SIGINT', () => stop()); process.once('SIGTERM', () => stop())
   const context = {

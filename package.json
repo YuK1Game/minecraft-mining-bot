@@ -25,7 +25,6 @@
     "test:loadout": "node --test --test-concurrency=2 test/loadout-*.test.js"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "3.1175.0",
     "bedrock-protocol": "3.61.0",
     "prismarine-auth": "3.1.1",
     "prismarine-item": "1.18.0",
