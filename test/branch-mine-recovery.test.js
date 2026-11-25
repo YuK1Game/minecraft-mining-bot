@@ -132,12 +132,12 @@ test('an empty restoration stock permits ordinary surface gathering without recu
   assert.ok(w.opened.length-read<=4,'each registered box is inspected and withdrawn once, not on every gathered block')
 })
 
-test('35 occupied slots with no mining cargo gain six free slots through actual supply chest deposits',async t=>{
+test('35 occupied slots with no mining cargo gain at least six free slots through actual supply chest deposits',async t=>{
   const w=createMineWorld(t);await upper(w);fillNonCargo(w)
   const before=w.items.reduce((n,i)=>n+Math.max(0,i.count),0)
   const out=await minePackRoom(w.ctx)
   assert.equal(out.result.code,'MINE_CAPACITY_FREED',JSON.stringify(out))
-  assert.equal(occupied(w.inv),30);assert.equal(crowded(w.inv),false)
+  assert.ok(occupied(w.inv)<=30,String(occupied(w.inv)));assert.equal(crowded(w.inv),false)
   assert.equal(held(w,'raw_iron'),1);assert.equal(held(w,'cobblestone'),64)
   assert.equal(held(w,'iron_pickaxe'),1);assert.equal(held(w,'stone_pickaxe'),1)
   assert.ok(w.boxes.get('upper:supply').some(i=>i.count>0))
@@ -146,7 +146,7 @@ test('35 occupied slots with no mining cargo gain six free slots through actual 
   assert.equal(await minePackRoom(w.ctx),null)
 })
 
-test('capacity relief banks only confirmed spent diamond picks until the working inventory has room', async t => {
+test('capacity relief banks every confirmed spent diamond pick and keeps the working ones', async t => {
   const w = createMineWorld(t)
   await upper(w)
   const spentSlots = new Set([0, 5, 12, 18, 27, 33])
@@ -157,11 +157,11 @@ test('capacity relief banks only confirmed spent diamond picks until the working
   assert.deepEqual(cargo(w.inv), [])
   const result = await minePackRoom(w.ctx)
   assert.equal(result.result.code, 'MINE_CAPACITY_FREED', JSON.stringify(result))
-  assert.equal(occupied(w.inv), 30)
+  assert.equal(occupied(w.inv), 29)
   assert.equal(w.items.find(item => item.slot === 3)?.count, 1)
   assert.equal(w.items.filter(item => item.count === 1 && item.durabilityRemaining === 100).length, 28)
-  assert.equal(w.items.filter(item => item.count === 1 && spentSlots.has(item.slot)).length, 1)
-  assert.equal(w.boxes.get('upper:supply').filter(item => item.name === 'minecraft:diamond_pickaxe').reduce((sum, item) => sum + item.count, 0), 5)
+  assert.equal(w.items.filter(item => item.count === 1 && spentSlots.has(item.slot)).length, 0)
+  assert.equal(w.boxes.get('upper:supply').filter(item => item.name === 'minecraft:diamond_pickaxe').reduce((sum, item) => sum + item.count, 0), 6)
   assert.equal(await minePackRoom(w.ctx), null)
 })
 
@@ -305,7 +305,7 @@ test('home capacity relief survives an interrupted trip outside the mine and a p
   delete w.branch.capacityDestination
   w.branch.homeCapacityPending = true
   assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
-  assert.equal(occupied(w.inv), 30)
+  assert.ok(occupied(w.inv) <= 30, String(occupied(w.inv)))
   assert.equal(await minePackRoom(w.ctx), null)
   assert.equal(w.saved.at(-1).branch.homeCapacityPending, undefined)
   assert.equal(visits, 2)
@@ -321,7 +321,7 @@ test('capacity relief for lower-layer work uses the finished upper room and keep
   const out = await minePackRoom(w.ctx)
   assert.equal(out.result.code, 'MINE_CAPACITY_FREED', JSON.stringify(out))
   assert.equal(w.branch.capacityDestination, 'upper')
-  assert.equal(occupied(w.inv), 30)
+  assert.ok(occupied(w.inv) <= 30, String(occupied(w.inv)))
   assert.ok(w.boxes.get('upper:supply').some(item => item.count > 0))
   assert.equal(held(w, 'ladder'), constructionKeep(w.ctx, w.branch, 'lower').ladder)
   assert.equal(await minePackRoom(w.ctx), null)
@@ -344,7 +344,7 @@ test('a failed approach can select the verified mine storage but an unresolved t
   assert.equal(w.saved.at(-1).branch.capacityDestination, 'upper')
   assert.equal(occupied(w.inv), 35)
   assert.equal((await minePackRoom(w.ctx)).result.code, 'MINE_CAPACITY_FREED')
-  assert.equal(occupied(w.inv), 30)
+  assert.ok(occupied(w.inv) <= 30, String(occupied(w.inv)))
 })
 
 

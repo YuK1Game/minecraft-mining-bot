@@ -25,6 +25,8 @@ const outcome=(result,reason)=>pending(ladderDetail(result)??reason??result?.det
 const raw=ctx=>ctx.runtime.mineState?.()??ctx.runtime.raw()
 const mineOf=ctx=>ctx.memory?.early?.mine?.branch
 const inside=insideMine
+// Occupied main slots at which the layer's chest is visited; three stay free for ore of a new kind meanwhile.
+const DEPOSIT_AT=33
 
 function remainingPickBlock(ctx,branch,step){
   let name=null,tier=0
@@ -253,8 +255,9 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   const stocked=await checkStock(ctx,branch,layer)
   if(!received(stocked))return outcome(stocked,'保管した鉱石をラージチェストから確認して取り出します。')
   if(count(ctx,resource)>=targetHeld)return outcome({...results.partial('MINE_STOCK_READY'),serverConfirmed:true},'保管済みの鉱石を受信しました。確認済みの帰路で地上へ戻ります。')
+  // The bag is filled while digging and emptied in one trip (mine-storage.js `drain`), not topped up to six free slots.
   const held=occupied(inventory(ctx))??36
-  if(held>30){const out=await depositMine(ctx,branch,layer,{...constructionKeep(ctx,branch,layer),[resource]:targetHeld},{freeSlots:6});if(!received(out))return outcome(out,'必要な携行品を残し、採掘用の空き枠をラージチェストへの収納で確保します。')}
+  if(held>=DEPOSIT_AT){const out=await depositMine(ctx,branch,layer,{...constructionKeep(ctx,branch,layer),[resource]:targetHeld},{freeSlots:6,drain:true});if(!received(out))return outcome(out,'必要な携行品を残し、採掘用の空き枠をラージチェストへの収納で確保します。')}
   if(observedVein){
     const reached=await walkLayer(ctx,branch,layer,observedVein.stand)
     if(received(reached))return outcome(await workVein(ctx,branch,observedVein.cells),'完成済みの坑道から確認できる鉱脈を回収します。')
@@ -314,7 +317,7 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
   if(destination==='home'){
     const before=scope(ctx),left=await leaveMine(ctx,branch)
     if(!received(left))return outcome(left,'採掘場の入口へ戻り、地上の箱へ採掘物を運びます。')
-    const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6})
+    const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6,drain:true})
     // This code is returned before the home container is opened. Keep any
     // submitted transfer on its original route until its receipt is known.
     if(out?.code==='MINE_HOME_ACCESS_UNCONFIRMED' && readyLayer && branch.lobbyReady[readyLayer]===before && live(ctx,before)){
@@ -329,7 +332,7 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
   }
   const entered=await entry(ctx,branch)
   if(!received(entered))return outcome(entered)
-  const out=await depositMine(ctx,branch,destination,keep,{freeSlots:6})
+  const out=await depositMine(ctx,branch,destination,keep,{freeSlots:6,drain:true})
   return outcome(out,'採掘物を計画済みのラージチェストへ収納します。')
 }
 

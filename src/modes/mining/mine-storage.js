@@ -74,12 +74,15 @@ function createMineStorage (ctx, actions) {
     }
     return actions.done('MINE_STORAGE_READY', { pairs: room.pairs.length })
   }
-  async function deposit (plan, { layer, keep = {}, freeSlots = null } = {}) {
+  // `drain`: one trip stores every offered stack, not only enough to reach `freeSlots`; `freeSlots` stays the least
+  // that must be free afterwards. Freeing exactly six slots sent the Bot back to the chest after every few blocks
+  // once the bag was near full (live 2026-11-26 01:57 JST, upper layer: 「採掘用の空き枠を…確保します」 at 31/36).
+  async function deposit (plan, { layer, keep = {}, freeSlots = null, drain = false } = {}) {
     const room = roomOf(plan, layer)
     if (!room) return failed('MINE_STORAGE_LAYER_INVALID')
     const capacity = Number.isInteger(freeSlots) && freeSlots > 0 && freeSlots < 36
     const enough = () => occupied(actions.inventory()) != null && occupied(actions.inventory()) <= 36 - freeSlots
-    const stacks = () => capacity && enough() ? [] : (capacity ? capacityCargo : cargo)(actions.inventory(), keep)
+    const stacks = () => capacity && !drain && enough() ? [] : (capacity ? capacityCargo : cargo)(actions.inventory(), keep)
     if (stacks() == null) return wait('MINE_INVENTORY_UNKNOWN', 'inventory_update')
     if (!stacks().length) return capacity && !enough() ? wait('MINE_CAPACITY_RETAINED', 'inventory_update') : actions.done(capacity ? 'MINE_CAPACITY_READY' : 'MINE_CARGO_EMPTY')
     let transferred = 0
@@ -168,7 +171,7 @@ function createMineStorage (ctx, actions) {
     }
     return null
   }
-  async function depositHome ({ keep = {}, freeSlots = null } = {}) {
+  async function depositHome ({ keep = {}, freeSlots = null, drain = false } = {}) {
     const origin = ctx.shared.playerHouse?.origin
     if (!origin) return wait('MINE_HOME_STORAGE_UNAVAILABLE', 'container_update')
     const { chestOf } = require('../house/house-spawn')
@@ -176,7 +179,7 @@ function createMineStorage (ctx, actions) {
     const { baseChests } = require('../base-chests')
     const capacity = Number.isInteger(freeSlots) && freeSlots > 0 && freeSlots < 36
     const enough = () => occupied(actions.inventory()) != null && occupied(actions.inventory()) <= 36 - freeSlots
-    const anchor = chestOf(origin), stacks = () => capacity && enough() ? [] : (capacity ? capacityCargo : cargo)(actions.inventory(), keep)
+    const anchor = chestOf(origin), stacks = () => capacity && !drain && enough() ? [] : (capacity ? capacityCargo : cargo)(actions.inventory(), keep)
     if (stacks() == null) return wait('MINE_INVENTORY_UNKNOWN', 'inventory_update')
     if (!stacks().length) return capacity && !enough() ? wait('MINE_CAPACITY_RETAINED', 'inventory_update') : actions.done(capacity ? 'MINE_CAPACITY_READY' : 'MINE_CARGO_EMPTY')
     if (!await approachHome(ctx, anchor, { open: true })) return wait('MINE_HOME_ACCESS_UNCONFIRMED', 'position_changed')

@@ -71,3 +71,14 @@ test('home supply recovery uses the fresh chest contents instead of cached amoun
   assert.equal(await f.storage.takeHome({ ladder: 50, stick: 56 }), null)
   assert.equal(f.opens(), 1)
 })
+
+test('a draining capacity deposit empties every offered stack in one visit instead of stopping at six free slots', async t => {
+  for (const drain of [false, true]) {
+    const f = fixture(t)
+    f.inventory.items.splice(0, f.inventory.items.length, ...Array.from({ length: 34 }, (_, slot) => ({ slot, name: 'minecraft:raw_iron', count: 1 })))
+    const result = await f.storage.deposit(f.plan, { layer: 'upper', keep: {}, freeSlots: 6, drain })
+    assert.equal(result.code, 'MINE_CAPACITY_FREED')
+    const left = f.inventory.items.filter(item => item.count > 0).length
+    assert.equal(left, drain ? 0 : 30)
+  }
+})
