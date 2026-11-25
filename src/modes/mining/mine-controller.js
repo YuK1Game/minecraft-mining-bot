@@ -95,11 +95,19 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
   async function closeHazardBranch(code,attempts){
     const far=p=>Math.hypot(p.x+0.5-cells.approach.x,p.z+0.5-cells.approach.z)
     const opened=cells.clear.filter(p=>air(at(ctx,p))).sort((a,b)=>far(b)-far(a) || a.y-b.y)
+    // A far cell that no stand reaches (it opens into the cave beyond) is left; the branch is then shut at its mouth,
+    // the opened cell nearest the corridor (live 2026-11-26 07:16-07:42 JST: upper:branch-56-right:33 refilling
+    // from the far end returned MINE_FINISH_STAND_UNAVAILABLE for 26 minutes).
+    let unreached=null
     for(const p of opened){
       const sealed=await fillCell(ctx,branch,p,'hazard_close')
-      if(!received(sealed))return sealed
+      if(received(sealed))continue
+      if(sealed?.code==='MINE_FINISH_STAND_UNAVAILABLE'){unreached??=p;continue}
+      return sealed
     }
-    if(!cells.clear.every(p=>!air(at(ctx,p))))return blocked('MINE_HAZARD_SEAL_UNCONFIRMED','ハザード支線の埋戻しを確認します。','position_changed')
+    const mouth=[...cells.clear].sort((a,b)=>far(a)-far(b) || a.y-b.y)[0]
+    const shut=cells.clear.every(p=>!air(at(ctx,p))) || unreached && mouth && cells.clear.filter(p=>far(p)<=far(mouth)+0.01).every(p=>!air(at(ctx,p)))
+    if(!shut)return blocked(unreached?'MINE_FINISH_STAND_UNAVAILABLE':'MINE_HAZARD_SEAL_UNCONFIRMED','ハザード支線の埋戻しを確認します。','position_changed')
     branch.progress[layer]=state.skipMineSegment(progress,{segmentId:step.segmentId,code,attempts,plan:branch.plan,liveScope:before})
     delete branch.segmentTask
     delete branch.failures[step.segmentId]
