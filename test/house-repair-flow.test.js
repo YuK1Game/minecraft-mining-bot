@@ -345,3 +345,37 @@ test('the build of a repair asked for one thing places that thing only; a held r
   assert.equal(f.shared.playerHouse.done, true)
   assert.equal(f.shared.playerHouse.built, true)
 })
+
+test('away from an unreceived house, saved house.left starts the repair trip instead of deadlocking on HOUSE_BUILD_PENDING', async () => {
+  const away = { x: ORIGIN.x - 100, y: ORIGIN.y + 6, z: ORIGIN.z + 100 }
+  const feet = { ...away }
+  const inventory = { known: true, items: [stack('stone_pickaxe', 1, 0), stack('birch_slab', 1, 1)] }
+  const shared = {
+    playerWanted: true,
+    playerHouse: { origin: ORIGIN, done: false, spawn: true, built: true, left: { oak_slab: 1 }, repair: { state: 'running', since: 1e6 } }
+  }
+  const traveled = []
+  // House chunks are unreceived (known:false) while the Bot stands 140m away at the mine entrance.
+  const getBlock = (x, y, z) => {
+    if (Math.hypot(x - away.x, z - away.z) <= 8) {
+      return y < away.y ? { known: true, name: 'minecraft:grass_block', boundingBox: 'block' } : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+    }
+    return { known: false }
+  }
+  const build = createHouseBuild({
+    getMode: () => 'player', shared,
+    ports: { craft: async () => false, why: () => null, reset () {}, mine: async () => false, place: async () => false, inspectChest: async () => ({ status: 'failed' }) },
+    hands: { walk: async () => false, approach: async () => false, why: () => null },
+    getBlock, getFeet: () => ({ ...feet }), getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getInventory: () => inventory,
+    agent: { objective: {}, stop () {}, start: async () => {}, settled: () => true },
+    climb: async () => ({ ok: true }),
+    travel: {
+      to: async input => { traveled.push(input.destination) },
+      status: () => ({ busy: false }),
+      cancel: async () => {}
+    },
+    sleep: async () => {}
+  })
+  await build.tick()
+  assert.deepEqual(traveled, [{ x: ORIGIN.x + 3, z: ORIGIN.z + 8 }])
+})

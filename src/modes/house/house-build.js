@@ -117,11 +117,23 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     // house's own steps start it on their logs and cobblestone, as before.
     const house = left.filter(step => !step.ground)
     if (!house.length) return left.some(step => fresh(step) && workable(step))
-    const needs = houseNeeds(inventory, counts(house))
+    // Away from the house its chunks are unreceived and remaining(getBlock, origin)
+    // reports the entire blueprint as missing. Use the last received house.left
+    // counts (matching house-supply.js needsNow) so due() starts the trip back
+    // instead of deadlocking on HOUSE_BUILD_PENDING for 20 minutes.
+    const seen = !origin || placements(origin).every(step => step.cells.every(cell => getBlock(cell.x, cell.y, cell.z)?.known === true))
+    const saved = !focus && !seen && shared.playerHouse?.left ? shared.playerHouse.left : null
+    const needs = houseNeeds(inventory, saved ?? counts(house))
     // Logs and cobblestone start it; the glass waits for sand and the bed for
     // wool, so a house is not held back by a desert-less or sheep-less area
     // (live 2026-11-17 03:32 JST: no sand in sight, the build never began).
     if (!needs || needs.need.logs > 0 || needs.need.cobblestone > 0) return false
+    if (saved) {
+      const itemsLeft = Object.entries(saved).filter(([, n]) => n > 0).map(([item]) => item)
+      if (!itemsLeft.length) return shared.playerHouse?.done !== true
+      if (itemsLeft.every(item => item === 'oak_door')) return true
+      return itemsLeft.some(item => item !== 'oak_door' && (item === 'glass' ? needs.need.sand === 0 : item === 'white_bed' ? needs.need.wool === 0 : true))
+    }
     // A step the last run failed on waits AGAIN_MS, and the door waits for
     // the rest: neither brings the Bot back (live 2026-11-17 14:06-14:11 JST:
     // a corner block out of sight and the door called it home from the sand
