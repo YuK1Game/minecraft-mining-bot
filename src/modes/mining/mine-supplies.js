@@ -86,7 +86,9 @@ function createMineSupplies (ctx, actions, storage) {
     if (insideMine(ctx, branch)) {
       const out = await require('./mine-route').leaveMine(ctx, branch)
       if (!confirmed(out)) return { result: out }
-      return { result: wait('MINE_SURFACE_SUPPLY_STATION', '採掘場の坑道を保護し、地上で作業台・かまどを使います。') }
+      // Out of the mine nothing in the bag changes: the station is looked for on the next tick, not after a change of
+      // supplies (live 2026-11-26 07:49-07:59 JST: ten minutes standing at the entrance until the goal's reset).
+      return { result: blocked('MINE_SURFACE_SUPPLY_STATION', { kind: 'time', ms: 1000 }, { detail: '採掘場の坑道を保護し、地上で作業台・かまどを使います。' }) }
     }
     // A nearby block may face into a sealed room. Use the same received face
     // and stand calculation as the ordinary station owner, with a finite
