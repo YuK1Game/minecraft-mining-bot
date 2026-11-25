@@ -3,6 +3,7 @@
 const { blocked, interrupted } = require('../return/return-result')
 const { held, bare, solid, air, confirmed } = require('./mine-observed')
 const { createOpenStand } = require('../open-stand')
+const { homeFurnace } = require('../station-yard')
 const { insideMine, reservedShaftCell } = require('./mine-location')
 const { takeSupplies } = require('./mine-stock')
 const { supplyNeeds, ladderBatches, builtWork } = require('./mine-needs')
@@ -105,6 +106,12 @@ function createMineSupplies (ctx, actions, storage) {
       }
     }
     if (accessibleOnly) return {}
+    // Near the house the house's furnace is used; no portable one is put down by the mine entrance (station-yard.js).
+    if (name === 'furnace') {
+      const home = await homeFurnace(ctx)
+      if (home?.at) return { position: home.at }
+      if (home) return { result: home.result ?? wait('MINE_HOME_STATION_APPROACH', home.reason) }
+    }
     if (have(name) < 1) {
       const fullInventory = occupied(actions.inventory()) === 36
       const preview = ctx.operations?.crafting?.preview

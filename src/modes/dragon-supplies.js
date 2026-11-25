@@ -9,6 +9,7 @@ const { createDragonBrewing } = require('./dragon-brew')
 const { home, end, nether, spare, combined, compactReserveKit, matches, count, full, bare, homeCarryNeed, hasWorkingPick } = require('./dragon-supply-kit')
 const { provisionFood } = require('./dragon-early-food')
 const { placeStation } = require('./station-room')
+const { homeFurnace } = require('./station-yard')
 const { reserveRoom } = require('./dragon-reserve-room')
 const { createOpenStand } = require('./open-stand')
 
@@ -99,6 +100,12 @@ function createDragonSupplies (ctx) {
     }
     if (near) { await approach(ctx, near); return remember(near) }
     if (existingOnly) return null
+    // Near the house the house's furnace is used; no portable one is put down beside it (station-yard.js).
+    if (name === 'furnace') {
+      const home = await homeFurnace(ctx)
+      if (home?.at) return remember(home.at)
+      if (home) { trouble = home.reason; return null }
+    }
     if (!held(name)) { await acquire(name, 1); return null }
     // Open cells first; in a one-wide tunnel a niche is mined for it (station-room.js).
     const pos = await placeStation({ getBlock, reserved, feet: ctx.getFeet(), getFeet: ctx.getFeet, place: cell => bench.place(cell, full(name)), retrySafe: () => bench.placementRetrySafe(), why: () => bench.refusal(), hands: ctx.hands, cancelled, log: ctx.log, label: name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name })
