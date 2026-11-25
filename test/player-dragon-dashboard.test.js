@@ -7,6 +7,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { createDashboardControl } = require('../src/host/dashboard-control')
 const { playerStages } = require('../src/modes/player-stages')
+const { playerStageView } = require('../src/modes/player-stage-view')
+const { createMineGeometry, mineSteps } = require('../src/modes/mining/mine-geometry')
 
 function view () {
   function createElement () {
@@ -69,7 +71,7 @@ test('the host control snapshot drives selected stage details and updates them d
   const mine = player.stages.find(stage => stage.id === 'branch_mine')
   assert.equal(mine.label, 'ブランチマイニング場の作成')
   assert.equal(mine.reached, false)
-  assert.deepEqual(mine.checks.map(check => check.status), ['pending'])
+  assert.deepEqual(mine.checks.map(check => check.status), ['pending', 'pending', 'pending'])
   const end = player.stages.find(stage => stage.id === 'end')
   assert.equal(end.shortLabel, 'ドラゴン')
   assert.deepEqual(end.checks[1], { label: 'クリスタルのない柱を確認', status: 'pending', value: '1 / 10 本' })
@@ -88,4 +90,99 @@ test('the host control snapshot drives selected stage details and updates them d
   road({ current: 'quarry', player })
   assert.equal(detail.open, false)
   assert.equal(find('target-heading').following.hidden, true)
+})
+
+test('stage details list exact transition item requirements and live received counts within view limits', () => {
+  const plan = createMineGeometry({
+    scope: { profile: 'test', realmId: '1', dimension: 'overworld' },
+    anchor: { x: 0, z: 0 }, surfaceY: 64
+  })
+  const storageSteps = mineSteps(plan, { layer: 'upper' }).findIndex(step => step.kind === 'main')
+  const pairs = Object.fromEntries(plan.storage.flatMap(room => room.pairs).map(pair => [pair.id, { positions: pair.positions, slots: 54 }]))
+  const site = {
+    plan,
+    progress: { upper: { cursor: storageSteps + 3, confirmedSteps: storageSteps + 3 } },
+    shaft: { landings: { upper: true } },
+    storage: { pairs },
+    request: { resource: 'raw_iron', targetHeld: 33, requester: 'home_reserve' }
+  }
+  const inventory = {
+    known: true,
+    items: [
+      { name: 'minecraft:iron_pickaxe', count: 1 },
+      { name: 'minecraft:raw_iron', count: 9 },
+      { name: 'minecraft:iron_ingot', count: 4 },
+      { name: 'minecraft:cooked_beef', count: 6 },
+      { name: 'minecraft:diamond', count: 5 },
+      { name: 'minecraft:diamond_pickaxe', count: 1 },
+      { name: 'minecraft:arrow', count: 12 },
+      { name: 'minecraft:cobblestone', count: 40 },
+      { name: 'minecraft:obsidian', count: 3 },
+      { name: 'minecraft:blaze_rod', count: 3 },
+      { name: 'minecraft:ender_pearl', count: 7 }
+    ]
+  }
+  const worn = { known: true, worn: [{ name: 'minecraft:iron_helmet' }], offhand: { name: 'minecraft:shield' } }
+  const house = { origin: { x: 0, y: 64, z: 0 }, built: true }
+  const record = { early: { spawnReady: true, reserveIron: { target: 42, rawTarget: 33 }, mine: { branch: site } } }
+  const shared = {
+    dragonReserveSeen: {
+      counts: { iron_pickaxe: 1, iron_helmet: 1, shield: 1, food: 8 }
+    }
+  }
+  const result = playerStages(inventory, worn, house, record, shared)
+  const viewStages = playerStageView(result.stages)
+  assert.equal(viewStages.length, result.stages.length)
+  for (const stage of result.stages) {
+    assert.ok(stage.checks.length <= 12, `${stage.id} exceeded 12 checks: ${stage.checks.length}`)
+    for (const check of stage.checks) {
+      assert.ok(check.label.length <= 100, `${stage.id} label too long: ${check.label}`)
+      if (check.value != null) assert.ok(check.value.length <= 40, `${stage.id} value too long: ${check.value}`)
+    }
+  }
+
+  const mine = viewStages.find(s => s.id === 'branch_mine')
+  assert.equal(mine.reached, true)
+  const expectedPairs = plan.storage.find(room => room.layer === 'upper').pairs.length
+  assert.equal(mine.checks[1].value, `${expectedPairs} / ${expectedPairs} 組`)
+  assert.equal(mine.checks[2].value, '3 / 1 区間')
+
+  const reserve = viewStages.find(s => s.id === 'home_reserve')
+  assert.equal(reserve.checks.length, 12)
+  assert.equal(reserve.checks[1].value, '9 / 33 個')
+  assert.equal(reserve.checks[2].value, '4 / 42 個')
+  assert.deepEqual(reserve.checks.find(c => c.label.includes('鉄のツルハシ')), {
+    label: '鉄のツルハシ（予備1＋携行1本）',
+    status: 'done',
+    value: '箱 1/1・持 2/1'
+  })
+  assert.deepEqual(reserve.checks.find(c => c.label.includes('盾')), {
+    label: '盾（予備1＋携行1個）',
+    status: 'done',
+    value: '箱 1/1・持 1/1'
+  })
+  assert.deepEqual(reserve.checks.find(c => c.label.includes('調理済み食料')), {
+    label: '調理済み食料（予備8＋携行8個）',
+    status: 'pending',
+    value: '箱 8/8・持 6/8'
+  })
+
+  // Without received chest contents, never claim the chest is confirmed.
+  const withoutChest = playerStages(inventory, worn, house, record).stages.find(s => s.id === 'home_reserve')
+  const pickWithoutChest = withoutChest.checks.find(c => c.label.includes('鉄のツルハシ'))
+  assert.equal(pickWithoutChest.status, 'pending')
+  assert.match(pickWithoutChest.value, /箱未確認/)
+
+  const diamond = viewStages.find(s => s.id === 'diamond')
+  assert.equal(diamond.checks[0].value, '所持 5 / 残り 26 個')
+
+  const nether = viewStages.find(s => s.id === 'nether')
+  assert.equal(nether.checks.find(c => c.label.includes('矢')).value, '12 / 32 本')
+  assert.equal(nether.checks.find(c => c.label.includes('黒曜石')).value, '3 / 10 個')
+
+  const rods = viewStages.find(s => s.id === 'rods')
+  assert.equal(rods.checks.find(c => c.label.includes('アイ 20 個分')).value, '6 / 20 個分')
+
+  const stronghold = viewStages.find(s => s.id === 'stronghold')
+  assert.equal(stronghold.checks[0].value, 'アイ 0/20（玉7）')
 })

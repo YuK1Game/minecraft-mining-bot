@@ -37,9 +37,10 @@ const STAGES = Object.freeze([
 // `worn` is the armour snapshot ({ known, worn: [{ name }] }); worn pieces count
 // as held. Unreceived armour counts as nothing worn.
 // `house` is the house record (shared.playerHouse: { origin, done, built }).
-function playerStages (inventory, worn = null, house = null, record = null) {
+function playerStages (inventory, worn = null, house = null, record = null, shared = null) {
   const known = inventory?.known === true && inventory.uncertain !== true && Array.isArray(inventory.items)
   const wearing = worn?.known === true && Array.isArray(worn.worn) ? worn.worn.filter(piece => piece?.name).map(piece => ({ name: piece.name, count: 1 })) : []
+  if (worn?.known === true && worn.offhand?.name) wearing.push({ name: worn.offhand.name, count: 1 })
   const items = known ? [...inventory.items, ...wearing] : []
   const stages = STAGES.map(stage => {
     if (stage.checks) {
@@ -66,7 +67,7 @@ function playerStages (inventory, worn = null, house = null, record = null) {
     stages: stages.map(stage => ({
       ...stage,
       shortLabel: shortLabels[stage.id],
-      checks: stage.checks ?? stageChecks(stage, items, house, record)
+      checks: stage.checks ?? stageChecks(stage, items, house, record, { known, shared })
     }))
   }
 }

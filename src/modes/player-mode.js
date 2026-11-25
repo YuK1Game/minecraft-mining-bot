@@ -48,7 +48,7 @@ function createPlayerMode ({ getMode, agent, safety, expedition = null, recovery
     // While recovery owns the pause or the far move, the player is still playing.
     const wanted = shared.playerWanted === true
     const record = safely(() => expedition?.record())
-    const stages = playerStages(getInventory(), worn(), shared.playerHouse, record)
+    const stages = playerStages(getInventory(), worn(), shared.playerHouse, record, shared)
     const decision = latestDecision(shared)
     const quest = expedition?.status()
     if (record?.stage === 'complete') return { wanted, running: false, phase: 'completed', reason: record.end.preexisting ? '開通済みのエンドから帰還しました。今回の討伐は未確認です。' : 'ドラゴン討伐後の現世への帰還を確認しました。', ...(decision ? { decision } : {}), ...stages }

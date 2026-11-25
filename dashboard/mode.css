@@ -65,7 +65,8 @@ body.v2 .control-panel .mode-switch button[aria-pressed=true]:disabled{opacity:1
 .mode-stage-detail {
   box-sizing: border-box;
   width: min(520px, calc(100% - 32px));
-  max-height: min(80dvh, 650px);
+  max-height: min(82dvh, 680px);
+  overflow-y: auto;
   padding: 20px;
   border: 1px solid var(--edge);
   border-radius: 14px;
@@ -97,10 +98,11 @@ body.v2 .control-panel .mode-switch button[aria-pressed=true]:disabled{opacity:1
 }
 .mode-stage-status[data-state=current], .mode-stage-status[data-state=done] { background: var(--g-soft); color: var(--g-dark); }
 .mode-stage-checks { margin: 0; padding: 0; list-style: none; }
-.mode-stage-checks li { display: flex; align-items: baseline; gap: 10px; padding: 9px 0; border-top: 1px solid var(--edge); }
+.mode-stage-checks li { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-top: 1px solid var(--edge); }
 .mode-check-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.mode-check-state { color: var(--sub); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.mode-check-state { color: var(--sub); font-size: 12px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mode-stage-checks li[data-state=done] .mode-check-state { color: var(--g-dark); }
+.mode-stage-checks li[data-state=done] .mode-check-state::before { content: '✓ '; }
 .mode-stage-reason {
   margin: 10px 0 0;
   padding: 9px 11px;
