@@ -107,3 +107,23 @@ test('a stop in the middle places nothing more', async () => {
   assert.equal(await placeStation({ getBlock: w.getBlock, feet: FEET, place: p.place, hands: { ...h, mine }, cancelled: () => stop }), null)
   assert.deepEqual(p.placed, [])
 })
+
+test('on a tree crown with nothing beside the feet the station is placed after a step down to nearby ground', async () => {
+  const { placeStation, nearGround } = require('../src/modes/station-room')
+  // Ground at y 64 (floor y 63); the Bot stands on a leaf block at y 72 with only air around it.
+  const getBlock = (x, y, z) => {
+    if (x === 0 && z === 0 && y === 71) return { known: true, name: 'minecraft:birch_leaves', boundingBox: 'block' }
+    if (y <= 63) return { known: true, name: 'minecraft:grass_block', boundingBox: 'block' }
+    return { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  }
+  let feet = { x: 0.5, y: 72, z: 0.5 }
+  assert.equal(nearGround(getBlock, feet), null, 'eight cells below is out of the six-cell reach')
+  feet = { x: 0.5, y: 69, z: 0.5 }
+  const ground = nearGround(getBlock, feet)
+  assert.equal(ground.y, 64)
+  const placed = []
+  const out = await placeStation({ getBlock, feet, getFeet: () => feet, hands: { walk: async to => { feet = { ...to }; return true }, canMine: () => false },
+    place: async cell => { placed.push(cell); return true } })
+  assert.equal(out.y, 64)
+  assert.equal(placed.length, 1)
+})

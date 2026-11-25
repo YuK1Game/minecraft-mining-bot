@@ -59,6 +59,22 @@ function bareStance (getBlock, feet) {
     .sort((a, b) => Math.hypot(a.x - at.x, a.z - at.z) - Math.hypot(b.x - at.x, b.z - at.z))
   return cells.find(cell => ground(cell) && bare({ ...cell, y: cell.y + 1 }) && SIDES.some(([dx, dz]) => ground({ x: cell.x + dx, y: cell.y, z: cell.z + dz }))) ?? null
 }
+// The nearest standing cell (air for feet and head on a solid floor) within eight cells and from six below to two
+// above the feet, other than the feet's own, with a bare ground cell beside it; null when none is received.
+function nearGround (getBlock, feet) {
+  const at = cellOf(feet), bare = cell => { const here = getBlock(cell.x, cell.y, cell.z); return here?.known === true && OPEN.test(here.name ?? '') && !here.extra?.length }
+  const ground = cell => bare(cell) && solid(getBlock(cell.x, cell.y - 1, cell.z))
+  let best = null, far = Infinity
+  for (let dx = -8; dx <= 8; dx++) for (let dz = -8; dz <= 8; dz++) for (let dy = -6; dy <= 2; dy++) {
+    if (!dx && !dz) continue
+    const cell = { x: at.x + dx, y: at.y + dy, z: at.z + dz }, d = Math.hypot(dx, dz) + Math.abs(dy) * 0.5
+    if (d >= far || !ground(cell) || !bare({ ...cell, y: cell.y + 1 })) continue
+    if (!SIDES.some(([sx, sz]) => ground({ x: cell.x + sx, y: cell.y, z: cell.z + sz }))) continue
+    best = cell; far = d
+  }
+  return best
+}
+
 function placementAccess (getBlock, feet, reserved) {
   const targetCells = openSpots(getBlock, feet).filter(cell => !reserved(cell))
   if (!targetCells.length) return null
@@ -147,9 +163,25 @@ async function placeStation ({ getBlock, feet, reserved = () => false, getFeet =
     if (await place(cell)) return cell
     if (!retrySafe()) return null
   }
+  // Nothing beside the feet at all (on a tree's crown or a pillar top: live 2026-11-26 03:41-03:53 JST at
+  // (9778, 72, 10246) after felling a birch, 「作業台を置ける場所がありません（空いたマス 0・掘れる壁 0）」 once a
+  // minute for twelve minutes with no step): to the nearest ground within eight cells, at any height from six below
+  // to two above, that has ground beside it, and the placement is tried from there.
+  if (hands?.walk && getFeet && !cancelled() && !openCells().length && !walls.length) {
+    const ground = nearGround(getBlock, feet)
+    if (ground) {
+      log(`プレイヤーモード: ${label}を置く場所が周りにないため、近くの地面 (${ground.x}, ${ground.y}, ${ground.z}) へ移ってから置きます`)
+      await hands.walk({ x: ground.x + 0.5, y: ground.y, z: ground.z + 0.5 })
+      const after = getFeet()
+      if (cancelled() || !after) return null
+      feet = after
+      put = await open()
+      if (put !== null) return put || null
+    }
+  }
   const refusal = why()
   sayOnce(log, `${label}を置ける場所がありません（空いたマス ${openCells().length}・掘れる壁 ${walls.length}${refusal ? `・${String(refusal).slice(0, 60)}` : ''}）`)
   return null
 }
 
-module.exports = { placeStation, openSpots, wallSpots, bareStance }
+module.exports = { placeStation, openSpots, wallSpots, bareStance, nearGround }
