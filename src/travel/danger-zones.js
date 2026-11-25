@@ -11,9 +11,13 @@ const FORGET_MS = 3600000
 const lasting = zone => /pillager|vindicator|evoker/.test(String(zone?.kind ?? ''))
 const fresh = (zone, now) => { const at = Date.parse(zone?.at ?? ''); return lasting(zone) || !Number.isFinite(at) || now - at < FORGET_MS }
 
-function inZone (zones, x, z, destination = null, now = Date.now()) {
+function activeZones (zones, destination = null, now = Date.now()) {
   const goal = destination && Number.isFinite(destination.x) && Number.isFinite(destination.z) ? destination : null
-  return (zones ?? []).some(zone => fresh(zone, now) && Math.hypot(zone.x - x, zone.z - z) < zone.r && !(goal && Math.hypot(zone.x - goal.x, zone.z - goal.z) < zone.r))
+  return (zones ?? []).filter(zone => fresh(zone, now) && !(goal && Math.hypot(zone.x - goal.x, zone.z - goal.z) < zone.r))
 }
 
-module.exports = { inZone, FORGET_MS }
+function inZone (zones, x, z, destination = null, now = Date.now()) {
+  return activeZones(zones, destination, now).some(zone => Math.hypot(zone.x - x, zone.z - z) < zone.r)
+}
+
+module.exports = { activeZones, inZone, FORGET_MS }

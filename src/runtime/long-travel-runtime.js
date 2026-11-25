@@ -558,7 +558,10 @@ function createLongTravelRuntime (rt) {
         // Remembered danger zones (live 16:22 and 17:18: pillagers near
         // (540..590, -750) killed the bot twice): 48 m around where a shooter
         // hit the bot, kept on disk; never closer than the bot already is.
-        for (const zone of travelDangerZones()) {
+        // Apply the same expiry (FORGET_MS) and destination exemption as
+        // inZone (live 2026-11-25 11:25-11:37 JST: 6 expired skeleton zones
+        // walled off the starter house in a 70m ring for 12+ minutes).
+        for (const zone of rt.require('./travel/danger-zones').activeZones(travelDangerZones(), destination)) {
           const r = Math.min(zone.r, Math.hypot(zone.x - feet.x, zone.z - feet.z) - 2)
           if (r <= 1 || Math.hypot(zone.x - feet.x, zone.z - feet.z) > 320) continue
           for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(zone.x) + dx},${Math.floor(zone.z) + dz}`)

@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { inZone } = require('../src/travel/danger-zones')
+const { activeZones, inZone } = require('../src/travel/danger-zones')
 
 const zones = [{ x: 0, z: 0, r: 48, kind: 'minecraft:skeleton' }]
 
@@ -20,4 +20,17 @@ test('a skeleton zone is forgotten after an hour; a pillager zone stays', () => 
   assert.equal(inZone([{ x: 0, z: 0, r: 48, kind: 'minecraft:skeleton', at: old }], 10, 0, null, now), false)
   assert.equal(inZone([{ x: 0, z: 0, r: 48, kind: 'minecraft:skeleton', at: recent }], 10, 0, null, now), true)
   assert.equal(inZone([{ x: 0, z: 0, r: 120, kind: 'minecraft:pillager', at: old }], 10, 0, null, now), true)
+})
+
+test('activeZones filters expired skeleton zones and zones covering the destination for coarse route avoidance', () => {
+  const now = Date.parse('2026-11-25T02:37:00Z')
+  const old = new Date(now - 24 * 3600000).toISOString(), recent = new Date(now - 600000).toISOString()
+  const list = [
+    { x: 9890, z: 10145, r: 48, kind: 'minecraft:skeleton', at: old },
+    { x: 9862, z: 10136, r: 48, kind: 'minecraft:skeleton', at: recent },
+    { x: 9500, z: 10500, r: 48, kind: 'minecraft:skeleton', at: recent },
+    { x: 9200, z: 10200, r: 120, kind: 'minecraft:pillager', at: old }
+  ]
+  const active = activeZones(list, { x: 9880, z: 10147 }, now)
+  assert.deepEqual(active.map(z => z.x), [9500, 9200])
 })
