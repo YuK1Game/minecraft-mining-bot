@@ -51,7 +51,7 @@ function createMineWorld(t){
       const f=feet();if(Math.floor(f.x)===p.x && Math.floor(f.z)===p.z && p.y<f.y && f.y-p.y<=1.05)throw Error('own floor')
       if(!visible(p) && !/torch$/.test(getBlock(p.x,p.y,p.z).name??''))throw Error('unreachable face')
       const was=getBlock(p.x,p.y,p.z);digs.push({target:{...p},feet:f,name:was.name});put(p,'air')
-      const resource=/diamond_ore$/.test(was.name)?'diamond':/iron_ore$/.test(was.name)?'raw_iron':/coal_ore$/.test(was.name)?'coal':was.name==='minecraft:stone'?'cobblestone':null
+      const resource=/diamond_ore$/.test(was.name)?'diamond':/iron_ore$/.test(was.name)?'raw_iron':/copper_ore$/.test(was.name)?'raw_copper':/coal_ore$/.test(was.name)?'coal':/gold_ore$/.test(was.name)?'raw_gold':was.name==='minecraft:stone'?'cobblestone':null
       if(resource)give(resource)
       const above={...p,y:p.y+1};if(getBlock(above.x,above.y,above.z).name==='minecraft:torch'){put(above,'air');give('torch')}
       onMine?.(p)

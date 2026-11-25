@@ -417,3 +417,31 @@ test('requestMine finishes pending home capacity relief instead of walking back 
   assert.equal(homeCalls, 1)
   assert.equal(out.result.code, 'MINE_HOME_APPROACH')
 })
+
+test('side-wall coal and copper ores are harvested and refilled during an iron request, while unharvestable high-tier ores are skipped', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  w.setFeet({ x: 9.5, y: 65.5, z: 6.5 })
+  w.branch.request = { resource: 'raw_iron', targetHeld: 10, layer: 'upper', requester: 'side-ore-test' }
+  // Remove iron pickaxe so only stone_pickaxe (tier 2) is held: coal/copper/iron are harvestable, diamond (tier 3) is not.
+  for (const item of w.items) if (item.name === 'minecraft:iron_pickaxe') item.count = 0
+  const coalWall = { x: 9, y: 66, z: 7 }
+  const copperWall = { x: 9, y: 67, z: 8 }
+  const diamondWall = { x: 9, y: 66, z: 9 }
+  w.put(coalWall, 'coal_ore')
+  w.put(copperWall, 'copper_ore')
+  w.put(diamondWall, 'diamond_ore')
+  const cells = stepCells(w.plan, mineSteps(w.plan, { layer: 'upper' }).filter(p => p.kind === 'main')[1])
+  for (let i = 0; i < 10; i++) {
+    const out = await workVein(w.ctx, w.branch, i === 0 ? cells : null)
+    if (out.code === 'MINE_VEIN_CLOSED') break
+    assert.equal(out.code, 'MINE_VEIN_ADVANCED', JSON.stringify(out))
+  }
+  assert.equal(w.branch.vein, undefined)
+  assert.ok(held(w, 'coal') >= 1, 'side-wall coal_ore must be harvested')
+  assert.ok(held(w, 'raw_copper') >= 1, 'side-wall copper_ore must be harvested')
+  assert.equal(held(w, 'diamond'), 0, 'diamond_ore must not be broken with only a stone pickaxe')
+  assert.equal(w.getBlock(diamondWall.x, diamondWall.y, diamondWall.z).name, 'minecraft:diamond_ore')
+  assert.equal(w.getBlock(coalWall.x, coalWall.y, coalWall.z).name, 'minecraft:cobblestone')
+  assert.equal(w.getBlock(copperWall.x, copperWall.y, copperWall.z).name, 'minecraft:cobblestone')
+})

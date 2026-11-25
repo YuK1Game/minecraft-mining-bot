@@ -166,7 +166,7 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   // A checked, exhausted layer needs only its exit. An interrupted climb
   // must not take the Bot back to the chest on its next tick.
   const progress=branch.progress[layer],steps=mineSteps(branch.plan,{layer})
-  const observedVein=observedVeinStep(ctx,branch,steps,progress)
+  const observedVein=observedVeinStep(ctx,branch,steps,progress,{allOres:progress.cursor<steps.length})
   if(!observedVein && progress.cursor===steps.length && stockIsChecked(ctx,branch,layer))return outcome(await retireMine(ctx,branch),'確認済みの収納と坑道を残し、次の採掘場へ移ります。')
   // The stored ore is read once per stock key (mine-stock.js). With it read, nothing here needs the mine: the
   // supplies come first, from wherever the Bot stands, and the entry follows them. Entering here on every tick

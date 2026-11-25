@@ -1,7 +1,7 @@
 'use strict'
 
 const { classifyMineCell, stepCells } = require('./mine-geometry')
-const { at, air, open, solid, standY, key, centre, live, count, received, save, scope, blocked, stopped, results } = require('./mine-common')
+const { at, air, open, solid, standY, key, centre, live, inventory, count, received, save, scope, blocked, stopped, results } = require('./mine-common')
 const { digCell, inspectDig, walkCell } = require('./mine-excavate')
 const { fillCell } = require('./mine-shaft')
 const { cellRest } = require('../supply-cell-rest')
@@ -9,23 +9,45 @@ const { pocketOf,isMineNaturalBlock } = require('./mine-vein-geometry')
 const {prepareVeinReturn}=require('./mine-vein-access')
 const {insideMine}=require('./mine-location')
 const {veinFillOrder}=require('./mine-vein-fill')
-const ORES={coal:/^(?:deepslate_)?coal_ore$/,raw_iron:/^(?:deepslate_)?iron_ore$/,raw_gold:/^(?:deepslate_)?gold_ore$/,diamond:/^(?:deepslate_)?diamond_ore$/,redstone:/^(?:lit_)?(?:deepslate_)?(?:lit_)?redstone_ore$/}
+const { digTool } = require('../dig-tool')
+const ORES={
+  coal:/^(?:deepslate_)?coal_ore$/,
+  raw_iron:/^(?:deepslate_)?iron_ore$/,
+  raw_copper:/^(?:deepslate_)?copper_ore$/,
+  raw_gold:/^(?:deepslate_)?gold_ore$/,
+  diamond:/^(?:deepslate_)?diamond_ore$/,
+  redstone:/^(?:lit_)?(?:deepslate_)?(?:lit_)?redstone_ore$/,
+  lapis_lazuli:/^(?:deepslate_)?lapis_ore$/,
+  emerald:/^(?:deepslate_)?emerald_ore$/
+}
+const ANY_ORE=/^(?:lit_)?(?:deepslate_)?(?:lit_)?(?:coal|iron|copper|gold|diamond|redstone|lapis|emerald)_ore$/
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 
-function candidates (ctx,branch,resource,anchor,frontier=branch.vein?.frontier??[],feet=ctx.getFeet()) {
-  const re=ORES[resource],plan=branch.plan,layer=plan.layers.find(p=>p.id===branch.request.layer),radius=Math.min(3,plan.vein?.radius??3)
-  if(!re || !layer)return []
+function canHarvest (ctx, block) {
+  if (open(block)) return true
+  if (block?.known !== true) return false
+  const items = inventory(ctx)?.items
+  if (!Array.isArray(items)) return false
+  return Boolean(digTool(items, block.name, ctx.runtime?.raw?.()?.heldItem ?? null))
+}
+
+function candidates (ctx,branch,resource,anchor,frontier=branch.vein?.frontier??[],feet=ctx.getFeet(),{allOres=true}={}) {
+  const requestedRe=ORES[resource],matchRe=allOres?ANY_ORE:requestedRe
+  const plan=branch.plan,layer=plan.layers.find(p=>p.id===branch.request.layer),radius=Math.min(3,plan.vein?.radius??3)
+  if(!matchRe || !layer)return []
   const resting=cellRest(ctx.shared,ctx.runtime.raw().dimension,{now:ctx.now}),out=[]
   for(let dx=-radius;dx<=radius;dx++)for(let dz=-radius;dz<=radius;dz++)for(let dy=0;dy<=1;dy++){
     if(Math.abs(dx)+Math.abs(dz)>radius)continue
     const p={x:anchor.x+dx,y:layer.y+dy,z:anchor.z+dz},b=at(ctx,p)
-    if(b?.known!==true || !re.test(bare(b.name)) || b.protected || b.protectionSource || resting.resting(p))continue
+    if(b?.known!==true || !matchRe.test(bare(b.name)) || b.protected || b.protectionSource || resting.resting(p))continue
     const role=classifyMineCell(plan,p),pocket=pocketOf(plan,{layer:layer.id,anchor,position:p,frontier})
     if(!pocket || role.protected || role.role!=='vein_candidate')continue
+    if(![pocket.head,pocket.base].every(cell=>canHarvest(ctx,at(ctx,cell))))continue
     const distance=Math.hypot(p.x+0.5-feet.x,p.y-feet.y,p.z+0.5-feet.z)
-    if(distance<=7)out.push({...p,distance,pocket})
+    const requested=Boolean(requestedRe?.test(bare(b.name)))
+    if(distance<=7)out.push({...p,distance,pocket,requested})
   }
-  return out.sort((a,b)=>a.distance-b.distance)
+  return out.sort((a,b)=>(b.requested?1:0)-(a.requested?1:0) || a.distance-b.distance)
 }
 
 const anchorFrom = feet => ({x:Math.floor(feet.x),y:Math.ceil(feet.y),z:Math.floor(feet.z)})
@@ -35,9 +57,9 @@ const frontierOf = (ctx,cells,y) => cells.clear.filter(p=>p.y===y && openColumn(
 // Work that resumed during finishing can already have a useful ore face.
 // Revisit only confirmed, currently supported sections with a received
 // candidate in the same bounded pocket geometry used for ordinary digging.
-function observedVeinStep (ctx,branch,steps,progress) {
+function observedVeinStep (ctx,branch,steps,progress,{allOres=true}={}) {
   const feet=ctx.getFeet(),plan=branch.plan,request=branch.request
-  if(!feet || !progress.cursor)return null
+  if(!feet || !progress.cursor || count(ctx,'cobblestone')<2)return null
   const distance=stand=>Math.hypot(stand.x-feet.x,stand.z-feet.z)
   const finished=steps.slice(0,progress.cursor)
     .filter((step,index)=>step.kind!=='storage' && !progress.blocked?.some(span=>index>=span.fromCursor && index<span.toCursor))
@@ -49,7 +71,7 @@ function observedVeinStep (ctx,branch,steps,progress) {
       return solid(floor)?[{...centre(p),y:standY(floor,p.y)}]:[]
     }).sort((a,b)=>distance(a)-distance(b))
     for(const stand of stands){
-      const ore=candidates(ctx,branch,request.resource,anchorFrom(stand),frontier,stand).find(({pocket})=>{
+      const ore=candidates(ctx,branch,request.resource,anchorFrom(stand),frontier,stand,{allOres}).find(({pocket})=>{
         const footing=at(ctx,pocket.floor)
         return solid(footing) && isMineNaturalBlock(footing) &&
           [pocket.head,pocket.base].every(p=>typeof inspectDig(ctx,p,branch).clear==='boolean')
@@ -86,7 +108,7 @@ async function workVein (ctx,branch,cells=null) {
   if(branch.vein && (branch.vein.liveScope!==scope(ctx) || !insideMine(ctx,branch))){branch.vein.closing=true;return restoreVein(ctx,branch)}
   const request=branch.request
   if(!branch.vein){
-    if(!cells)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
+    if(!cells || count(ctx,'cobblestone')<2)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
     const feet=ctx.getFeet(),anchor=anchorFrom(feet)
     const layer=branch.plan.layers.find(p=>p.id===request.layer),frontier=frontierOf(ctx,cells,layer.y).map(p=>({...p}))
     if(!candidates(ctx,branch,request.resource,anchor,frontier).length)return {...results.completed('MINE_NO_VEIN'),serverConfirmed:true}
