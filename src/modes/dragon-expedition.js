@@ -1,6 +1,7 @@
 'use strict'
 
 const { failed } = require('./return/return-result')
+const { createExpeditionRetry } = require('./dragon-retry')
 
 // The wait and the outcome the run before answered still stand for this long into the next run: a step that
 // answers at once is asked again every two seconds, and between two answers a run is under way.
@@ -18,10 +19,11 @@ const CARRY_MS = 5000
 // - A wait on purpose is named by a code (`wait: { code }` in the step's answer, or `ports.wait(code)` while
 //   it runs); the limit of each code is the ledger's (goal/goal-ledger.js WAITS).
 // - An exception is an outcome (`failed`, STEP_THREW), shown as 「recovering」, and is not a wait.
-function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy, legacyIdle, stopLegacy, run, lifeKey = () => null, loading = () => false, finish = () => {}, onStepDone = null, log = () => {}, now = Date.now }) {
+function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy, legacyIdle, stopLegacy, run, lifeKey = () => null, loading = () => false, finish = () => {}, onStepDone = null, log = () => {}, now = Date.now, retryState, getBlock }) {
   let job = null, displayed = null, recoveringHealth = false, previousHealth = null
   let currentController = null, fence = null, acting = false, stepSince = 0
   let runs = 0, live = null, last = null
+  const retry = createExpeditionRetry({ raw, lifeKey, legacyBusy, legacyIdle, loading, now, retryState, getBlock })
   const status = () => displayed
   // The run under way, or the last one: its number, its named wait and its outcome.
   function runState () {
@@ -51,6 +53,7 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
   }
   function cancel () {
     currentController?.abort()
+    retry.clear()
     displayed = null
     recoveringHealth = false
     previousHealth = null
@@ -91,7 +94,8 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     previousHealth = seen.health
     if (seen.health <= 12) recoveringHealth = true
     if (seen.health >= 18) recoveringHealth = false
-    const before = JSON.stringify(record)
+    const before = state.signature?.(record) ?? JSON.stringify(record)
+    const preconditions = retry.snapshot()
     acting = true
     mine.acted = true
     const result = await run(record, controller.signal, recoveringHealth, { n: mine.n, wait: code => { if (live === mine) mine.wait = code ? { code } : null } })
@@ -102,11 +106,12 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     guard()
     acting = false
     if (controller.signal.aborted || !active()) return
-    const saved = before === JSON.stringify(record) || await state.save(record)
+    const saved = before === (state.signature?.(record) ?? JSON.stringify(record)) || await state.save(record)
     if (controller.signal.aborted || !active() || fence !== lifeKey() || loading()) return
     if (saved === false) return pause(mine, 'CHECKPOINT', '現在のワールド・次元・復帰状態を再確認しています。')
     mine.wait = result?.wait?.code ? { code: result.wait.code } : null
     mine.outcome = result?.result ?? null
+    retry.arm(mine.outcome, preconditions)
     if (result?.reason) show(result.phase ?? 'working', result.reason)
     if (record.stage === 'complete') finish()
   }
@@ -114,12 +119,15 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
     if (!active()) { cancel(); return false }
     if (job) { guard(); return true }
     if (!owns()) {
+      retry.clear()
       displayed = null
       // The first life and a later death must be observable even while the
       // original home-building and mining jobs own the action loop.
       void state.observe().catch(error => log(String(error.message)))
       return false
     }
+    if (!retry.ready()) return true
+    retry.clear()
     const controller = new AbortController()
     currentController = controller
     fence = lifeKey()
@@ -137,7 +145,7 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
       currentController = null
       last = { wait: entry.wait, outcome: entry.outcome }
       live = null
-      if (typeof onStepDone === 'function' && entry.acted === true && !controller.signal.aborted && active() && !entry.wait && entry.outcome?.status !== 'failed' && !['waiting', 'recovering', 'completed'].includes(displayed?.phase)) {
+      if (typeof onStepDone === 'function' && entry.acted === true && !controller.signal.aborted && active() && !entry.wait && (!entry.outcome || ['completed', 'partial'].includes(entry.outcome.status)) && !['waiting', 'recovering', 'completed'].includes(displayed?.phase)) {
         try { onStepDone({ ms: now() - entry.since, phase: displayed?.phase ?? null, reason: displayed?.reason ?? null }) } catch {}
       }
     })
@@ -148,6 +156,7 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
   // A step that never returns (an await nothing answers) is let go: its signal is aborted, every
   // operation it still holds is stopped, and the next tick starts a new step (dragon-progress.js).
   function abandon (reason) {
+    retry.clear()
     if (!job) return false
     currentController?.abort()
     job = null
@@ -161,7 +170,7 @@ function createDragonExpedition ({ state, raw, active, legacyNeeded, legacyBusy,
   // Whether a step can still send: it runs, and was not aborted. A step that only observes, saves or
   // cleans up sends nothing, so nobody who takes the input waits for it (control-owner.js handoff).
   const sending = () => Boolean(job) && acting && !!currentController && !currentController.signal.aborted
-  return { owns, tick, guard, cancel, abandon, status, runState, sending, busy: () => Boolean(job), stepMs: () => job ? now() - stepSince : 0, settled: () => job ?? Promise.resolve() }
+  return { owns, tick, guard, cancel, abandon, reconsider: retry.clear, status, runState, sending, busy: () => Boolean(job), stepMs: () => job ? now() - stepSince : 0, settled: () => job ?? Promise.resolve() }
 }
 
 module.exports = { createDragonExpedition }

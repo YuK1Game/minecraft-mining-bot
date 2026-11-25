@@ -22,6 +22,7 @@ function fixture (options = {}) {
   const runtime = {
     host: { shared },
     require: name => {
+      if (name === './runtime/runtime-ports') return require('../src/runtime/runtime-ports')
       if (name === './modes/mode-runtime') return { attachModeOperations () {} }
       if (name === './modes/dragon-ports') return { createDragonRuntimePorts: () => ({}) }
       if (name === './modes/player-workstation-runtime') return { createPlayerWorkstationRuntime: () => ({}) }

@@ -4,6 +4,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { createHash } = require('node:crypto')
 const { writeDurableJson } = require('../common/durable-json')
+const { createDragonCheckpoint } = require('./dragon-checkpoint')
 
 const DIMENSIONS = ['overworld', 'nether', 'end']
 const STAGES = ['early', 'nether', 'stronghold', 'end', 'complete']
@@ -36,16 +37,21 @@ function createDragonState ({ root, shared, getState, getLife = () => null, getW
     if (!env) return null
     if (!stores.has(env.key)) {
       const filename = path.join(root, '.local', 'dragon-expedition', createHash('sha256').update(env.key).digest('hex') + '.json')
+      const checkpoint = createDragonCheckpoint({ filename, limit: LIMIT, write })
       let value = initial()
       try {
         if (fs.statSync(filename).size > LIMIT) throw Error('ドラゴン遠征の保存データが大きすぎます。')
         const doc = JSON.parse(fs.readFileSync(filename, 'utf8'))
-        if (doc.version !== 1 || doc.scope !== env.key || !STAGES.includes(doc.value?.stage) || !STAGES.slice(0, 4).every(key => object(doc.value[key]))) throw Error('ドラゴン遠征の保存データを読み取れません。')
-        value = { ...initial(), ...doc.value }
+        if (![1, 2].includes(doc.version) || doc.scope !== env.key || !STAGES.includes(doc.value?.stage) || !STAGES.slice(0, 4).every(key => object(doc.value[key]))) throw Error('ドラゴン遠征の保存データを読み取れません。')
+        value = { ...initial(), ...checkpoint.restore(doc) }
       } catch (error) { if (error.code !== 'ENOENT') throw error }
-      stores.set(env.key, { filename, value, revision: 0, lastPose: null, queue: Promise.resolve() })
+      stores.set(env.key, { filename, value, checkpoint, signature: checkpoint.signature(value), revision: 0, lastPose: null, queue: Promise.resolve() })
     }
-    return stores.get(env.key)
+    const entry = stores.get(env.key)
+    // A runtime reload can adopt a store created by the previous file format.
+    entry.checkpoint ??= createDragonCheckpoint({ filename: entry.filename, limit: LIMIT, write })
+    entry.signature ??= entry.checkpoint.signature(entry.value)
+    return entry
   }
   function enqueue (entry, fn) {
     const job = entry.queue.then(fn)
@@ -53,23 +59,25 @@ function createDragonState ({ root, shared, getState, getLife = () => null, getW
     return job
   }
   async function replace (entry, env, value) {
-    if (JSON.stringify(entry.value) === JSON.stringify(value)) return true
-    await write(entry.filename, { version: 1, scope: env.key, savedAt: new Date().toISOString(), value }, { maxBytes: LIMIT })
+    const signature = entry.checkpoint.signature(value)
+    if (entry.signature === signature) return true
+    await entry.checkpoint.save(value, env.key)
     entry.value = value
+    entry.signature = signature
     entry.revision++
     return true
   }
   function record () {
     const env = environment(), entry = store(env)
     if (!entry) return null
-    const copy = structuredClone(entry.value)
+    const copy = entry.checkpoint.copy(entry.value)
     issued.set(copy, { revision: entry.revision, fence: env.fence })
     return copy
   }
   async function save (value) {
     const env = environment(), issuedAt = issued.get(value)
     if (!env || issuedAt?.fence !== env.fence) return false
-    const entry = store(env), copy = structuredClone(value)
+    const entry = store(env), copy = entry.checkpoint.copy(value)
     if (!STAGES.includes(copy.stage) || !STAGES.slice(0, 4).every(key => object(copy[key]))) throw Error('ドラゴン遠征の段階が不正です。')
     return enqueue(entry, async () => {
       if (issuedAt.revision !== entry.revision || environment()?.fence !== env.fence) return false
@@ -113,7 +121,7 @@ function createDragonState ({ root, shared, getState, getLife = () => null, getW
     if (shared.botMode === 'player' && shared.playerWanted === true && stores.size) return observe()
   }
   // scope: the world this record belongs to (profile, Realm, world), null while it cannot be told.
-  return { record, save, observe, scope: () => environment()?.key ?? null, snapshot: () => { const entry = store(environment()); return entry ? structuredClone(entry.value) : null } }
+  return { record, save, observe, signature: value => store(environment())?.checkpoint.signature(value), scope: () => environment()?.key ?? null, snapshot: () => { const entry = store(environment()); return entry ? entry.checkpoint.copy(entry.value) : null } }
 }
 
 module.exports = { createDragonState }

@@ -2,7 +2,7 @@
 
 const http = require('node:http')
 
-function createApi ({ dashboardControl, snapshot, disconnect, blocks, mining, walking, crafting, interactions, lifecycle, movement, combat, agent, reload, action }) {
+function createApi ({ dashboardControl, dashboardSnapshot, snapshot, disconnect, blocks, mining, walking, crafting, interactions, lifecycle, movement, combat, agent, reload, action }) {
   return http.createServer(async (request, response) => {
     const send = (status, body) => {
       response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -16,6 +16,8 @@ function createApi ({ dashboardControl, snapshot, disconnect, blocks, mining, wa
     const url = new URL(request.url, 'http://127.0.0.1')
     if (request.method === 'GET' && url.pathname === '/dashboard/status' && dashboardControl) {
       try { send(200, dashboardControl.snapshot()) } catch { send(503, { error: 'Botの初期化を待っています。' }) }
+    } else if (request.method === 'GET' && url.pathname === '/dashboard/snapshot' && dashboardSnapshot) {
+      try { send(200, dashboardSnapshot()) } catch { send(503, { error: 'Botの初期化を待っています。' }) }
     } else if (request.method === 'GET' && url.pathname === '/status') {
       send(200, snapshot())
     } else if (request.method === 'GET' && url.pathname === '/blocks' && blocks) {

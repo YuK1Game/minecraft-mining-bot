@@ -10,6 +10,7 @@ const { isDeepStrictEqual } = require('node:util')
 const { blockRule, nameOf, AIR, isFluidName, isGravityName, fluidLayer, selectTool, SEAL_MATERIALS } = require('./quarry-rules')
 const { permits, chunkBounds, serpentineLayer, key } = require('./quarry-region')
 const { fluidRoofNeighbourSafe } = require('./quarry-fluid-roof-safety')
+const { freeze } = require('../common/checkpoint-parts')
 
 const FACES = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }]
 const HORIZONTAL = FACES.filter(f => f.y === 0)
@@ -37,6 +38,7 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
   const seals = new Map(Object.entries(records.seals ?? {}))
   let stair = records.stair ?? null
   let recordRevision = 0
+  let recordsSnapshot = null, recordsSnapshotRevision = -1
 
   // overlay: cells a candidate batch would clear, used only while checking it.
   const overlay = new Map()
@@ -897,41 +899,23 @@ function createQuarryPlanner ({ regions, getBlock, config = {}, records = {}, ex
     else temporary.set(k, { purpose, material, at: Date.now() })
     recordRevision++
   }
-  function * countCells (yTop) {
-    let remaining = 0; let unknown = 0; let reserved = 0; let deferredCount = 0
-    let visited = 0; let slice = performance.now()
-    if (Number.isSafeInteger(yTop)) for (let y = yTop; y >= regions.yBottom; y--) for (const chunk of regions.chunks) for (const p of serpentineLayer(chunk, y)) {
-      const c = cellStatus(p)
-      if (c.status === 'pending' || c.status === 'fluid' || c.status === 'blocked') remaining++
-      else if (c.status === 'unknown') unknown++
-      else if (c.status === 'reserved') reserved++
-      else if (c.status === 'deferred') deferredCount++
-      if (++visited % 128 === 0 && performance.now() - slice >= 8) { yield; slice = performance.now() }
-    }
-    return { remaining, unknown, reserved, deferred: deferredCount }
-  }
-  function counts (yTop) {
-    const scan = countCells(yTop)
-    let result = scan.next()
-    while (!result.done) result = scan.next()
-    return result.value
-  }
-  async function countsAsync (yTop, isCurrent = () => true) {
-    if (!isCurrent()) return null
-    const scan = countCells(yTop)
-    let result = scan.next()
-    while (!result.done) {
-      await new Promise(resolve => setImmediate(resolve))
-      if (!isCurrent()) return null
-      result = scan.next()
-    }
-    return isCurrent() ? result.value : null
-  }
+  const { counts, countsAsync } = require('./quarry-counts').createQuarryCounts({ regions, cellStatus, revision: () => recordRevision })
   // keep(key) -> true leaves that cell deferred (e.g. cells of finished layers).
   function clearDeferred (reasons = null, keep = null) { const before = deferred.size; for (const [k, v] of deferred) if ((!reasons || reasons.includes(v.reason)) && !(keep && keep(k))) deferred.delete(k); if (deferred.size !== before) recordRevision++ }
-  function exportRecords () { return { deferred: Object.fromEntries(deferred), temporary: Object.fromEntries(temporary), seals: Object.fromEntries(seals), stair } }
+  function exportRecords () {
+    if (recordsSnapshotRevision !== recordRevision) {
+      recordsSnapshot = freeze({ deferred: Object.fromEntries(deferred), temporary: Object.fromEntries(temporary), seals: Object.fromEntries(seals), stair })
+      recordsSnapshotRevision = recordRevision
+    }
+    return recordsSnapshot
+  }
+  function deferredList (limit = Infinity) {
+    const values = []
+    for (const [position, entry] of deferred) { if (values.length >= limit) break; values.push({ position, ...entry }) }
+    return values
+  }
 
-  return { exitAfter, grounded, pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, previewSealPlacement, reachableFrom, reachableFromAsync, standable, safeSealStance, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList: () => [...deferred].map(([k, v]) => ({ position: k, ...v })), sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
+  return { exitAfter, grounded, pathTo, surveyTop, planStair, stairStepAt, isStairCell, cellStatus, layerSummary, next, previewSealPlacement, reachableFrom, reachableFromAsync, standable, safeSealStance, fluidNeighbours, sealPlan, recordPlacement, counts, countsAsync, revision: () => recordRevision, defer, clearDeferred, exportRecords, deferredList, deferredCount: () => deferred.size, sealList: () => [...seals].map(([k, v]) => ({ position: k, ...v })), temporaryList: () => [...temporary].map(([k, v]) => ({ position: k, ...v })) }
 }
 
 module.exports = { createQuarryPlanner }

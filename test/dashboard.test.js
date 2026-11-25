@@ -283,7 +283,7 @@ test('missing Minecraft assets return a safe 404 without exposing disk errors or
   assert.equal(f.writes.length, 0)
 })
 
-test('the fixed transport uses only local GET /status and aborts by its total timeout without following redirects', async t => {
+test('the fixed transport uses only local GET /dashboard/snapshot and aborts by its total timeout without following redirects', async t => {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const calls = []
   t.mock.method(http, 'request', (options, receive) => {
@@ -297,7 +297,7 @@ test('the fixed transport uses only local GET /status and aborts by its total ti
   const rejection = assert.rejects(promise, /timed out/)
   t.mock.timers.tick(800)
   await rejection
-  assert.deepEqual(calls[0], { hostname: '127.0.0.1', port: 3000, path: '/status', method: 'GET', agent: false, headers: { Host: '127.0.0.1:3000', Accept: 'application/json' } })
+  assert.deepEqual(calls[0], { hostname: '127.0.0.1', port: 3000, path: '/dashboard/snapshot', method: 'GET', agent: false, headers: { Host: '127.0.0.1:3000', Accept: 'application/json' } })
   assert.equal(calls.length, 1)
 })
 
@@ -322,7 +322,7 @@ test('the status transport refuses redirects, non-JSON, malformed and oversized 
   })
   for (mode of ['redirect', 'html', 'malformed', 'oversize']) await assert.rejects(requestLocalStatus({ apiPort: 3000, timeoutMs: 800, signal: new AbortController().signal }))
   assert.equal(calls.length, 4)
-  assert.ok(calls.every(row => row.hostname === '127.0.0.1' && row.path === '/status' && row.method === 'GET'))
+  assert.ok(calls.every(row => row.hostname === '127.0.0.1' && row.path === '/dashboard/snapshot' && row.method === 'GET'))
 })
 
 test('bounded JSON read and atomic cache replacement store public values only', async () => {

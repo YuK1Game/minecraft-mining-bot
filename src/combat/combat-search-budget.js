@@ -27,4 +27,10 @@ function createCombatSearchBudget ({ windowMs = 50, normalMs = 8, urgentMs = 4, 
   }
   return { search, snapshot: () => ({ ...metrics, windowMs, normalMs, urgentMs, normalUsed, urgentUsed }) }
 }
-module.exports = { createCombatSearchBudget }
+const worlds = new WeakMap()
+function combatSearchBudgetFor (world) {
+  if (!world || !['object', 'function'].includes(typeof world)) throw new TypeError('A combat search budget requires a world')
+  if (!worlds.has(world)) worlds.set(world, createCombatSearchBudget())
+  return worlds.get(world)
+}
+module.exports = { createCombatSearchBudget, combatSearchBudgetFor }

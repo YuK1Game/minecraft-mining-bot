@@ -10,7 +10,7 @@ const {
   resetModeScope,
   summarizeScopes
 } = require('../src/common/shared-scopes')
-const { createRuntimePorts } = require('../src/runtime/runtime-ports')
+const { createRuntimePorts, bindRuntimePorts, runtimePortGroups } = require('../src/runtime/runtime-ports')
 
 test('shared-scopes: isolates persistent, session, life and mode buckets across resets', () => {
   const shared = { legacyLifeFlag: true, legacyModeFlag: 'x' }
@@ -66,4 +66,30 @@ test('runtime-ports: exposes grouped port views backed by live rt bindings', () 
   assert.equal(ports.lifecycle.isDisposed(), false)
   disposed = true
   assert.equal(ports.lifecycle.isDisposed(), true)
+})
+
+test('runtime-ports: inventory reads received state while the production inventory action controller remains separate', () => {
+  let inventory = { known: false, items: [] }
+  const actions = { snapshot: () => ({ busy: false }) }
+  const ports = createRuntimePorts({ inventory: actions, working: () => ({ inventory }) })
+  assert.equal(ports.inventory.actions, actions)
+  assert.equal(ports.inventory.read().known, false)
+  inventory = { known: true, items: [{ name: 'minecraft:stone', count: 3 }] }
+  assert.equal(ports.inventory.read(), inventory)
+})
+
+test('runtime-ports: water combat can advance the live movement serial while observers cannot replace it', () => {
+  let serial = 7
+  const bindings = { get portableMovementSerial () { return serial }, set portableMovementSerial (value) { serial = value } }
+  const control = bindRuntimePorts(bindings, 'userControl'), observer = bindRuntimePorts(bindings, 'travel')
+  const oldOwner = { serial: control.portableMovementSerial }
+  const currentOwner = { serial: ++control.portableMovementSerial }
+  assert.equal(serial, 8, 'the real prefix update reaches the Runtime closure setter')
+  assert.equal(currentOwner.serial, runtimePortGroups(control).motion.portableMovementSerial)
+  assert.notEqual(oldOwner.serial, observer.portableMovementSerial, 'a prior water move loses its serial when combat claims another move')
+  assert.equal(Reflect.set(observer, 'portableMovementSerial', oldOwner.serial), false, 'a read-only observer cannot revive an earlier movement owner')
+  assert.equal(serial, 8)
+  serial = 9
+  assert.equal(control.portableMovementSerial, 9)
+  assert.equal(observer.portableMovementSerial, 9)
 })

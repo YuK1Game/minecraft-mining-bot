@@ -19,7 +19,7 @@ const unlaned = []
 
 for (const name of all) {
   const text = fs.readFileSync(path.join(testDir, name), 'utf8')
-  if (/require\([^)]*\.local\//.test(text) || /['"]\.local\/[^'"]+\.cjs['"]/.test(text)) {
+  if (/require\([^)]*\.local\//.test(text) || /['"](?:\.\.\/|\.\/)?\.local\/[^'"]+\.(?:c?js|json)['"]/.test(text)) {
     localDeps.push(name)
   }
   if (/require\([^)]*src\/survival\//.test(text) || /\.\.\/src\/survival\//.test(text)) {
@@ -46,6 +46,8 @@ if (process.argv.includes('--json')) {
   console.log(`  厳格レーン test:review : ${report.strictReviewFiles}`)
   console.log(`  厳格レーン test:player : ${report.strictPlayerFiles}`)
   console.log(`  全件比較対象           : ${report.compareOnlyFiles}`)
-  console.log(`  .local/*.cjs 依存      : ${report.localCjsDependentFiles.length} (${report.localCjsDependentFiles.join(', ') || 'なし'})`)
+  console.log(`  .local/ helper/fixture依存: ${report.localCjsDependentFiles.length} (${report.localCjsDependentFiles.join(', ') || 'なし'})`)
   console.log(`  旧 src/survival/ 直接参照: ${report.legacySurvivalDirectRefCount}`)
 }
+
+if (process.argv.includes('--strict') && localDeps.length) process.exitCode = 1

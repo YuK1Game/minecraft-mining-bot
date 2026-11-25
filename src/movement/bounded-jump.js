@@ -13,7 +13,7 @@ function validBoundedJump (value) {
 // A finite, explicit one-jump mode. Ordinary navigation never calls this path.
 // The native model proves both the airborne arc and its released neutral tail;
 // only frames through the first complete landing are sent by the stepper.
-function planBoundedJump ({ physics, initial, descriptor, originSafe, landingSafe, edgeSafe, target = null }) {
+function * planBoundedJumpSteps ({ physics, initial, descriptor, originSafe, landingSafe, edgeSafe, target = null, control = null }) {
   const empty = reason => ({ ready: false, reason, waypoints: [], predictionOnly: true, serverConfirmed: false })
   if (!validBoundedJump(descriptor)) return empty('Invalid bounded jump descriptor')
   if (!originSafe(initial)) return empty('Bounded jump needs known stable dry contact')
@@ -31,6 +31,7 @@ function planBoundedJump ({ physics, initial, descriptor, originSafe, landingSaf
   }
   try {
     for (let tick = 0; tick < 40; tick++) {
+      if (control?.shouldYield()) yield
       const controls = tick < descriptor.driveTicks ? { forward: true, sprint: true, ...(tick === 0 ? { jump: true } : {}) } : {}
       const previous = predicted
       predicted = physics.step({ ...predicted, yaw, pitch: 0 }, controls)
@@ -88,4 +89,6 @@ function createBoundedJumpStepper ({ route, initial, physics, landingSafe, frame
   return { next, snapshot, stop, reconcile, setSprint: allowed => { sprintAllowed = allowed === true } }
 }
 
-module.exports = { validBoundedJump, planBoundedJump, createBoundedJumpStepper }
+function planBoundedJump (options) { const iterator = planBoundedJumpSteps(options); let next; do { next = iterator.next() } while (!next.done); return next.value }
+
+module.exports = { validBoundedJump, planBoundedJump, planBoundedJumpSteps, createBoundedJumpStepper }

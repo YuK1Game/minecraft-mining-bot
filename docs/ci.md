@@ -62,6 +62,14 @@ CI（`.github/workflows/ci.yml`、「Bot regression CI」）が何を実行す�
 
 上は対象を絞った手元の結果です。他の既存失敗や、全件比較の最新件数は各CIのレポートで確認します。共通 fixture の互換確認で見えた `runtime-autonomy-resume.test.js` の2件は、修復前のCIにも同じ名前・種類で存在し、今回の対象には含めていません。
 
+## ローカル専用 helper への依存を禁止する
+
+2026-11-26 の修正で、`low-health-recovery`、`operator-timed-work-helper`、`operator-transient-transport`、`archer-work-floor`、`runtime-eventloop-fairness` を厳格な安全回帰レーンへ追加した。前のコードでは無視対象の `.local/` の helper がなく、検証本体を読み込めないまま全件比較の既存失敗として残っていた。
+
+手動操作 client は `scripts/lib/operator-helpers.js` に置き、テストから同じ実装を呼ぶ。移動は受信した期限付き作業leaseを使い、プレビュー後にも危険と接続・生存回を読み直す。終了時は実際の開始印・目的地が一致する移動だけを止め、自分のlease IDだけを解放する。保護controllerの停止や、予測をサーバー到着へ変える処理は行わない。モジュールを読み込むだけでは通信しない。
+
+イベントループのテストは `test/helpers/runtime-fixture.js` から実 Runtime のモジュール構成をそのまま実行する。過去のソース変更パッチは不要になった。`.local/staged/` にある別コピーへのフォールバックも廃止し、管理されている実装・fixtureだけを既定で読む。`review-test-dependencies` が全テストを監査し、ローカル専用helper/fixtureへの参照が再び入れば厳格レーンを失敗させる。単独確認は `node scripts/audit-tests.js --strict`。
+
 ## 速さを保つための決まり
 
 1. 1つのテストファイルが単独で30秒を超えたら、原因を直すか、上の形で複数のプロセスに分ける。

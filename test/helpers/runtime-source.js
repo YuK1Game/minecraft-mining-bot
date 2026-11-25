@@ -93,6 +93,9 @@ function movedBody (file, factory) {
   const start = text.indexOf(`function ${factory} (rt) {\n`), end = text.lastIndexOf('\n  return {\n')
   if (start < 0 || end < start) throw new Error(`${path.basename(file)} does not have the layout written by extract-runtime-block.js`)
   return text.slice(start + `function ${factory} (rt) {\n`.length, end + 1)
+    // The flat compatibility view already reads the original closure. The
+    // real module graph tests exercise the declared port authority boundary.
+    .replace(/^  rt = rt\.require\('\.\/runtime\/runtime-ports'\)\.bindRuntimePorts\(rt, '[A-Za-z]+'\)\n/m, '')
     .replace(/\b(\w+): rt\.\1(?=\s*[,}])/g, '$1') // a shorthand property the move had to spell out (not `name: rt.name.x`)
     .replace(/\brt\./g, '')
 }

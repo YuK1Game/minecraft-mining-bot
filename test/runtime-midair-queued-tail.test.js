@@ -8,6 +8,7 @@ const vm = require('node:vm')
 const Module = require('node:module')
 const { createGuardedRoute } = require('../src/movement/guarded-route')
 const { createNavigator } = require('../src/movement/navigation')
+const { createPreparedRouteCache } = require('../src/movement/prepared-route')
 const capture = require('./fixtures/midair-queued-tail.json')
 const copy = value => structuredClone(value)
 const eye = point => ({ ...point, y: point.y + 1.62 })
@@ -20,6 +21,15 @@ new vm.Script(Module.wrap(source + '\nmodule.exports = { fixture }'), { filename
 // queue a fresh exact correction and native neutral tail over its geometry.
 function fixture (t, mode = 'safe', { continuationPlatform = false } = {}) {
   const f = loaded.exports.fixture(t)
+  // This fixture changes received terrain during both movement and drain.
+  // Version every mutation so cooperative planning and prepared activation
+  // have the same invalidation guarantee as the real host world.
+  let terrainRevision = 0
+  f.host.world.revision = () => terrainRevision
+  for (const method of ['set', 'delete', 'clear']) {
+    const mutate = f.map[method].bind(f.map)
+    f.map[method] = (...args) => { terrainRevision++; return mutate(...args) }
+  }
   f.histories[0].history.invalidate('midair_tail_fixture')
   f.map.clear()
   for (const block of capture.blocks) f.map.set(`${block.position.x},${block.position.y},${block.position.z}`, copy(block))
@@ -33,6 +43,11 @@ function fixture (t, mode = 'safe', { continuationPlatform = false } = {}) {
   Object.assign(f.raw, { health: capture.health, position: eye(capture.origin), positionUpdatedAt: Date.now(), rawServerPosition: eye(capture.origin), rawServerPositionUpdatedAt: Date.now(), rotation: { yaw: capture.initialPhysicsState.yaw, pitch: 0 } })
   const physics = f.histories[0].physics
   const navigator = createNavigator({ world: f.host.world, physics })
+  const prepared = createPreparedRouteCache({ world: f.host.world })
+  const planningContext = (target, { signal, ...settings }) => {
+    const state = f.safeties[0].options.getState()
+    return { state, initial: physics.fromServer(state), target, settings }
+  }
   const initial = physics.fromServer(f.raw, { onGround: true, velocity: { x: 0, y: -0.0784000015258789, z: 0 } })
   f.host.setPrediction({ position: eye(initial.position), physicsState: initial })
   f.actors.splice(0, f.actors.length, { ...copy(capture.primary), position: { ...capture.primary.position, x: capture.primary.position.x - 2 }, kind: 'mob', hostile: true, alive: true, positionKnown: true, dimension: 'overworld' })
@@ -45,13 +60,20 @@ function fixture (t, mode = 'safe', { continuationPlatform = false } = {}) {
     f.host.setPrediction({ position, physicsState: model, velocity: model.velocity, onGround: model.onGround })
   }
   const movement = {
-    preview: (target, options) => {
-      const state = f.safeties[0].options.getState()
-      const route = navigator.plan(physics.fromServer(state), target, options)
+    preview: () => assert.fail('Guard must use the production cooperative planning path'),
+    previewAsync: async (target, options) => {
+      const context = planningContext(target, options), witness = prepared.observe()
+      const route = await navigator.planAsync(context.initial, target, { ...options, observe: witness })
+      prepared.set(context, route, witness)
       previews.push({ target: copy(target), route: copy(route) })
       return route
     },
-    start: (target, options) => {
+    start: () => assert.fail('Guard must activate its exact validated preview'),
+    startPrepared: (target, options) => {
+      options.signal?.throwIfAborted()
+      const context = planningContext(target, options), route = prepared.get(context)
+      assert.equal(route?.ready, true, 'The exact live origin, policy and terrain must retain the prepared route')
+      prepared.clear()
       starts++; f.advance(1)
       if (starts === 1) {
         let model = copy(capture.initialPhysicsState)
@@ -79,10 +101,7 @@ function fixture (t, mode = 'safe', { continuationPlatform = false } = {}) {
         if (mode === 'stale_queue') f.advance(201)
         phase = 'replan_required'
       } else {
-        const state = f.safeties[0].options.getState()
-        const route = navigator.plan(physics.fromServer(state), target, options)
-        assert.equal(route.ready, true, JSON.stringify(route))
-        const stepper = navigator.createStepper(route, physics.fromServer(state), { maxTicks: 160, sprint: false })
+        const stepper = navigator.createStepper(route, context.initial, { maxTicks: 160, sprint: false })
         for (let n = 0; n < 160; n++) {
           const frame = stepper.next(); tick++; f.advance(25)
           publish(frame.predictedState, frame.controls); continuationFrames++
@@ -93,6 +112,7 @@ function fixture (t, mode = 'safe', { continuationPlatform = false } = {}) {
       return { phase }
     },
     stop: () => {
+      prepared.clear()
       phase = 'stopped'
       if (starts !== 1 || drained) return
       drained = true

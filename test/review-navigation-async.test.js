@@ -26,10 +26,14 @@ test('async and synchronous plans drain the same terrain, jump and avoidance che
   assert.deepEqual(await f.navigator.planAsync(f.initial, target, options), f.navigator.plan(f.initial, target, options))
 })
 
-test('the ordinary navigator cannot opt into trusted async planning or larger bounds', async () => {
+test('ordinary cooperative plans preserve ordinary bounds and can execute their verified route', async () => {
   const f = fixture({ trusted: false })
-  await assert.rejects(f.navigator.planAsync(f.initial, { x: 30.5, y: 65, z: 0.5 }, { maxDistance: 48 }), /trusted 48/)
+  assert.equal((await f.navigator.planAsync(f.initial, { x: 30.5, y: 65, z: 0.5 }, { maxDistance: 48 })).ready, false)
   assert.equal(f.navigator.plan(f.initial, { x: 30.5, z: 0.5 }, { maxDistance: 48 }).ready, false)
+  const ordinary = await f.navigator.planAsync(f.initial, { x: 4.5, y: 65, z: 0.5 })
+  assert.equal(ordinary.ready, true)
+  assert.notEqual(ordinary.planningOnly, true)
+  assert.equal(f.navigator.createStepper(ordinary, f.initial).snapshot().serverConfirmed, false)
   const trusted = fixture()
   for (const options of [{ maxDistance: 49 }, { maxExpanded: 5001 }]) assert.equal((await trusted.navigator.planAsync(trusted.initial, { x: 2.5, z: 0.5 }, options)).ready, false)
 })

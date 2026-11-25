@@ -306,10 +306,10 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
   async function save (why) {
     if (!job || !storage) return true
     const owner = job
-    owner.records = planner?.exportRecords() ?? owner.records
+    owner.records = planner?.exportRecords() ?? copy(owner.records)
     owner.ledger = ledger.export()
     const savedAt = new Date(now()).toISOString()
-    const document = copy({ ...owner, savedAt, persistence: { status: 'saved', savedAt }, events: events.slice(-50) })
+    const document = { ...copy({ ...owner, records: undefined, savedAt, persistence: { status: 'saved', savedAt }, events: events.slice(-50) }), records: owner.records }
     savesInFlight++
     const write = saveChain.then(() => storage.save(owner.config.jobId, document))
     saveChain = write.catch(() => {})
@@ -3535,54 +3535,44 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return status()
   }
 
-  function displayCounts (state) {
-    if (job.yTop == null || !planner) return null
-    const owner = job; const source = planner; const generation = epoch
-    const scope = scopeOf(state); const life = lifeOf(state)
-    const localRevision = countsRevision; const records = source.revision()
-    const world = adapter.worldRevision?.() ?? null
-    const isCurrent = () => job === owner && planner === source && epoch === generation && countsRevision === localRevision && source.revision() === records && (adapter.worldRevision?.() ?? null) === world && scopeOf(adapter.getState()) === scope && lifeOf(adapter.getState()) === life
-    const cache = countsCache?.job === owner && countsCache.planner === source && countsCache.scope === scope && countsCache.life === life ? countsCache : null
-    if (!countsWork && (!cache || now() - cache.at >= 2000)) {
-      // Start outside the status request; even the first display never scans
-      // a deep quarry synchronously. An obsolete scan cannot publish a value.
-      const work = new Promise(resolve => setImmediate(resolve)).then(() => source.countsAsync(owner.yTop, isCurrent)).then(value => {
-        if (value && isCurrent()) countsCache = { job: owner, planner: source, scope, life, at: now(), value }
-      }).catch(() => {}).finally(() => { if (countsWork === work) countsWork = null })
-      countsWork = work
-    }
-    return cache?.value ?? null
-  }
-
-  function status () {
-    if (!job) return { state: 'IDLE', job: null }
-    const s = adapter.getState()
-    const inv = items(s)
-    const counts = displayCounts(s)
-    const finalCarried = inv ? keepPlan(inv, inventoryPolicy()).deposits : null
-    return copy({
-      jobId: job.config.jobId, state: ['PAUSED', 'FINISHED'].includes(job.state) && (loopWorker || stopTask || pendingActions.size || savesInFlight) ? 'STOPPING' : job.state, draining: !!(worker || stopTask || pendingActions.size || savesInFlight), persistence: copy(job.persistence ?? null), world: copy(job.world), userRunIntent: job.userRunIntent, result: job.result, pauseReason: job.pauseReason, pauseDetails: job.pauseDetails ?? null,
-      acceptedExceptions: job.acceptedExceptionRecord ? { at: job.acceptedExceptionRecord.at, by: job.acceptedExceptionRecord.by, count: job.acceptedExceptionRecord.count, byReason: copy(job.acceptedExceptionRecord.byReason), items: job.acceptedExceptionRecord.items.slice(0, 200) } : null,
-      lostCargoBoxes: (job.lostCargoBoxes ?? []).slice(-32).map(r => ({ at: r.acceptedAt, by: r.acceptedBy, operationId: r.operationId, box: r.box, position: r.position, items: r.items ?? [] })),
-      autoRetry: autoResumeTimer && autoRetryInfo && job.state === 'PAUSED' ? { ...autoRetryInfo, inSeconds: Math.max(0, Math.ceil((autoRetryInfo.nextAt - now()) / 1000)) } : null,
-      chunks: regions?.chunks ?? null, yTop: job.yTop, yBottom: regions?.yBottom ?? null, currentY: job.lastDecision?.y ?? job.cursorY,
-      counts, deferred: planner?.deferredList().slice(0, 30) ?? [], deferredCount: planner?.deferredList().length ?? 0, temporary: planner?.temporaryList() ?? [], seals: planner?.sealList() ?? [],
-      freeSlots: inv ? freeSlots(inv) : null, health: s?.health ?? null, food: foodOf(s), held: s?.heldItem?.name ?? null,
-      storagePolicy: { ...storageSettings(), pending: job.pendingStorageConfiguration ? { pickupMode: job.pendingStorageConfiguration.pickupMode, depositWhen: job.pendingStorageConfiguration.depositWhen } : null, finalStorageSkipped: copy(job.finalStorageSkipped ?? null), finalCarried: finalCarried ? { stacks: finalCarried.length, count: finalCarried.reduce((n, item) => n + item.count, 0), items: copy(finalCarried) } : null },
-      passivePickup: copy(job.passivePickup ?? null),
-      ledger: ledger.summary(), ledgerDetail: ledger.export(), pendingDrops: pendingDrops.length, unreachableItems: job.unreachableItems ?? [],
-      combat: { ...combatBridge.snapshot(), settle: job.settle ?? null, recovery: job.recovery ?? null, interruption: job.interruption },
-      portableStorage: job.portableStorage ? { operationId: job.portableStorage.operationId, kind: job.portableStorage.selection?.kind, stage: job.portableStorage.checkpoint?.stage ?? 'intent', positions: copy(job.portableStorage.checkpoint?.positions ?? []), why: job.portableStorage.why } : null,
-      supplies: { enabled: !!job.config.inventory.supplyBoxes?.length, bindings: copy(job.config.inventory.supplyBoxes ?? []), needs: items(s) ? supplyNeeds(items(s), { ...job.config.inventory, tools: job.config.tools,
-        ...(deferredExitSupplies() ? { deferExitSupplies: true, exitPreparing: job.egressPreparation === true, exitDirtTarget: exitDirtGoal() } : {}) }) : null, active: job.supplyRestock ? { operationId: job.supplyRestock.operationId, index: job.supplyRestock.checkpoint?.index ?? null, phase: job.supplyRestock.checkpoint?.phase ?? 'intent' } : null, lastResult: copy(job.lastSupplyResult ?? null) },
-      egress: egressStatus(inv),
-      tools: { ...copy(job.config.tools), hardMinimumRemaining: 1, states: inv ? inv.map(i => toolState(i, job.config.tools)).filter(Boolean).map(t => ({ slot: t.item.slot, name: t.item.name, remaining: t.remaining ?? null, reserve: t.reserve ?? null, usable: t.usable, reason: t.reason ?? null })) : null },
-      terrainObservation: copy(job.terrainObservation ?? null),
-      fluidDrain: job.fluidDrain ? { source: copy(job.fluidDrain.source?.position ?? null), remaining: job.fluidDrain.remaining, total: job.fluidDrain.cells.length, deadline: job.fluidDrain.deadline } : null,
-      lastDecision: job.lastDecision ?? null, lastAction: job.actions.at(-1) ?? null, deaths: job.deaths, planned: job.planned, events: events.slice(-15)
-    })
-  }
-
+  // Live accessors preserve the current closure values for quarry-status.js.
+  const jobStatus = require('./quarry-status').createQuarryStatus({
+    get adapter () { return adapter },
+    get autoResumeTimer () { return autoResumeTimer },
+    get autoRetryInfo () { return autoRetryInfo },
+    get combatBridge () { return combatBridge },
+    get copy () { return copy },
+    get countsCache () { return countsCache }, set countsCache ($value) { countsCache = $value },
+    get countsRevision () { return countsRevision },
+    get countsWork () { return countsWork }, set countsWork ($value) { countsWork = $value },
+    get deferredExitSupplies () { return deferredExitSupplies },
+    get egressStatus () { return egressStatus },
+    get epoch () { return epoch },
+    get events () { return events },
+    get exitDirtGoal () { return exitDirtGoal },
+    get foodOf () { return foodOf },
+    get freeSlots () { return freeSlots },
+    get inventoryPolicy () { return inventoryPolicy },
+    get items () { return items },
+    get job () { return job },
+    get keepPlan () { return keepPlan },
+    get ledger () { return ledger },
+    get lifeOf () { return lifeOf },
+    get loopWorker () { return loopWorker },
+    get now () { return now },
+    get pendingActions () { return pendingActions },
+    get pendingDrops () { return pendingDrops },
+    get planner () { return planner },
+    get regions () { return regions },
+    get savesInFlight () { return savesInFlight },
+    get scopeOf () { return scopeOf },
+    get stopTask () { return stopTask },
+    get storageSettings () { return storageSettings },
+    get supplyNeeds () { return supplyNeeds },
+    get toolState () { return toolState },
+    get worker () { return worker }
+  })
+  function status (...args) { return jobStatus.status(...args) }
   function ownsPortableRoute (owner) {
     if (!job || owner?.jobId !== job.config.jobId || job.userRunIntent !== 'running' || !['RETURN', 'DEPOSIT', 'PORTABLE_STORAGE', 'RESTOCK'].includes(job.state)) return false
     return job.portableStorage?.operationId === owner.operationId || job.supplyRestock?.checkpoint?.child?.operationId === owner.operationId
@@ -3622,7 +3612,7 @@ function createQuarryJob ({ adapter, storage = null, now = Date.now, sleep = ms 
     return { preflight: copy(job.exitPreflight ?? null), reserved: !!job.exitReservation, mode: exit.mode, phase: job.surfaceReturnedAt ? 'completed' : e?.phase ?? 'planned', miningCompleted: !!job.miningCompletedAt, surfaceReturned: !!job.surfaceReturnedAt, migrationFloorY: exit.migrationFloorY ?? null, column: p?.column ?? null, entry: p?.entry ?? null, landing: p?.landing ?? null, startFeet: p?.startFeet ?? null, targetFeetY: p?.targetFeetY ?? null, requiredDirt: p?.requiredDirt ?? null, reserveDirt: exit.reserveDirt, totalDirt: p?.totalDirt ?? null, reservedDirt: job.config.inventory.keepExitDirt ?? 0, dirtAvailable: available, dirtMissing: available != null && p ? Math.max(0, p.totalDirt - available) : null, estimatedDirtMissing: available == null ? null : Math.max(0, (job.config.inventory.keepExitDirt ?? 0) - available), reason: e?.reason ?? null, operationId: e?.operationId ?? null, checkpointStage: e?.checkpoint?.stage ?? e?.checkpoint?.phase ?? null }
   }
   function document () { return job ? copy({ ...job, records: planner?.exportRecords(), ledger: ledger.export() }) : null }
-  return { shulkerHold, plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, acceptLostDirtSupply, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
+  return { shulkerHold, plan, start, pause, emergencyStop, resume, cancel, retire, rescheduleAutoResume, configureDirtSupply, configureAnimalClearing, acceptCarriedStorageLoss, acceptLostDirtSupply, configureCargoLossAcceptance, configureSpareArmor, reopenWorkLayer, recordDebugAction, retryPersistence, acceptExceptions, storeCarriedNow, configureExit, configureTools, configureStorage, configureSupplies, restockSuppliesNow, reconcileSupplyPlacement, reconcileCarriedPlacement, reconcileCurrentStoragePlacement, reconcileObservedStoragePlacement, reconcileRejectedStorage, portablePath, portableTravel, storageInterruptionContext, status, load, document, instance: () => job?.instanceId ?? null, holdsWork, bridge: combatBridge, drain: () => Promise.allSettled([stopTask, worker, ...pendingActions]) }
 }
 
 module.exports = { createQuarryJob, QuarryInterrupt, defaults, FINAL_CHEST_KEEP }

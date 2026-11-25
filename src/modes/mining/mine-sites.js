@@ -10,6 +10,7 @@ const { at,air,solid,count,scope,live,received,save,blocked,stopped,results }=re
 const { leaveMine }=require('./mine-route')
 const { observeCandidate,observationSignature,MAX_WAITS }=require('./mine-observation')
 const { visitDeferred,centreOf,withinWalk }=require('./mine-site-visit')
+const { rememberPlanEvidence,planEvidenceCurrent,rejectsSite }=require('./mine-plan-evidence')
 const MAX_BYTES=900000
 const OFFSETS=[[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,1],[-1,-1],[1,-1]]
 // Rings at 48, 96, 144 and 192 m. Saved searches name a centre by its index, so rings are only appended.
@@ -84,7 +85,7 @@ async function observeSite(ctx,search,wait,offsets){
     delete search.wait;search.index=wait.index+1
   }else if(out.changed){delete search.wait;delete search.deferred?.[wait.index]}
   if(!await save(ctx,null,before))return {result:blocked('MINE_CHECKPOINT','採掘候補の観測結果を保存します。','owner_released')}
-  return {result:out.result}
+  return {result:out.defer || out.changed?{...out.result,retry:{kind:'now'}}:out.result}
 }
 
 async function observeExtension(ctx,branch,search){
@@ -123,6 +124,7 @@ const searchKey=(resource,targetHeld,liveScope)=>JSON.stringify([resource,target
 
 async function nextMine(ctx,resource,targetHeld){
   const mine=memory(ctx),sites=mine.sites??=[],revision=revisionOf(ctx),worldScope=state.mineWorldScope(raw(ctx))
+  const world=ctx.runtime.host?.()?.world??{getBlock:ctx.getBlock}
   if(!live(ctx))return {result:stopped()}
   if(mine.branch?.segmentTask || mine.branch?.vein || mine.branch?.pendingAction)return {result:blocked('MINE_OBSERVATION_PENDING_WORK','施工中の区間と埋戻しを完了してから次の採掘場を調べます。','inventory_update')}
   if(sites.length>=MAX_SITES)return {result:blocked('MINE_SITE_LIMIT',`確認済み採掘場が${MAX_SITES}か所に達しました。保管した鉱石と採掘範囲を確認します。`,'supplies_changed')}
@@ -141,7 +143,7 @@ async function nextMine(ctx,resource,targetHeld){
     if(!await save(ctx,null))return {result:blocked('MINE_CHECKPOINT','採掘候補の判定を保存します。','owner_released')}
   }
   search.entranceSurveyed=true
-  if(search.wait?.revision===revision && search.wait?.requestKey===requestKey && search.wait?.index===search.index){
+  if(search.wait?.requestKey===requestKey && search.wait?.index===search.index && planEvidenceCurrent(world,search.wait.terrainReceiptId)){
     return observeSite(ctx,search,search.wait,siteOffsets(sites))
   }
   if(search.index>=candidateCount){
@@ -156,35 +158,38 @@ async function nextMine(ctx,resource,targetHeld){
     }
     search.index=ready.index;search.wait={...ready,revision:null};delete search.deferred[ready.index]
   }
-  const found=originAt(ctx,search.index,sites,search.origin)
+  const entranceReceipt=world.observeTerrain?.()
+  const found=entranceReceipt?entranceReceipt.run(()=>originAt(ctx,search.index,sites,search.origin)):originAt(ctx,search.index,sites,search.origin)
   let planned
-  if(!found.origin)planned={status:found.unknown.length?'observing':'blocked',code:'MINE_SURFACE_OBSERVATION_NEEDED',needsObservation:[]}
+  if(!found.origin)planned={status:found.unknown.length?'observing':'blocked',code:'MINE_SURFACE_OBSERVATION_NEEDED',needsObservation:[],terrainReceipt:entranceReceipt}
   else {
-    const host=ctx.runtime.host?.(),world=host?.world??{getBlock:ctx.getBlock},house=ctx.shared.playerHouse?.origin,archived=protectedBySites(sites,worldScope)
+    const house=ctx.shared.playerHouse?.origin,archived=protectedBySites(sites,worldScope)
     const isProtected=p=>archived(p) || !!house && p.x>=house.x-2 && p.x<=house.x+10 && p.z>=house.z-2 && p.z<=house.z+11 && p.y>=house.y-3
     planned=await planMine({world,getState:()=>raw(ctx),origin:found.origin,resource,targetCount:Math.max(1,targetHeld-count(ctx,resource)),isProtected},{signal:ctx.signal})
   }
   if(!live(ctx))return {result:stopped()}
   if(planned.status!=='planned'){
     const cells=found.unknown??observationCells(planned)
-    if(planned.status==='observing' || cells.length){
+    if(cells.length){
       const previous=search.wait?.index===search.index?search.wait:search.deferred?.[search.index]
-      search.wait={revision,requestKey,index:search.index,code:planned.code??'MINE_PLAN_PENDING',cells,...(previous?.observation?{observation:previous.observation}:{})}
+      search.wait={revision,requestKey,index:search.index,code:planned.code??'MINE_PLAN_PENDING',cells,terrainReceiptId:rememberPlanEvidence(world,planned.terrainReceipt),...(previous?.observation?{observation:previous.observation}:{})}
       return observeSite(ctx,search,search.wait,siteOffsets(sites))
-    }else{
+    }else if(rejectsSite(planned)){
       rejectSite(ctx,search,planned,candidateCount)
       delete search.wait;search.index++
       if(search.index>=candidateCount)search.exhaustedRevision=revision
+    }else{
+      return {result:planned.status==='cancelled'?stopped():blocked(planned.code??'MINE_PLAN_PENDING','採掘候補を保持し、観測・計算の条件を確認します。','owner_released')}
     }
     if(!await save(ctx,null))return {result:blocked('MINE_CHECKPOINT','次の採掘候補の確認結果を保存します。','owner_released')}
-    return {result:blocked(planned.code??'MINE_PLAN_PENDING','既存の採掘場を保護し、次の2層の採掘範囲を観測しています。')}
+    return {result:blocked(planned.code??'MINE_PLAN_PENDING','既存の採掘場を保護し、次の2層の採掘範囲を観測しています。','now')}
   }
   if(sites.some(site=>site.plan.id===planned.plan.id)){
     rejectSite(ctx,search,{code:'MINE_SITE_ALREADY_USED'},candidateCount)
     search.index++;delete search.wait
     if(search.index>=candidateCount)search.exhaustedRevision=revision
     await save(ctx,null)
-    return {result:blocked('MINE_SITE_ALREADY_USED','使い終えた採掘範囲を除外し、別の範囲を確認します。')}
+    return {result:blocked('MINE_SITE_ALREADY_USED','使い終えた採掘範囲を除外し、別の範囲を確認します。','now')}
   }
   const plan=planned.plan,branch={version:1,plan,progress:Object.fromEntries(plan.layers.map(layer=>[layer.id,state.createMineState(plan,{layer:layer.id})])),request:null,failures:{}}
   mine.branch=branch;delete mine.search
@@ -199,12 +204,13 @@ async function ensureMineLayer(ctx,branch,{resource,targetHeld=1}={}){
   if(['raw_iron','coal'].includes(resource) || branch.plan.layers.some(layer=>layer.id==='lower'))return {...results.completed('MINE_LAYER_PLANNED'),serverConfirmed:true}
   if(branch.segmentTask || branch.vein || branch.pendingAction)return blocked('MINE_EXTENSION_PENDING_WORK','未確認の施工と鉱脈の埋戻しを終えてから下層を計画します。','inventory_update')
   const before=scope(ctx),previous=branch.plan,revision=revisionOf(ctx),requestKey=JSON.stringify([resource,targetHeld,before,previous.id,previous.revision??1])
-  if(branch.extensionSearch?.revision===revision && branch.extensionSearch.requestKey===requestKey){
+  const world=ctx.runtime.host?.()?.world??{getBlock:ctx.getBlock}
+  if(branch.extensionSearch?.requestKey===requestKey && planEvidenceCurrent(world,branch.extensionSearch.terrainReceiptId)){
     const search=branch.extensionSearch
     if(search.status==='observing')return observeExtension(ctx,branch,search)
     return blocked(search.code,'現在の縦坑と上層を保持し、下層の安全な延伸範囲の受信を待ちます。')
   }
-  const host=ctx.runtime.host?.(),world=host?.world??{getBlock:ctx.getBlock},mine=memory(ctx),isProtected=protectedBySites(mine.sites??[],previous.scope)
+  const mine=memory(ctx),isProtected=protectedBySites(mine.sites??[],previous.scope)
   const planned=await planMineExtension({world,getState:()=>raw(ctx),plan:previous,origin:ctx.getFeet(),resource,targetCount:Math.max(1,targetHeld-count(ctx,resource)),
     ownedFills:[...(branch.supportFills??[]),...(branch.temporarySeals??[])],isProtected},{signal:ctx.signal})
   if(!live(ctx,before))return stopped()
@@ -216,7 +222,7 @@ async function ensureMineLayer(ctx,branch,{resource,targetHeld=1}={}){
     if(planned.status==='blocked' && planned.diagnostics?.unknown===0 && ['MINE_NO_OBSERVED_LOWER_ORE','MINE_NO_SAFE_RESOURCE_PLAN','MINE_SHAFT_DEPTH_EXCEEDED'].includes(planned.code))return retireMine(ctx,branch)
     const cells=observationCells(planned)
     const previousSearch=branch.extensionSearch?.requestKey===requestKey?branch.extensionSearch:null
-    branch.extensionSearch={requestKey,revision,status:planned.status,code:planned.code??'MINE_PLAN_PENDING',cells,
+    branch.extensionSearch={requestKey,revision,status:planned.status,code:planned.code??'MINE_PLAN_PENDING',cells,terrainReceiptId:rememberPlanEvidence(world,planned.terrainReceipt),
       ...(previousSearch?.observation?{observation:previousSearch.observation}:{}),...(previousSearch?.deferred?{deferred:true,signature:previousSearch.signature}:{})}
     if(planned.status==='observing')return observeExtension(ctx,branch,branch.extensionSearch)
     if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','下層の観測状況を保存します。','owner_released')

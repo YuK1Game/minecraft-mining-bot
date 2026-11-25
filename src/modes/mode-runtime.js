@@ -357,8 +357,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   const lifeKey = () => require('../common/life-key').lifeKey(runtime.host(), () => runtime.raw())
   const active = () => !disposed() && control.get() === 'player' && shared.playerWanted === true
   const getBlock = (x, y, z) => runtime.host().world.getBlock(x, y, z)
-  let fastExpeditionTimer = null
-  const clearFastExpedition = () => { if (fastExpeditionTimer) { clearTimeout(fastExpeditionTimer); fastExpeditionTimer = null } }
+  const continuation = require('./dragon-continuation').createDragonContinuation({ active, disposed, tick: () => whoOwns(expedition.tick()) })
+  const clearFastExpedition = continuation.clear
   const cancelExpedition = () => {
     clearFastExpedition()
     if (expedition?.busy() && quarry.travelStatus?.()?.busy) void Promise.resolve(quarry.cancelTravel()).catch(() => {})
@@ -366,16 +366,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   }
   expedition = createDragonRuntime({
     operations, runtime, shared, root, active, log, getBlock, lifeKey, getFeet: () => feetNow(), incidents, loading: () => shared.loadingScreenEnded === false || shared.respawnTerrain?.pending === true || shared.inventoryUncertain === true, threatened: danger,
-    onStepDone: info => {
-      if (disposed() || !active() || fastExpeditionTimer) return
-      const delay = info?.ms >= 100 ? 100 : 400
-      fastExpeditionTimer = setTimeout(() => {
-        fastExpeditionTimer = null
-        if (disposed() || !active()) return
-        whoOwns(expedition.tick())
-      }, delay)
-      fastExpeditionTimer.unref?.()
-    },
+    onStepDone: continuation.onStepDone,
+    retryBuildFree: () => chestBuildHeld({ house: shared.playerHouse, pairs: storage.chestWork }) === null,
     finish: () => { shared.playerWanted = false; shared.autoWanted = false; void resume.note() },
     legacyIdle: () => idle() && shared.autoWanted !== true,
     legacyBusy: () => dispatcher.anyActive() || runtime.chunkMoveHeld() || runtime.manualChestStorage()?.isBusy() === true || runtime.resetHeld() || owner.held(),

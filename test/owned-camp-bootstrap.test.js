@@ -1,6 +1,6 @@
 'use strict'
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module')
-const root=process.cwd(), helperFile=process.env.HOME_BOOTSTRAP_TEST_SOURCE??(fs.existsSync(path.join(root,'src/survival/owned-camp-bootstrap.js'))?path.join(root,'src/survival/owned-camp-bootstrap.js'):path.join(root,'.local/staged/owned-camp-bootstrap/src/owned-camp-bootstrap.js')),m=new Module(path.join(root,'src/survival/owned-camp-bootstrap.js'),module);m.filename=path.join(root,'src/survival/owned-camp-bootstrap.js');m.paths=Module._nodeModulePaths(path.join(root,'src'));m._compile(fs.readFileSync(helperFile,'utf8'),m.filename)
+const root=process.cwd(), helperFile=process.env.HOME_BOOTSTRAP_TEST_SOURCE??path.join(root,'src/survival/owned-camp-bootstrap.js'),m=new Module(path.join(root,'src/survival/owned-camp-bootstrap.js'),module);m.filename=path.join(root,'src/survival/owned-camp-bootstrap.js');m.paths=Module._nodeModulePaths(path.join(root,'src'));m._compile(fs.readFileSync(helperFile,'utf8'),m.filename)
 const {createOwnedCampBootstrap}=m.exports
 const {planOwnedCampReturn}=require(path.join(root,'src/survival/owned-camp-return'))
 function nativeFixture(){const file=path.join(root,'test/owned-camp-return.test.js'),n=new Module(file,module);n.filename=file;n.paths=Module._nodeModulePaths(path.dirname(file));n._compile(fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n').split('\ntest(')[0]+'\nmodule.exports=fixture',file);return n.exports()}

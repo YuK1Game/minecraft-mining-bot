@@ -68,7 +68,10 @@ async function observeCandidate (ctx, record, { cells, reason, branch = null, tr
   // to arrive before considering another observation position.
   if (observation.waits < MAX_WAITS || observation.requestedAt != null && now - observation.requestedAt < 5000) {
     if (!await save(ctx, branch, before)) return { result: blocked('MINE_CHECKPOINT', '観測待ちの記録を保存します。', 'owner_released') }
-    return { result: out?.status ? out : blocked('MINE_OBSERVATION_UNAVAILABLE', '地形の観測結果を確認できません。', 'owner_released') }
+    // These are bounded network/observation attempts. Once their budget is
+    // spent the next call chooses a safe walk or a different candidate; it
+    // must not become an indefinite terrain wait in the expedition owner.
+    return { result: out?.status ? { ...out, retry: { kind: observation.requestedAt != null ? 'time' : 'now', ms: 2000 } } : blocked('MINE_OBSERVATION_UNAVAILABLE', '地形の観測結果を確認できません。', 'owner_released') }
   }
   if (!travel || observation.moves >= MAX_MOVES) return { result: blocked('MINE_OBSERVATION_DEFERRED', '受信を確認できない候補を保留し、別の候補を調べます。'), defer: true }
   const frontier = [], target = observationStand(ctx, cells, observation.tried, frontier)
@@ -92,7 +95,7 @@ async function observeCandidate (ctx, record, { cells, reason, branch = null, tr
   if (!await save(ctx, branch, before)) return { result: blocked('MINE_CHECKPOINT', '受信した観測地点を保存します。', 'owner_released') }
   out = await ctx.minePorts.observe({ cells, reason })
   if (!live(ctx, before)) return { result: stopped() }
-  return { result: out?.status ? out : blocked('MINE_OBSERVATION_UNAVAILABLE', '観測移動後の地形を確認します。'), changed: received(out) }
+  return { result: out?.status ? { ...out, retry: { kind: 'now' } } : blocked('MINE_OBSERVATION_UNAVAILABLE', '観測移動後の地形を確認します。'), changed: received(out) }
 }
 
 module.exports = { observationStand, observeCandidate, observationSignature: signature, MAX_MOVES, MAX_WAITS }

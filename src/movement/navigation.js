@@ -2,8 +2,8 @@
 
 const { createPhysics } = require('./physics')
 const { knownSurfaceBody } = require('./low-health-water')
-const { planBoundedJump, createBoundedJumpStepper } = require('./bounded-jump')
-const { planWaterExit, createWaterExitStepper } = require('./water-exit')
+const { planBoundedJumpSteps, createBoundedJumpStepper } = require('./bounded-jump')
+const { planWaterExitSteps, createWaterExitStepper } = require('./water-exit')
 const { planLowStepDown } = require('./low-step-down')
 
 const HALF_WIDTH = 0.3
@@ -33,7 +33,8 @@ const isWater = block => block.name === 'water' || block.name === 'flowing_water
 const horizontalDistance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
 const { distance3: distance } = require('../common/vec3')
 const { createOpenList } = require('../common/open-list')
-const { cellKey, createPointCache } = require('./plan-cache')
+const { createPointCache } = require('./plan-cache')
+const { createTerrainCache } = require('../common/terrain-cache')
 
 function segmentDistance (point, from, to) {
   const delta = { x: to.x - from.x, y: to.y - from.y, z: to.z - from.z }
@@ -53,46 +54,29 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
   if (allowWater && physics.capabilities.water === 'disabled') throw new Error('Water navigation requires explicit water prediction')
 
   let planGeometry = null
-  let observingTerrain = false
   function geometryBlockAt (position) {
     if (!planGeometry) return physics.blockAt(position)
-    const id = cellKey(Math.floor(position.x), Math.floor(position.y), Math.floor(position.z))
-    const entry = planGeometry.get(id)
-    if (entry) {
-      if (entry.error) throw entry.error
-      return entry.block
-    }
-    try {
-      const block = physics.blockAt(position)
-      if (planGeometry.size < 32768) planGeometry.set(id, { block })
-      return block
-    } catch (error) {
-      if (planGeometry.size < 32768) planGeometry.set(id, { error })
-      throw error
-    }
+    const x = Math.floor(position.x), y = Math.floor(position.y), z = Math.floor(position.z)
+    return planGeometry.read(x, y, z, () => physics.blockAt(position))
   }
-  // Blocks read for one plan are kept for the next while the world reports
-  // the same revision through the same reader (any received world packet
-  // bumps it). A world without a revision gets a fresh map for every plan.
-  let kept = null
-  function geometryForPlan () {
-    // A nested connector plan must make its own reads visible to the active
-    // observer instead of borrowing a cache populated by an earlier operation.
-    if (observingTerrain) return new Map()
-    const revision = typeof world?.revision === 'function' ? world.revision() : null
-    if (!Number.isSafeInteger(revision)) return new Map()
-    if (!kept || kept.revision !== revision || kept.getBlock !== world.getBlock || kept.map.size >= 32768) kept = { revision, getBlock: world.getBlock, map: new Map() }
-    return kept.map
-  }
+  const keptGeometry = createTerrainCache(world)
   function plan (initialState, target, options) {
     const previous = planGeometry
-    planGeometry = geometryForPlan()
+    let deadline = null
+    planGeometry = keptGeometry
+    keptGeometry.begin()
+    // Existing synchronous callers also select fixed, short physics tapes
+    // (shore footing, recenter, water exit). Their explicit frame limits stay
+    // authoritative: a cold physics/JIT pause must not select another stance.
+    // A* gets the wall-clock bound; the async API slices both search and tapes.
+    const iterator = planCore(initialState, target, options, { beginSearch: () => { deadline ??= performance.now() + 120 }, shouldYield: () => deadline !== null && performance.now() >= deadline })
     try {
-      const iterator = planCore(initialState, target, options)
-      let next
-      do { next = iterator.next() } while (!next.done)
-      return next.value
-    } finally { planGeometry = previous }
+      const next = iterator.next()
+      return next.done ? next.value : timeLimit(false)
+    } finally { iterator.return(); planGeometry = previous }
+  }
+  function timeLimit (asynchronous) {
+    return { ready: false, code: 'NAVIGATION_TIME_LIMIT', reason: asynchronous ? 'The trusted asynchronous planning time limit was reached' : 'The trusted planning time limit was reached', waypoints: [], unknownFrontier: [], predictionOnly: true, serverConfirmed: false, ...(planningDistanceLimit > 24 ? { planningOnly: true } : {}) }
   }
   function * planCore (initialState, target, options, control = null) {
     const route = yield * planWithoutCache(initialState, target, options, control)
@@ -106,11 +90,11 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     return connector.ready ? { ...route, originRecenter: connector } : { ...connector, origin: route.origin, target: route.target }
   }
   async function planAsync (initialState, target, options = {}) {
-    if (planningDistanceLimit !== 48) throw new Error('Asynchronous planning requires the trusted 48-block navigator')
     if (typeof world?.revision !== 'function') throw new Error('Asynchronous planning requires a revisioned trusted world')
-    const { signal, check, ...settings } = options
+    const { signal, check, observe: enclosingObserver, ...settings } = options
     if (signal != null && typeof signal.throwIfAborted !== 'function' || check != null && typeof check !== 'function') throw new TypeError('Invalid trusted planning cancellation guard')
-    const started = performance.now(), revision = world.revision(), geometry = new Map(), observer = world.observeTerrain?.()
+    if (enclosingObserver != null && typeof enclosingObserver.run !== 'function') throw new TypeError('Invalid navigation observation witness')
+    const started = performance.now(), revision = world.revision(), geometry = keptGeometry, observer = world.observeTerrain?.()
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('Invalid trusted world revision')
     let cpuMs = 0, sliceUntil = 0
     const guard = () => {
@@ -120,22 +104,25 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
       if (observer ? !observer.current() : revision !== world?.revision?.()) throw Object.assign(new Error(observer ? 'Navigation terrain changed during planning' : 'Trusted planning context changed'), { code: observer ? 'NAVIGATION_TERRAIN_CHANGED' : 'NAVIGATION_CONTEXT_CHANGED' })
     }
     const iterator = planCore(structuredClone(initialState), structuredClone(target), structuredClone(settings), { shouldYield: () => performance.now() >= sliceUntil })
-    const expired = () => ({ ready: false, code: 'NAVIGATION_TIME_LIMIT', reason: 'The trusted asynchronous planning time limit was reached', waypoints: [], unknownFrontier: [], predictionOnly: true, serverConfirmed: false, planningOnly: true })
+    const expired = () => timeLimit(true)
+    geometry.begin()
     try {
       guard()
       await new Promise(resolve => setImmediate(resolve))
       for (;;) {
         guard()
         if (cpuMs >= 2000 || performance.now() - started >= 15000) return expired()
-        const before = performance.now(), previous = planGeometry, previousObserver = observingTerrain
+        const before = performance.now(), previous = planGeometry
         sliceUntil = before + 8
         let next
         planGeometry = geometry
-        observingTerrain = !!observer
-        try { next = observer ? observer.run(() => iterator.next()) : iterator.next() } finally { planGeometry = previous; observingTerrain = previousObserver; cpuMs += performance.now() - before }
+        try {
+          const read = () => observer ? observer.run(() => iterator.next()) : iterator.next()
+          next = enclosingObserver ? enclosingObserver.run(read) : read()
+        } finally { planGeometry = previous; cpuMs += performance.now() - before }
         guard()
         if (cpuMs >= 2000 || performance.now() - started >= 15000) return expired()
-        if (next.done) return { ...next.value, planningOnly: true }
+        if (next.done) return next.value
         await new Promise(resolve => setImmediate(resolve))
       }
     } finally { iterator.return() }
@@ -304,7 +291,6 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
   }
 
   function * planWithoutCache (initialState, target, { maxDistance = 12, maxExpanded = 1500, avoidance = [], directFlat = false, directSurface = false, exactGoal = false, partialDrop = false, partialRecenter = false, controlledDrop = false, dropLimit = 3, shoreRecenter = false, stablePartialOrigin = false, boundedJump = null, waterExit = false, lowStepDown = false } = {}, control = null) {
-    const planningStarted = planningDistanceLimit > 24 && !control ? performance.now() : null
     const unknown = new Map()
     const empty = (reason, code = 'NAVIGATION_NO_ROUTE') => ({ ready: false, code, reason, waypoints: [], unknownFrontier: [...unknown.values()].slice(0, 32), predictionOnly: true, serverConfirmed: false })
     if (!finite(initialState?.position) || !(boundedJump !== null && target == null) && (!Number.isFinite(target?.x) || !Number.isFinite(target?.z) || (target.y != null && !Number.isFinite(target.y)))) return empty('Invalid navigation coordinates')
@@ -332,11 +318,11 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     // A held forward+jump tape from water onto an adjacent received ledge (2026-11-14).
     if (waterExit === true) {
       if (!allowWater) return empty('Water exit needs allowWater')
-      return { ...planWaterExit({ physics, initial: initialState, target }), avoidance: circles }
+      return { ...(yield * planWaterExitSteps({ physics, initial: initialState, target, control })), avoidance: circles }
     }
     if (boundedJump !== null) {
       if (allowWater || directSurface || partialDrop || partialRecenter || controlledDrop || shoreRecenter || !stablePartialOrigin) return empty('Bounded jump needs an explicit dry stable-origin policy')
-      const route = planBoundedJump({ physics, initial: initialState, descriptor: boundedJump, target, originSafe: state => verifyOrigin(state, { stablePartialOrigin: true }), landingSafe: state => verifyOrigin(state), edgeSafe: (from, to) => policyEdge(from, to, true) })
+      const route = yield * planBoundedJumpSteps({ control, physics, initial: initialState, descriptor: boundedJump, target, originSafe: state => verifyOrigin(state, { stablePartialOrigin: true }), landingSafe: state => verifyOrigin(state), edgeSafe: (from, to) => policyEdge(from, to, true) })
       if (route.ready && horizontalDistance(origin, route.target) > maxDistance) return empty('Target lies outside the bounded search area')
       return { ...route, avoidance: circles }
     }
@@ -625,9 +611,9 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
     const closed = new Set()
     let expanded = 0
     let found = null
+    control?.beginSearch?.()
     while (open.size && expanded < maxExpanded) {
       if (control?.shouldYield()) yield
-      if (planningStarted !== null && performance.now() - planningStarted >= 120) return empty('The trusted planning time limit was reached', 'NAVIGATION_TIME_LIMIT')
       const currentKey = open.pop()
       if (currentKey === null) break
       const current = records.get(currentKey)
@@ -664,7 +650,12 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
             // Reuse the existing bounded, fully simulated one-block descent
             // or level recenter. Later graph nodes and final arrivals still
             // require complete support; no airborne/gap start is synthesized.
-            if ((!partialDrop && !partialRecenter) || candidate.medium !== 'land' || !fullFootprintSupport(candidate.position) || !plan(initialState, candidate.position, { maxDistance: 2, maxExpanded: 64, avoidance: circles, partialDrop, partialRecenter }).ready) continue
+            if ((!partialDrop && !partialRecenter) || candidate.medium !== 'land' || !fullFootprintSupport(candidate.position)) continue
+            // A connector is part of this search, including its cancellation,
+            // CPU slice and terrain witness. Do not enter a synchronous plan
+            // that drains its whole physics tape before the next async yield.
+            const connector = yield * planWithoutCache(initialState, candidate.position, { maxDistance: 2, maxExpanded: 64, avoidance: circles, partialDrop, partialRecenter }, control)
+            if (!connector.ready) continue
           }
           const g = current.g + 1 + Math.abs(dy) * 0.3 + (action === 'jump' ? 0.8 : action === 'swim' ? 3 : 0)
           const previous = records.get(candidateKey)
