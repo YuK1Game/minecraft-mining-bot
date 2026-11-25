@@ -44,6 +44,22 @@ async function prepareHomeIron (ctx, batch, { held, house, acquire }) {
   const returning = await beforeSurfaceSupply(ctx)
   if (returning) return returning
   if (held('iron_ingot') >= batch.target) return { done: true, reason: '携行用と予備用に必要な鉄インゴットを確認しました。' }
+  const leftNow = batch.target - held('iron_ingot')
+  // Once the furnace reported no burning fuel and none was held, keep gathering
+  // wood outside instead of walking back inside to the same empty furnace after
+  // every search step (live 2026-11-26 00:36-00:55 JST: 18 min door/tree loop).
+  if (batch.fuelTarget > 0) {
+    const fuelTarget = Math.min(batch.fuelTarget, Math.ceil(leftNow * 2 / 3))
+    if (held('coal') > 0 || held('charcoal') > 0 || held('planks') >= fuelTarget) {
+      delete batch.fuelTarget
+    } else {
+      const result = await acquire('planks', fuelTarget)
+      if ((result.done || held('coal') > 0 || held('charcoal') > 0 || held('planks') >= fuelTarget) && !ctx.cancelled()) {
+        delete batch.fuelTarget
+      }
+      return { ...result, done: false }
+    }
+  }
 
   const failure = at => ({ stage: 'reserve', target: [at.x, at.y, at.z].join(','), code: 'IRON_FURNACE_UNREAD' })
   const oven = await homeStation(ctx, 'furnace', { spent: at => ctx.goal?.spent?.(failure(at)) === true })
@@ -66,7 +82,12 @@ async function prepareHomeIron (ctx, batch, { held, house, acquire }) {
   }
   if (held('iron_ingot') >= batch.target) return { done: true, reason: '携行用と予備用の鉄を本拠点で精錬しました。' }
   if (need?.fuel && !fuelName) {
-    const result = await acquire('planks', Math.ceil((batch.target - held('iron_ingot')) * 2 / 3))
+    const fuelTarget = Math.ceil((batch.target - held('iron_ingot')) * 2 / 3)
+    batch.fuelTarget = fuelTarget
+    const result = await acquire('planks', fuelTarget)
+    if ((result.done || held('coal') > 0 || held('charcoal') > 0 || held('planks') >= fuelTarget) && !ctx.cancelled()) {
+      delete batch.fuelTarget
+    }
     return { ...result, done: false }
   }
   if (!need && house.why()) ctx.goal?.fail?.(failure(oven.at), { paceMs: 20000 })

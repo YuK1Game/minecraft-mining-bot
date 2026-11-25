@@ -218,3 +218,84 @@ test('bare respawn outside an active mine hands back to starter jobs instead of 
   assert.equal(outsideWithCobble.id, 'home_reserve')
   assert.equal(outsideWithCobble.legacy, false)
 })
+
+test('prepareHomeIron keeps gathering fuel outside instead of walking back to the empty furnace on every tick', async () => {
+  const { prepareHomeIron } = require('../src/modes/dragon-home-iron')
+  const { homeTarget } = require('../src/modes/dragon-home-use')
+  const items = [{ name: 'minecraft:iron_ingot', count: 24 }]
+  const held = name => items.filter(i => (name === 'planks' ? /_planks$/.test(i.name) : i.name === 'minecraft:' + name)).reduce((s, i) => s + i.count, 0)
+  const furnaceAt = homeTarget({ shared: { playerHouse: house }, getBlock: () => ({ known: true, name: 'minecraft:air' }) }, 'furnace').at
+  let walksToFurnace = 0, smeltCalls = 0, acquireCalls = 0
+  let feet = { x: furnaceAt.x, y: furnaceAt.y, z: furnaceAt.z + 1 }
+  const ctx = {
+    cancelled: () => false,
+    shared: { playerHouse: house },
+    memory: { early: {} },
+    getFeet: () => feet,
+    getBlock: (x, y, z) => ({ known: true, name: x === furnaceAt.x && y === furnaceAt.y && z === furnaceAt.z ? 'minecraft:furnace' : 'minecraft:air', boundingBox: y < house.origin.y ? 'block' : 'empty' }),
+    hands: { walk: async () => { walksToFurnace++; feet = { x: furnaceAt.x, y: furnaceAt.y, z: furnaceAt.z + 1 }; return true } },
+    operations: { quarry: { travelStatus: () => ({ busy: false }) } },
+    travelTo: async () => { walksToFurnace++; feet = { x: furnaceAt.x, y: furnaceAt.y, z: furnaceAt.z + 1 }; return { phase: 'arrived' } },
+    runtime: { raw: () => ({ dimension: 'overworld' }), inventory: () => observed(items) }
+  }
+  const housePorts = {
+    reset () {},
+    why: () => null,
+    smeltNeed: () => (held('planks') > 0 ? null : { input: 0, fuel: true }),
+    smelt: async () => {
+      smeltCalls++
+      if (held('planks') >= 6) {
+        items[0].count = 33
+        return 9
+      }
+      return 0
+    }
+  }
+  const batch = { target: 33 }
+  const acquire = async (name, count) => {
+    assert.equal(name, 'planks')
+    assert.equal(count, 6)
+    acquireCalls++
+    // First two ticks simulate walking out to a distant tree without planks yet.
+    if (acquireCalls === 1) {
+      feet = { x: furnaceAt.x + 25, y: furnaceAt.y, z: furnaceAt.z + 25 }
+      return { done: false, reason: 'planks を準備しています（0/6）。' }
+    }
+    if (acquireCalls === 2) {
+      items.push({ name: 'minecraft:oak_planks', count: 4 })
+      return { done: false, reason: 'planks を準備しています（4/6）。' }
+    }
+    items[1].count = 8
+    return { done: true, reason: 'planks を持ち物で確認しました。' }
+  }
+
+  // Tick 1: inspects furnace once, sees fuel needed, records fuelTarget=6 and steps outside.
+  const t1 = await prepareHomeIron(ctx, batch, { held, house: housePorts, acquire })
+  assert.equal(t1.done, false)
+  assert.equal(smeltCalls, 1)
+  assert.equal(batch.fuelTarget, 6)
+
+  // Tick 2: still outside with 0 planks -> must NOT walk back to the furnace; keeps acquiring planks.
+  const t2 = await prepareHomeIron(ctx, batch, { held, house: housePorts, acquire })
+  assert.equal(t2.done, false)
+  assert.equal(smeltCalls, 1, 'must not re-open furnace while fuel is still short')
+  assert.equal(walksToFurnace, 0, 'must not walk back home after first exploration step')
+  assert.equal(batch.fuelTarget, 6)
+
+  // Tick 3: acquires remaining planks -> clears fuelTarget.
+  const t3 = await prepareHomeIron(ctx, batch, { held, house: housePorts, acquire })
+  assert.equal(t3.done, false)
+  assert.equal(smeltCalls, 1)
+  assert.equal(batch.fuelTarget, undefined)
+
+  // Tick 4: travels back home with 8 planks (approachHome hands off after travelTo).
+  const t4 = await prepareHomeIron(ctx, batch, { held, house: housePorts, acquire })
+  assert.equal(t4.done, false)
+  assert.equal(walksToFurnace, 1)
+
+  // Tick 5: opens the furnace once at home and finishes smelting 33/33 iron.
+  const t5 = await prepareHomeIron(ctx, batch, { held, house: housePorts, acquire })
+  assert.equal(t5.done, true)
+  assert.equal(smeltCalls, 2)
+  assert.equal(held('iron_ingot'), 33)
+})
