@@ -12,6 +12,7 @@
 // 「安全な場所で食事を取り、体力18以上への回復を待ちます。」 until the stall
 // reset at ten minutes, which chose the same wait again).
 const { hasFood } = require('./player-food')
+const { count: kitCount } = require('./dragon-supply-kit')
 const { threatWait } = require('./dragon-threat-wait')
 
 const { REST } = require('./dragon-rest-pit')
@@ -68,20 +69,40 @@ async function heal ({ ctx, record, dim, shared, runtime, threatened, supplies, 
 // Before, only health of 12 or less sent the expedition for food, so a Bot with an empty pack worked on
 // until it starved down to that (real Realm 2026-11-24 08:16 JST: hunger 6, no food, no armour, health
 // 19.5, 「採掘場の資材を準備しています」; hunger had been under 18 - no regeneration - since 07:47).
+// Once a food trip begins, keep gathering cooked provisions up to FOOD_TRIP (real Realm 2026-11-25
+// 10:14-10:31 JST: acquiring only 1 food let the Bot eat 1 raw/cooked meat, jump hunger 6 -> 8/10 with
+// 0 food left, climb 54 blocks back down to the Y=16 branch mine, dig 3 steps, and repeat every 5 min).
 const HUNGRY = 6
+const FOOD_TRIP = 6
 // What that asks for now: 'eat' (a meal can be taken), 'food' (the way to food), or null (not hungry, or not here).
 function hungry ({ ctx, record, dim, shared, runtime, threatened }) {
   const food = ctx.operations.food, hunger = food?.snapshot?.()?.hunger
-  if (dim !== 'overworld' || record.stage !== 'early' || record.recovery || !shared.playerHouse?.origin) return null
-  if (!Number.isFinite(hunger) || hunger > HUNGRY || threatened()) return null
+  if (dim !== 'overworld' || record.stage !== 'early' || record.recovery || !shared?.playerHouse?.origin) {
+    if (shared) delete shared.dragonFoodTrip
+    return null
+  }
+  if (!Number.isFinite(hunger) || threatened()) return null
+  const inventory = runtime.inventory()
+  const cooked = inventory?.known === true && !inventory.uncertain && Array.isArray(inventory.items)
+    ? kitCount('food', inventory.items)
+    : null
+  if (shared.dragonFoodTrip && cooked !== null && cooked >= FOOD_TRIP) delete shared.dragonFoodTrip
   const meal = food.preview()
-  if (meal?.ready === true) return 'eat'
-  return unfed({ meal, inventory: runtime.inventory(), hunger }) ? 'food' : null
+  if (hunger <= HUNGRY) {
+    if (meal?.ready === true) return 'eat'
+    if (unfed({ meal, inventory, hunger })) {
+      shared.dragonFoodTrip = true
+      return 'food'
+    }
+    return null
+  }
+  if (shared.dragonFoodTrip && cooked !== null && cooked < FOOD_TRIP) return 'food'
+  return null
 }
 async function feed (want, { ctx, supplies }) {
-  if (want === 'food') return supplies.acquire('food', 1)
+  if (want === 'food') return supplies.acquire('food', FOOD_TRIP)
   await ctx.operations.food.eat()
   return { phase: 'recovering', reason: '満腹度が少ないため、先に食事を取ります。' }
 }
 
-module.exports = { heal, hungry, feed, unfed, REGEN, HUNGRY, WAIT }
+module.exports = { heal, hungry, feed, unfed, REGEN, HUNGRY, FOOD_TRIP, WAIT }

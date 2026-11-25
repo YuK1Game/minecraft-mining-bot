@@ -4,7 +4,7 @@
 // food: 「安全な場所で食事を取り、体力18以上への回復を待ちます。」 for ten minutes, and again after the stall reset.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { heal, hungry, feed, unfed, WAIT } = require('../src/modes/dragon-heal')
+const { heal, hungry, feed, unfed, FOOD_TRIP, WAIT } = require('../src/modes/dragon-heal')
 const { keeping, RAW } = require('../src/modes/raw-meat-keep')
 
 const FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken)$|^minecraft:bread$/
@@ -112,7 +112,34 @@ function hungryScene ({ items = [], hunger = 6, stage = 'early', dim = 'overworl
 test('as at 08:16 JST: hunger 6 and nothing to eat, health whole: the food comes before the work', async () => {
   const f = hungryScene()
   assert.deepEqual(await f.run(), { done: false, reason: 'hunt' })
-  assert.deepEqual(f.calls, ['acquire food 1'])
+  assert.deepEqual(f.calls, [`acquire food ${FOOD_TRIP}`])
+})
+
+test('a hungry food trip keeps stocking cooked provisions after hunger rises above 6 until FOOD_TRIP is held', async () => {
+  const shared = { playerHouse: { origin: { x: 9877, y: 64, z: 10138 } } }
+  const calls = []
+  let hunger = 6
+  let items = []
+  const preview = () => items.some(item => FOOD.test(item.name)) ? { ready: true } : { ready: false, code: 'FOOD_NOT_IN_INVENTORY' }
+  const ctx = { operations: { food: { preview, eat: async () => { calls.push('eat') }, snapshot: () => ({ hunger }) } } }
+  const supplies = { acquire: async (name, count) => { calls.push(`acquire ${name} ${count}`); return { done: false, reason: 'hunt' } } }
+  const step = async () => {
+    const want = hungry({ ctx, record: { stage: 'early', recovery: null }, dim: 'overworld', shared, runtime: { inventory: () => ({ known: true, items }) }, threatened: () => false })
+    return want ? feed(want, { ctx, supplies }) : null
+  }
+  // Starts the food trip at hunger 6 with 0 food.
+  await step()
+  assert.equal(shared.dragonFoodTrip, true)
+  // After eating 1 raw meat (hunger 9, cooked 0), keep gathering instead of returning to the mine empty-handed.
+  hunger = 9
+  items = [{ slot: 1, name: 'minecraft:beef', count: 2 }]
+  await step()
+  assert.equal(shared.dragonFoodTrip, true)
+  assert.deepEqual(calls, [`acquire food ${FOOD_TRIP}`, `acquire food ${FOOD_TRIP}`])
+  // Once cooked provisions reach FOOD_TRIP, end the food trip and resume normal work.
+  items = [{ slot: 1, name: 'minecraft:cooked_beef', count: FOOD_TRIP }]
+  assert.equal(await step(), null)
+  assert.equal(shared.dragonFoodTrip, undefined)
 })
 
 test('hunger 6 with food in the pack: the meal is taken here; hunger 7, or unreceived: the work goes on', async () => {
