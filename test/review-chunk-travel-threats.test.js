@@ -145,3 +145,16 @@ for (const group of ['suppressedByTerrain', 'unreachable']) test(`a far unsearch
   assert.equal(f.clear({ attackExposure: (_actor, projected) => ({ intercept: false, unknown: true, distance: 11, recognitionRadius: 12 }) }), false, 'inside recognition')
   assert.equal(f.clear({ attackExposure: () => ({ intercept: true, unknown: false }) }), false)
 })
+
+test('waterExit allows climbing onto dry land despite a reachable drowned/hostile so land combat can engage, while still avoiding creepers in fuse range', () => {
+  const drowned = fixture(actor('drowned', 5))
+  assert.equal(drowned.clear({ attackExposure: () => ({ intercept: true, unknown: false }) }), false, 'normal chunk travel still blocks reachable drowned')
+  assert.equal(drowned.clear({ waterExit: true, attackExposure: () => ({ intercept: true, unknown: false }) }), true, 'waterExit climbs out so drownedOnLand combat can engage')
+
+  const nearCreeper = fixture(actor('creeper', 4))
+  assert.equal(nearCreeper.clear({ waterExit: true, previous: point(0), next: point(0.5), attackExposure: () => assert.fail('creeper uses blast check') }), false, 'waterExit does not step toward a creeper in fuse range')
+  assert.equal(nearCreeper.clear({ waterExit: true, previous: point(0), next: point(-0.5), attackExposure: () => assert.fail('creeper uses blast check') }), true, 'waterExit may step away from a creeper onto land')
+
+  const farCreeper = fixture(actor('creeper', 7))
+  assert.equal(farCreeper.clear({ waterExit: true, previous: point(0), next: point(0.5), attackExposure: () => assert.fail('creeper uses blast check') }), true, 'unprimed creeper outside fuse range does not trap the Bot in water')
+})

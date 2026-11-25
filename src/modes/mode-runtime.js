@@ -280,7 +280,7 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     getMode: control.get, shared, log, disposed, getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), getPosition: () => hands.feet(),
     agent: { objective: OBJECTIVE, start: options => agent.start(options), stop: reason => agent.stop(reason), settled: idle },
     start: (target, options) => operations.movement.start(target, options), moving: () => ['moving', 'settling'].includes(runtime.motion()?.phase),
-    why: () => { const reason = runtime.motion()?.reason; return reason ? `${String(reason).slice(0, 80)}${/frame guard/.test(reason) && shared.waterGuardWhy ? ` [${shared.waterGuardWhy}]` : ''}` : null },
+    why: () => { const reason = runtime.motion()?.reason; return reason ? `${String(reason).slice(0, 80)}${/frame guard/.test(reason) && shared.waterGuardWhy ? ` [${shared.waterGuardWhy}${shared.waterGuardDetail ? ':' + shared.waterGuardDetail : ''}]` : ''}` : null },
     blocked: () => recovery.status().active || shelter.status().active || flee.status().active || cover.status().active || scaffold.status().active || torch.status().active || storage.status().active || base.status().active || wool.status().active || sand.status().active || food.status().active || house.status().active || quarry.travelStatus().busy === true || danger()
   })
   // The starter house's wool from sheep (house/house-wool.js).

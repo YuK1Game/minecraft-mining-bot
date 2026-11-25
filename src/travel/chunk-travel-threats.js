@@ -20,13 +20,16 @@ function segmentDistance (point, from, to) {
 const STILL_CREEPER_RADIUS = 4.5
 const creeperRadius = entry => entry.standingStill === true ? Math.min(entry.dangerRadius, STILL_CREEPER_RADIUS) : entry.dangerRadius
 
-function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure } = {}) {
+function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure, waterExit = false, onReject = null } = {}) {
+  const deny = reason => { try { onReject?.(reason) } catch {} return false }
   try {
     if (!finite(state?.position) || !finite(previous) || !finite(next) || !Array.isArray(state.entities) || state.entities.length > 1024 || typeof state.dimension !== 'string' || typeof attackExposure !== 'function' ||
       risk?.requiresObservation !== false || risk.entityListKnown !== true || risk.playerPositionKnown !== true || risk.truncated !== false ||
-      !['threats', 'outsideDanger', 'suppressedByTerrain', 'unreachable', 'unclassified', 'unknownPositions'].every(key => Array.isArray(risk[key])) || risk.unknownPositions.length) return false
+      !['threats', 'outsideDanger', 'suppressedByTerrain', 'unreachable', 'unclassified', 'unknownPositions'].every(key => Array.isArray(risk[key])) || risk.unknownPositions.length) {
+      return deny(`precheck(obs=${risk?.requiresObservation},unk=${risk?.unknownPositions?.length ?? '?'},trunc=${risk?.truncated})`)
+    }
     const segments = Math.ceil(Math.hypot(next.x - previous.x, next.y - previous.y, next.z - previous.z) / 0.25)
-    if (segments + 1 > 32) return false
+    if (segments + 1 > 32) return deny(`segments=${segments}`)
     const pins = new Map(), checkedEntries = []
     const resolve = (entry, prior = null) => {
       const runtimeId = id(entry?.runtimeId)
@@ -41,22 +44,32 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure 
     for (const entry of risk.unclassified) {
       if (['player', 'item', 'npc'].includes(entry.classification)) continue
       const actual = resolve(entry)
-      if (!actual || actual.actor.hostile !== false) return false
+      if (!actual || actual.actor.hostile !== false) return deny(`unclassified:${entry.name}(h=${actual?.actor?.hostile},ok=${Boolean(actual)})`)
       pins.set(id(entry.runtimeId), actual); checkedEntries.push(entry)
     }
     const entries = []
     for (const group of ['threats', 'outsideDanger', 'suppressedByTerrain', 'unreachable']) for (const entry of risk[group]) {
       const actual = resolve(entry), runtimeId = id(entry?.runtimeId)
-      if (!actual || pins.has(runtimeId) || !Number.isFinite(entry.dangerRadius) || entry.dangerRadius <= 0) return false
+      if (!actual || pins.has(runtimeId) || !Number.isFinite(entry.dangerRadius) || entry.dangerRadius <= 0) return deny(`resolve:${group}:${entry.name}`)
       pins.set(runtimeId, actual); checkedEntries.push(entry)
       if (entry.name === 'minecraft:creeper') {
         // A creeper that has stood in one place for minutes (threats.js,
         // standingStill) only closes the cells where it could start its fuse;
         // inside its full circle the Bot may walk away (real Realm 2026-11-15:
         // every step 7.8 m from such a creeper was refused).
-        const radius = creeperRadius(entry)
-        if (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < radius - 1e-4) return false
-      } else entries.push({ entry, group })
+        // When climbing out of water onto land (waterExit), only block steps
+        // that enter fuse/blast range without moving away from the creeper.
+        if (waterExit === true) {
+          const blast = actual.actor.primed === true || actual.actor.exploding === true || actual.actor.charged === true
+            ? entry.dangerRadius : STILL_CREEPER_RADIUS
+          const prevDist = Math.hypot(actual.position.x - previous.x, actual.position.y - previous.y, actual.position.z - previous.z)
+          const nextDist = Math.hypot(actual.position.x - next.x, actual.position.y - next.y, actual.position.z - next.z)
+          if (segmentDistance(actual.position, previous, next) < blast - 1e-4 && nextDist <= prevDist + 1e-4) return deny(`creeper(${prevDist.toFixed(1)}->${nextDist.toFixed(1)}<${blast})`)
+        } else {
+          const radius = creeperRadius(entry)
+          if (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < radius - 1e-4) return deny(`creeper:${group}`)
+        }
+      } else if (waterExit !== true) entries.push({ entry, group })
     }
     const positions = [state.position]
     for (let step = 0; step <= segments; step++) {

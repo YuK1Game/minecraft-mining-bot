@@ -2848,9 +2848,10 @@ function createRuntime (host) {
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
       // Empty-handed trip prep (2026-11-14): nothing to lose, so hostiles near
       // the water do not hold the bot (live 10:19: a drowned refused every swim).
+      host.shared.waterGuardDetail = null
       if (current.emptyHandedPrep === true) {}
       else if (combatAware) {
-        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure })) return G('threat')
+        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure, waterExit: options?.waterExit === true, onReject: r => { host.shared.waterGuardDetail = r } })) return G('threat')
       } else {
         if(risk.requiresObservation||risk.threats.length)return G('threat')
         for(const a of [...risk.outsideDanger,...risk.suppressedByTerrain]){
