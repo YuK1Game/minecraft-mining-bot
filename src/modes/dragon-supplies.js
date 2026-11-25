@@ -189,7 +189,10 @@ function createDragonSupplies (ctx) {
   async function gain (requested, target = 1, { atHome = false } = {}) {
     const name = bare(requested)
     if (cancelled() || !getInventory() || !Number.isSafeInteger(target) || target < 1) return pending('資材を準備するため、現在の所持品を再確認します。')
-    if(name!=='food' && !mining.MINERALS.has(name)){
+    // Unarmed, the begun mine section waits: going back down to finish it is how the sword was never made (live
+    // 2026-11-26 05:14-05:52 JST: each 「石の剣を作ります」 asked for planks, this walked the Bot 140 m back to the
+    // mine entrance for its section, and the sword step ended there; 4 logs, sticks and 74 cobblestone carried).
+    if(name!=='food' && !mining.MINERALS.has(name) && (ctx.memory?.early?.mine?.branch?.vein || !/^(?:stone_sword|crafting_table|planks|stick)$/.test(name) || !require('./player-flee').unarmed(getInventory()))){
       const finishing=await mining.finishMineWork(ctx)
       if(finishing)return finishing
     }

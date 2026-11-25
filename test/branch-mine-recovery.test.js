@@ -453,3 +453,15 @@ test('a dig refused for a hazard beside the target seals and skips the branch, a
   assert.equal(hazardRefusal({ code: 'MINE_DIG_REFUSED', detail: '確認済みの足場から採掘面に届きません。' }), false)
   assert.equal(hazardRefusal({ code: 'MINE_DIG_REFUSED', detail: '適切なツルハシの装備を確認できません: iron_ore' }), false)
 })
+test('with the armed-entry rule on, an unarmed Bot outside the mine is not taken down; with a sword it is', async t => {
+  const w = createMineWorld(t)
+  await upper(w)
+  w.setFeet({ x: 6.5, y: 70, z: 0.5 })
+  w.ctx.shared.mineArmedEntry = true
+  w.items.splice(0, w.items.length, { slot: 0, name: 'minecraft:stone_pickaxe', count: 1 })
+  const out = await requestMine(w.ctx, { resource: 'raw_iron', targetHeld: 4 })
+  assert.equal(out.result.code, 'MINE_UNARMED')
+  w.items.push({ slot: 1, name: 'minecraft:stone_sword', count: 1 })
+  const armed = await requestMine(w.ctx, { resource: 'raw_iron', targetHeld: 4 })
+  assert.notEqual(armed.result?.code, 'MINE_UNARMED')
+})

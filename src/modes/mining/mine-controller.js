@@ -159,6 +159,10 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   if(!branch && count(ctx,resource)>=targetHeld)return {done:true,reason:`${resource} ${count(ctx,resource)}個を持ち物で確認しました。`,result:results.completed('MINE_ALREADY_HELD')}
   if(!branch){const planned=await nextMine(ctx,resource,targetHeld);if(!planned.branch)return outcome(planned.result);branch=planned.branch}
   if(!state.sameWorld(branch.plan?.scope,state.mineWorldScope(raw(ctx))))return outcome(blocked('MINE_WORLD_CHANGED','現在のワールドの採掘場を確認します。','owner_released'))
+  // Not down into the mine without a weapon: both deaths of 2026-11-26 (04:34 and 05:57 JST) came underground,
+  // unarmed after the first, among zombies, skeletons, spiders and a creeper from the caves beside the branches.
+  // The expedition makes the stone sword first (carry-weapon.js); outside the mine the request waits for it.
+  if(!inside(ctx,branch) && !branch.vein && require('../player-flee').unarmed(inventory(ctx)) && ctx.shared?.mineArmedEntry===true)return outcome(blocked('MINE_UNARMED','武器がないため、石の剣を用意してから採掘場へ入ります。','supplies_changed'))
   if(branch.activeScope!==scope(ctx)){
     try{for(const layer of branch.plan.layers)branch.progress[layer.id]=state.resumeMineState(branch.progress[layer.id],{plan:branch.plan,scope:state.mineWorldScope(raw(ctx))})}
     catch{return outcome(blocked('MINE_SAVED_PROGRESS_INVALID','保存した坑道の施工順と現在の地形を確認します。','owner_released'))}

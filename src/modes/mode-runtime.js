@@ -234,6 +234,8 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   // A full inventory goes into a large chest beside the Bot (player-storage.js).
   // The chest work reads its inventory as the chest operation does: not received while a main slot is missing (chest-pack.js).
+  // The branch mine is entered only with a weapon carried (mine-controller.js MINE_UNARMED).
+  shared.mineArmedEntry = true
   // The received chest contents are kept per server in .local/chest-index/ and read back after a restart.
   require('./player-chest-index').attachChestIndex({ memory: shared.playerChestMemory ??= { seen: new Map() }, root, state: () => runtime.raw(), getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z), log })
   const chestPack = require('./chest-pack').createChestPack({ uncertain: () => !!shared.inventoryUncertain, rawItem: slot => runtime.mainSlot(slot), inventory: () => runtime.inventory() })
