@@ -4,7 +4,7 @@
 // hunger 15-17 before it reached the home furnace; cooked food stayed 0.
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { snackItems, keeping } = require('../src/modes/raw-meat-keep')
+const { snackItems, keeping, huntForSnack } = require('../src/modes/raw-meat-keep')
 
 const play = { playerWanted: true, botMode: 'player', playerHouse: { origin: { x: 0, y: 64, z: 0 } }, dragonOwnsWork: () => true }
 const bag = [{ slot: 3, name: 'minecraft:beef', count: 1 }, { slot: 5, name: 'minecraft:carrot', count: 1 }, { slot: 6, name: 'minecraft:cooked_beef', count: 2 }]
@@ -41,4 +41,11 @@ test('the rule is wired into the eat operation; a runtime without the food modul
   assert.equal(rule({ name: 'minecraft:cooked_mutton' }, { hunger: 17, health: 17 }), false)
   assert.equal(rule({ name: 'minecraft:mutton' }, { hunger: 17, health: 9.6 }), false)
   assert.equal(wire(() => { throw new ReferenceError('food is not defined') }, () => play), false)
+})
+
+test('between-leg travel does not hunt animals for a snack while raw meat is kept for the furnace', () => {
+  assert.equal(huntForSnack(play, { hunger: 12, health: 20 }), false)
+  assert.equal(huntForSnack(play, { hunger: 9, health: 20 }), true)
+  assert.equal(huntForSnack(play, { hunger: 12, health: 12 }), true)
+  assert.equal(huntForSnack({ ...play, botMode: 'quarry' }, { hunger: 12, health: 20 }), true)
 })

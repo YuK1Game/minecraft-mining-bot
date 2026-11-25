@@ -138,20 +138,24 @@ function createRuntimeOperations (rt) {
             // Live 15:04: a raw chicken matched FOOD but the eat check refused it
             // and the step looped. One refusal ends eating here (emergency rotten
             // flesh is tried once); the step goes on to hunting.
-            const snack = rt.require('./modes/raw-meat-keep').snackItems(rt.host.shared, { hunger: hunger(), health: st.health }, items()).find(i => FOOD.test(i.name ?? '') && i.count > 0)
+            const rawKeep = rt.require('./modes/raw-meat-keep')
+            const vitals = { hunger: hunger(), health: st.health }
+            const snack = rawKeep.snackItems(rt.host.shared, vitals, items()).find(i => FOOD.test(i.name ?? '') && i.count > 0)
             if (!eatRefused && snack) { try { await operations.food.eat(Number.isInteger(snack.slot) ? { slot: snack.slot } : {}); say(`食べました（満腹度 ${hunger()}）`); continue } catch (e) { eatRefused = true; say(`食事を見送り: ${String(e.message ?? e).slice(0, 60)}`) } }
             if (!rottenTried && count(/^minecraft:rotten_flesh$/) > 0) { rottenTried = true; try { await operations.food.eat({ allowEmergencyRotten: true }); say(`非常食として腐った肉を食べました（満腹度 ${hunger()}）`); continue } catch {} }
-            const feet = feetOf()
-            const animal = rt.allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
-            if (animal && hunts < 12) {
-              hunts++
-              const before = count(FOOD)
-              if (await walkNear(animal.position, [1])) {
-                for (let hit = 0; hit < 6; hit++) { try { await rt.combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!rt.allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
-                await pickup(animal.position)
+            if (rawKeep.huntForSnack(rt.host.shared, vitals)) {
+              const feet = feetOf()
+              const animal = rt.allActors().filter(a => a?.kind === 'mob' && a.hostile === false && /^minecraft:(?:cow|pig|sheep|chicken)$/.test(a.entityType ?? '') && a.alive !== false && a.position && a.baby !== true && a.isBaby !== true && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 24).sort((a, b) => Math.hypot(a.position.x - feet.x, a.position.z - feet.z) - Math.hypot(b.position.x - feet.x, b.position.z - feet.z))[0]
+              if (animal && hunts < 12) {
+                hunts++
+                const before = count(FOOD)
+                if (await walkNear(animal.position, [1])) {
+                  for (let hit = 0; hit < 6; hit++) { try { await rt.combat.animalAttack(animal.runtimeId, {}) } catch { break } await sleep(500); if (!rt.allActors().some(a => String(a.runtimeId) === String(animal.runtimeId) && a.alive !== false)) break }
+                  await pickup(animal.position)
+                }
+                if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
+                continue
               }
-              if (count(FOOD) > before) say(`食料を得ました（${count(FOOD)}個）`)
-              continue
             }
           }
           // 1a. a food stock before a long trip (coordinator 2026-11-14: 5-10)

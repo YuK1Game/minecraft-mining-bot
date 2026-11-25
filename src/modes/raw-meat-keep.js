@@ -31,6 +31,12 @@ function snackItems (shared, vitals, items = []) {
   return keeping(shared, vitals) ? items.filter(item => !RAW.test(item?.name ?? '')) : items
 }
 
+// Hunting an animal yields raw meat; when raw meat is kept for the furnace,
+// hunting as a between-leg hunger snack cannot feed the player (live 2026-11-25
+// 10:47-11:07 JST: prepGather chased animals for 20 min at hunger 11-12 while
+// walking home to cook 13 raw meat).
+const huntForSnack = (shared, vitals) => !keeping(shared, vitals)
+
 // The eat operation asks this rule for every food it might choose (actions/food.js setKeep), so no meal path eats
 // the kept meat. A runtime built without the food module (a partial test harness) has nothing to wire.
 function wire (food, shared) {
@@ -41,4 +47,4 @@ function wire (food, shared) {
   return true
 }
 
-module.exports = { wire, snackItems, keeping, RAW, HUNGER, HEALTH }
+module.exports = { wire, snackItems, keeping, huntForSnack, RAW, HUNGER, HEALTH }
