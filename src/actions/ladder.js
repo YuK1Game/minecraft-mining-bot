@@ -6,7 +6,7 @@
 const { movementInput } = require('../movement/movement')
 const { observedScope } = require('../movement/server-position-verifier')
 const { serverPose, usableServerPose, validPositionVolume, withinPositionVolume, workingFeet } = require('../quarry/exit/quarry-pillar')
-const { FACE, ladderAt, ladderPlan, landingAt, safeBody, fail } = require('../movement/ladder-geometry')
+const { FACE, ladderAt, ladderOriginAt, ladderPlan, landingAt, safeBody, fail } = require('../movement/ladder-geometry')
 const { rebaseLadderCorrection, recordLadderFrame } = require('../movement/ladder-correction')
 const copy = value => structuredClone(value)
 const horizontal = (a, b) => Math.hypot(a.x - b.x, a.z - b.z)
@@ -40,6 +40,8 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         if (!rebaseLadderCorrection({ run, correction, pose, state, getBlock, now: now() })) {
           run.correctionDiagnostic = { refusal: run.correctionRefusal, phase: run.phase,
             feet: [pose.position.x, pose.position.y - 1.62, pose.position.z].map(value => Number(value.toFixed(4))),
+            vel: correction?.velocity ? [correction.velocity.x, correction.velocity.y, correction.velocity.z].map(value => Number(value.toFixed(4))) : null,
+            age: correction?.receivedAt ? now() - Date.parse(correction.receivedAt) : null,
             tick: correction?.tick ?? null,
             oldestQueuedTick: run.sentFrames[0]?.tick ?? null, newestQueuedTick: run.sentFrames.at(-1)?.tick ?? null }
           fail('LADDER_SERVER_CORRECTION')
@@ -76,7 +78,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       const controls = { ...base, ...(holdingSneak ? { sneak: true } : {}) }
       try {
         const predicted = run.physics.step(run.physical, controls)
-        safeBody(getBlock, run.physics, predicted.position, run.replayedCorrections > 0 ? run.plan : null)
+        safeBody(getBlock, run.physics, predicted.position, (run.replayedCorrections > 0 || run.plan.midLadder) ? run.plan : null)
         // A short braking lookahead avoids circling the centre with residual
         // airborne velocity when getting on/off a ladder.
         let coast = predicted
@@ -129,7 +131,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         const fineLanding = run.physical.onGround && near && horizontal(p, plan.centre) > 0.85
         next = steer(run, plan.to, ontoLanding && (fineLanding || !run.physical.onGround && (horizontal(p, plan.centre) < 0.7 || near)))
       }
-      safeBody(getBlock, run.physics, next.predicted.position, run.replayedCorrections > 0 ? run.plan : null)
+      safeBody(getBlock, run.physics, next.predicted.position, (run.replayedCorrections > 0 || run.plan.midLadder) ? run.plan : null)
       const np = next.predicted.position
       if (np.y < Math.min(plan.from.y, plan.to.y) - 0.35 || np.y > Math.max(plan.from.y, plan.to.y) + 1.25 || horizontal(np, plan.centre) > 1.25) fail('LADDER_LEFT_ROUTE')
       // Upward momentum can carry the Bot above the last rung during a
@@ -185,10 +187,11 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       if (!evidence) fail('LADDER_ORIGIN_UNCONFIRMED')
       const current = check(run)
       if (horizontal(workingFeet(current), run.plan.from) > 0.12 || Math.abs(workingFeet(current).y - run.plan.from.y) > 0.12) fail('LADDER_ORIGIN_CHANGED')
-      if (!landingAt(getBlock, run.physics, workingFeet(current))) fail('LADDER_ORIGIN_UNSUPPORTED')
+      const liveMidLadder = ladderOriginAt(getBlock, run.physics, workingFeet(current), run.plan.column)
+      if (!landingAt(getBlock, run.physics, workingFeet(current)) && !liveMidLadder) fail('LADDER_ORIGIN_UNSUPPORTED')
       run.physical = run.physics.fromServer(current)
       if (run.physical.isInWater || run.physical.isInLava || run.physical.isInWeb || !run.physical.onGround && !ladderAt(getBlock, { x: run.plan.column.x, y: Math.floor(run.physical.position.y), z: run.plan.column.z })) fail('LADDER_ORIGIN_UNSAFE')
-      run.phase = horizontal(run.physical.position, run.plan.centre) > 0.16 ? 'mount' : 'climb'
+      run.phase = !liveMidLadder && horizontal(run.physical.position, run.plan.centre) > 0.16 ? 'mount' : 'climb'
       const bound = timeoutMs ?? Math.min(180000, 6000 + Math.abs(run.plan.to.y - run.plan.from.y) * 650)
       run.maxTicks = Math.ceil(bound / 50) + 4
       const deadline = now() + bound

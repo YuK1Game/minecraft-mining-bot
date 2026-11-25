@@ -301,6 +301,15 @@ test('a float32 correction at the verified ladder face admits rounding but rejec
   assert.equal(safeBody(getBlock, physics, p, { column, facing }), true)
   assert.throws(() => safeBody(getBlock, physics, { ...p, z: p.z + 0.01 }, { column, facing }), { code: 'LADDER_BODY_OBSTRUCTED' })
   assert.throws(() => safeBody(() => ({ ...getBlock(), name: 'minecraft:stone' }), physics, p, { column, facing }), { code: 'LADDER_BODY_OBSTRUCTED' })
+  // Adjacent shaft wall at large coordinates (z=10243.3 -> float32 10243.2998046875) also admits float32 rounding.
+  const wallColumn = { x: 9797, z: 10243 }
+  const wallGet = (x, y, z) => x === wallColumn.x && z === wallColumn.z
+    ? { known: true, name: 'minecraft:ladder', properties: { facing_direction: 5 }, boundingBox: 'block', extra: [] }
+    : { known: true, name: 'minecraft:stone', boundingBox: 'block', extra: [] }
+  const wallPhys = { blockAt: ({ x, z }) => ({ shapes: x === wallColumn.x && z === wallColumn.z ? [[0, 0, 0, 0.1875, 1, 1]] : [[0, 0, 0, 1, 1, 1]] }) }
+  const wallFeet = { x: 9797.5127, y: 54.749, z: Math.fround(10243.3) }
+  assert.equal(safeBody(wallGet, wallPhys, wallFeet, { column: wallColumn, facing: 5 }), true)
+  assert.throws(() => safeBody(wallGet, wallPhys, { ...wallFeet, z: wallFeet.z - 0.01 }, { column: wallColumn, facing: 5 }), { code: 'LADDER_BODY_OBSTRUCTED' })
 })
 
 test('a changed support wall or a missing input receipt never authorizes another step', async t => {
@@ -333,4 +342,48 @@ test('a surface side landing can be reached over the last rung during a long asc
   assert.equal(result.serverConfirmed, true)
   assert.equal(f.server.onGround, true)
   assert.ok(f.packets.some(packet => packet.position.y > top + 2.62), 'the ascent briefly rises above the final rung')
+})
+
+test('a long descent rebases verified server corrections continuously without aborting mid-ladder', async t => {
+  let correctedY = 95, corrections = 0
+  const f = fixture(t, { startY: 95, landings: [65, 95], frontLanding: true, startOffset: { x: 0, z: 1 }, timeoutMs: 26000, interrupt: c => {
+    const p = c.server.position
+    if (p.y > correctedY - 2.0 || p.y < 66.0) return
+    correctedY = p.y + 0.22
+    corrections++
+    c.correct({ x: p.x, y: correctedY + 1.62, z: p.z }, { delta: { x: 0, y: -0.15, z: 0 }, updatePeer: true })
+  } })
+  const result = await f.move(95, 65, { from: { x: 0.5, y: 95, z: 0.5 } })
+  assert.ok(corrections > 12, `expected >12 descent corrections, got ${corrections}`)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.replayedCorrections, corrections)
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+})
+
+test('a top dismount correction with walking/settling velocity rebases onto the landing', async t => {
+  let corrected = false
+  const f = fixture(t, { landings: [65, 68], startOffset: { x: -1, z: 0 }, interrupt: c => {
+    const p = c.server.position
+    if (!corrected && p.y >= 67.9 && p.x > 0.65 && p.x < 1.3) {
+      corrected = true
+      c.correct({ x: p.x + 0.2, y: 68.25 + 1.62, z: p.z }, { delta: { x: 0.14, y: -0.1, z: 0 }, updatePeer: true })
+    }
+  } })
+  const result = await f.move(65, 68, { from: { x: 0.5, y: 65, z: 0.5 } })
+  assert.equal(corrected, true)
+  assert.equal(result.status, 'completed', JSON.stringify(result))
+  assert.equal(result.replayedCorrections, 1)
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+})
+
+test('a mid-ladder pose on a verified rung resumes descent instead of failing LADDER_ORIGIN_UNSUPPORTED', async t => {
+  const f = fixture(t, { startY: 67.4, landings: [65, 71], startOffset: { x: -1, z: 0 } })
+  const working = f.getState().position
+  const result = await f.move(67.4, 65, { from: { ...working, y: working.y - 1.62 } })
+  assert.equal(result.status, 'completed', JSON.stringify({ result, errors: f.errors }))
+  assert.equal(result.serverConfirmed, true)
+  assert.equal(f.server.onGround, true)
+  assert.ok(Math.abs(f.host.snapshot().position.y - 1.62 - 65) < 0.04)
 })

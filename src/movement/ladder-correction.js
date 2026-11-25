@@ -9,36 +9,52 @@ const finite = point => point && ['x', 'y', 'z'].every(axis => Number.isFinite(p
 
 function rebaseLadderCorrection ({ run, correction, pose, state, getBlock, now }) {
   const reject = reason => { run.correctionRefusal = reason; return false }
-  if (run.plan.direction !== 1 || !['climb', 'dismount'].includes(run.phase)) return reject('phase')
-  // Only height from a previously accepted server correction can extend the
+  const { from, to, centre, column, facing, direction } = run.plan
+  if (![1, -1].includes(direction) || !['climb', 'dismount'].includes(run.phase)) return reject('phase')
+  // Only vertical progress from a previously accepted server correction can extend the
   // allowance. Replays at the same height and predicted motion never add it.
-  const { from, to } = run.plan
-  const observedRise = Math.floor((run.highestCorrectionY ?? from.y) - from.y)
-  const routeRise = Math.ceil(to.y - from.y)
-  if (run.replayedCorrections >= MAX_REBASES + Math.max(0, Math.min(routeRise, observedRise))) return reject('correction_limit')
+  const observedProgress = direction === 1
+    ? Math.floor((run.highestCorrectionY ?? from.y) - from.y)
+    : Math.floor(from.y - (run.lowestCorrectionY ?? from.y))
+  const routeSpan = Math.ceil(Math.abs(to.y - from.y))
+  if (run.replayedCorrections >= MAX_REBASES + Math.max(0, Math.min(routeSpan, observedProgress))) return reject('correction_limit')
   if (correction?.accepted !== true || correction.source !== 'correct_player_move_prediction' ||
       correction.temporalScope !== 'packet_tick' || correction.velocitySource !== 'server_correction' ||
       !finite(correction.position) || !finite(correction.velocity) || typeof correction.onGround !== 'boolean' ||
       typeof correction.tick !== 'string' || !/^\d+$/.test(correction.tick) || correction.tick === '0') return reject('no_bound_packet')
   if (!['x', 'y', 'z'].every(axis => Math.abs(pose.position[axis] - correction.position[axis]) < 1e-4)) return reject('position_mismatch')
   const age = now - Date.parse(correction.receivedAt)
+  const dismounting = run.phase === 'dismount'
+  // On ladders, descent velocity is ~-0.15..-0.23/tick and dismounting onto a landing
+  // walks horizontally (~0.10..0.25/tick) and steps down (live 2026-11-26: 100% of
+  // descents refused with phase at Y=62.46 and 100% of ascents refused with age_or_velocity at dismount).
+  const maxHoriz = dismounting ? 0.32 : 0.16
+  const minVy = (direction === -1 || dismounting) ? -0.35 : -0.05
+  const maxVy = 0.35
   if (!(age >= 0 && age <= MAX_CORRECTION_AGE) ||
-      Math.hypot(correction.velocity.x, correction.velocity.z) > 0.08 ||
-      correction.velocity.y < -0.05 || correction.velocity.y > 0.3) return reject('age_or_velocity')
+      Math.hypot(correction.velocity.x, correction.velocity.z) > maxHoriz ||
+      correction.velocity.y < minVy || correction.velocity.y > maxVy) return reject('age_or_velocity')
 
   const index = run.sentFrames.findIndex(frame => frame.tick === correction.tick)
   if (index < 0) return reject('tick_not_queued')
   const correctedTick = BigInt(correction.tick)
   if (run.lastRebasedTick != null && correctedTick <= run.lastRebasedTick) return reject('old_tick')
 
-  const { centre, column, facing } = run.plan
+  const minY = Math.min(from.y, to.y) - 0.35
+  const maxY = Math.max(from.y, to.y) + 1.25
   const onRoute = physical => {
     const p = physical.position
-    return Math.hypot(p.x - centre.x, p.z - centre.z) <= 0.28 &&
-      p.y >= from.y - 0.12 && p.y <= Math.max(from.y, to.y) + 1.25 &&
-      !physical.isInWater && !physical.isInLava && !physical.isInWeb &&
-      ladderAt(getBlock, { ...column, y: Math.floor(p.y + 1e-7) })?.face === facing &&
-      safeBody(getBlock, run.physics, p, run.plan)
+    const nearColumn = Math.hypot(p.x - centre.x, p.z - centre.z) <= 0.28
+    const nearLanding = dismounting && Math.hypot(p.x - to.x, p.z - to.z) <= 1.05 &&
+      Math.hypot(p.x - centre.x, p.z - centre.z) <= 1.25 && Math.abs(p.y - to.y) <= 1.25
+    if (!nearColumn && !nearLanding) return false
+    if (p.y < minY || p.y > maxY) return false
+    if (physical.isInWater || physical.isInLava || physical.isInWeb) return false
+    const rungY = Math.floor(p.y + 1e-7)
+    const onRung = ladderAt(getBlock, { ...column, y: rungY })?.face === facing
+    const aboveTopRung = dismounting && direction === 1 && rungY === run.plan.maxY + 1
+    if (nearColumn && !onRung && !aboveTopRung && !physical.onGround) return false
+    return safeBody(getBlock, run.physics, p, run.plan)
   }
   try {
     let physical = run.physics.fromServer({ ...state, position: correction.position, positionSource: correction.source },
@@ -54,11 +70,13 @@ function rebaseLadderCorrection ({ run, correction, pose, state, getBlock, now }
       if (!onRoute(physical)) return reject('replayed_pose_off_route')
     }
     run.physical = physical
-    run.phase = 'climb'
+    const atLevel = direction > 0 ? physical.position.y >= run.plan.climbToY - 0.12 : physical.position.y <= run.plan.climbToY + 0.22
+    run.phase = dismounting && atLevel ? 'dismount' : 'climb'
     run.settledFrames = 0
     run.stalled = 0
     run.lastRebasedTick = correctedTick
-    run.highestCorrectionY = Math.max(run.highestCorrectionY ?? from.y, correctedY)
+    if (direction === 1) run.highestCorrectionY = Math.max(run.highestCorrectionY ?? from.y, correctedY)
+    else run.lowestCorrectionY = Math.min(run.lowestCorrectionY ?? from.y, correctedY)
     run.replayedCorrections++
     run.correctionRefusal = null
     return true
