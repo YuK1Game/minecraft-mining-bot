@@ -445,3 +445,11 @@ test('side-wall coal and copper ores are harvested and refilled during an iron r
   assert.equal(w.getBlock(coalWall.x, coalWall.y, coalWall.z).name, 'minecraft:cobblestone')
   assert.equal(w.getBlock(copperWall.x, copperWall.y, copperWall.z).name, 'minecraft:cobblestone')
 })
+
+test('a dig refused for a hazard beside the target seals and skips the branch, a reach or tool refusal does not', () => {
+  const { hazardRefusal } = require('../src/modes/mining/mine-controller')
+  assert.equal(hazardRefusal({ code: 'MINE_DIG_REFUSED', detail: '9753,17,10228: 対象の隣に液体・落下ブロックなどがあります。' }), true)
+  assert.equal(hazardRefusal({ code: 'MINE_DIG_REFUSED', detail: 'このブロックは自動採掘の対象外です: bedrock' }), true)
+  assert.equal(hazardRefusal({ code: 'MINE_DIG_REFUSED', detail: '確認済みの足場から採掘面に届きません。' }), false)
+  assert.equal(hazardRefusal({ code: 'MINE_DIG_REFUSED', detail: '適切なツルハシの装備を確認できません: iron_ore' }), false)
+})

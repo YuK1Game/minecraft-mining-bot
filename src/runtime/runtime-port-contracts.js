@@ -25,7 +25,7 @@ module.exports = {
       protection: 'UserCombatItem combatAttackExposure combatExposure createUserBehaviors evaluateThreats generationCombat generationHut generationSafety generationShelter idleSafetyRuntime quarryCombatArmed quarryRetreatDepth startIdle threatReachability tickUserBehaviors userBehaviorError userBehaviorLease userBehaviorSleeping userBehaviorTimer userBehaviorWakePending userBehaviors'.split(' '),
       environment: 'delay host require'.split(' '),
     },
-    writable: 'motionOrigin portableMovementOwner quarryCancellationRevision quarryRetreatDepth userBehaviorGenerationScope userBehaviorLease userBehaviorTimer userBehaviors'.split(' ').filter(Boolean)
+    writable: 'motionOrigin portableMovementOwner portableMovementSerial quarryCancellationRevision quarryRetreatDepth userBehaviorGenerationScope userBehaviorLease userBehaviorTimer userBehaviors'.split(' ').filter(Boolean)
   },
   operations: {
     groups: {
