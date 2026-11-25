@@ -77,6 +77,17 @@ function createMineActions (ctx) {
       if (!await clear(previous.key)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
     }
+    // A table or furnace put down for the mine's supplies in an earlier life or connection is no part of the mine's
+    // structure: whether it stands is the workstation ledger's to find (player-workstations.js). Its pending record
+    // can never be confirmed from this scope and held every later dig (live 2026-11-26 06:23-06:33 JST after the
+    // death at 05:57: place:9862,52,10152 crafting_table, 150 m away, MINE_ACTION_UNCONFIRMED for ten minutes).
+    const left = state.pendingAction
+    const feetNow = ctx.getFeet?.(), away = !!feetNow && cell(left?.position) && Math.hypot(left.position.x + 0.5 - feetNow.x, left.position.z + 0.5 - feetNow.z) > 16
+    if (left?.kind === 'place' && (left.scope !== scope || away) && /^minecraft:(?:crafting_table|furnace)$/.test(left.name ?? '')) {
+      if (!await clear(left.key)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
+      if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
+      ctx.log?.(`採掘場: 前の生存回か離れた場所の ${String(left.name).replace('minecraft:', '')} 設置待ち (${key(left.position)}) は採掘場の構造ではないため、記録を外して作業を続けます`)
+    }
     if (state.pendingAction) return wait('MINE_ACTION_UNCONFIRMED', 'inventory_update', { evidence: state.pendingAction })
     state.pendingAction = { ...intent, scope, stage: 'attempting' }
     if (!await save() || !same(scope)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
