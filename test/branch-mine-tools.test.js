@@ -73,3 +73,44 @@ test('a remaining deep diamond block chooses a usable pick despite an older iron
   await tools({ request, blockName: 'minecraft:stone' })
   assert.deepEqual(calls, [['diamond_pickaxe', 1], ['iron_pickaxe', 2], ['stone_pickaxe', 1]])
 })
+
+test('remainingPickBlock includes non-slab floor ores so floor replacement requests an iron pickaxe instead of looping on MINE_TOOL_SUPPLY', async () => {
+  const { remainingPickBlock } = require('../src/modes/mining/mine-controller')
+  const { createMineGeometry, mineSteps, stepCells } = require('../src/modes/mining/mine-geometry')
+  const plan = createMineGeometry({
+    scope: { profile: 'test', realmId: '1', dimension: 'overworld' },
+    anchor: { x: 0, z: 0 }, surfaceY: 64
+  })
+  const step = mineSteps(plan, { layer: 'upper' }).find(s => s.kind === 'branch')
+  const cells = stepCells(plan, step)
+  const floorCell = cells.floor[0].position ?? cells.floor[0]
+  const blocks = new Map()
+  for (const p of cells.clear) blocks.set(`${p.x},${p.y},${p.z}`, { known: true, name: 'minecraft:air', boundingBox: 'empty' })
+  blocks.set(`${floorCell.x},${floorCell.y},${floorCell.z}`, { known: true, name: 'minecraft:gold_ore', boundingBox: 'block' })
+  const ctx = {
+    getBlock: (x, y, z) => blocks.get(`${x},${y},${z}`) ?? { known: true, name: 'minecraft:stone', boundingBox: 'block' },
+    getFeet: () => cells.stand
+  }
+  const picked = remainingPickBlock(ctx, { plan }, step)
+  assert.equal(picked, 'minecraft:gold_ore')
+
+  const calls = []
+  const items = [{ name: 'minecraft:stone_pickaxe', slot: 0, count: 1, durabilityKnown: true, durabilityRemaining: 80 }]
+  const tools = createMineTools(
+    { cancelled: () => false, runtime: { raw: () => null }, supplies: { acquire: async (...args) => calls.push(args) } },
+    { inventory: () => ({ known: true, items }) }
+  )
+  const res = await tools({ request: { resource: 'raw_iron' }, blockName: picked })
+  assert.equal(res.code, 'MINE_TOOL_SUPPLY')
+  assert.deepEqual(calls, [['iron_pickaxe', 1]])
+
+  // Once all floor cells are bottom cobblestone slabs, floor no longer asks for any pickaxe.
+  for (const entry of cells.floor) {
+    const p = entry.position ?? entry
+    blocks.set(`${p.x},${p.y},${p.z}`, {
+      known: true, name: 'minecraft:cobblestone_slab', boundingBox: 'block',
+      properties: { 'minecraft:vertical_half': 'bottom' }
+    })
+  }
+  assert.equal(remainingPickBlock(ctx, { plan }, step), null)
+})

@@ -2,7 +2,8 @@
 
 const {mineSteps,stepCells,upgradeMineGeometry,MAX_SIDE}=require('./mine-geometry')
 const state=require('./mine-state')
-const {at,solid,inventory,count,scope,live,received,save,pending,blocked,stopped,results}=require('./mine-common')
+const {at,air,solid,inventory,count,scope,live,received,save,pending,blocked,stopped,results}=require('./mine-common')
+const {bottomSlab}=require('./mine-observed')
 const {excavateSegment,inspectDig}=require('./mine-excavate')
 const {blockRule}=require('../../quarry/quarry-rules')
 const {retainStorageTorchSupport}=require('./mine-storage-layout')
@@ -27,12 +28,22 @@ const inside=insideMine
 
 function remainingPickBlock(ctx,branch,step){
   let name=null,tier=0
-  for(const p of stepCells(branch.plan,step).clear){
+  const cells=stepCells(branch.plan,step)
+  const consider=(p,needsDig)=>{
+    if(!needsDig)return
     const block=at(ctx,p),rule=blockRule(block?.name)
-    if(rule?.needs==='pickaxe' && rule.tier>tier && inspectDig(ctx,p,branch).clear===false){
+    if(rule?.needs==='pickaxe' && rule.tier>tier){
       name=block.name
       tier=rule.tier
     }
+  }
+  for(const p of cells.clear)consider(p,inspectDig(ctx,p,branch,'corridor').clear===false)
+  // Floor replacement (mine-lighting.js) also mines non-slab floor blocks before
+  // placing cobblestone slabs; include them so an iron-tier ore (e.g. gold or
+  // redstone at Y=15) triggers tool upgrade instead of looping on MINE_TOOL_SUPPLY.
+  for(const entry of cells.floor??[]){
+    const p=entry.position??entry,b=at(ctx,p)
+    consider(p,b?.known===true && !air(b) && !bottomSlab(b))
   }
   return name
 }
@@ -186,7 +197,8 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   // A lower request first commissions the upper shaft and its storage.
   const current=layer==='lower' && !branch.lobbyReady?.upper?'upper':layer
   const shaftOnly=!branch.shaft?.landings?.[current]
-  const prepared=await prepare(ctx,branch,current,{shaftOnly})
+  const nextStep=!shaftOnly && current===layer ? steps[progress.cursor] : null
+  const prepared=await prepare(ctx,branch,current,{shaftOnly,blockName:nextStep?remainingPickBlock(ctx,branch,nextStep):null})
   if (!live(ctx)) return outcome(stopped())
   if (!received(prepared)) {
     const detail = prepared?.detail || prepared?.code
@@ -294,4 +306,4 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
   return outcome(out,'採掘物を計画済みのラージチェストへ収納します。')
 }
 
-module.exports={requestMine,createBranchMine:ctx=>({request:request=>requestMine(ctx,request)}),MINERALS,enabled,layerFor,beforeSurfaceSupply,finishMineWork,minePackRoom,stepLayer}
+module.exports={requestMine,createBranchMine:ctx=>({request:request=>requestMine(ctx,request)}),MINERALS,enabled,layerFor,beforeSurfaceSupply,finishMineWork,minePackRoom,stepLayer,remainingPickBlock}
