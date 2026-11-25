@@ -117,7 +117,9 @@ test('player start resumes a witnessed End exit through the real mode dispatcher
   host.world = { getBlock: () => ({ known: false }) }
   host.shared.dragonDimensionTransition = { connectionId: world.connectionId, sequence: 2, from: 'end', to: 'overworld', deathId: 0, respawn: false }
   host.shared.loadingScreenEnded = true
-  const rt = { ...initial.rt, raw: () => world, inventory: () => world.inventory, armor: () => null }
+  // The retry observer reads the same live threat ports as the action loop,
+  // including when a witnessed return is the next expedition decision.
+  const rt = { ...initial.rt, raw: () => world, inventory: () => world.inventory, armor: () => null, hostiles: () => [], nearestHostile: () => Infinity }
   const checkpoint = createDragonState({ shared: host.shared, root: initial.root, getState: rt.raw })
   await checkpoint.observe()
   const record = checkpoint.record()

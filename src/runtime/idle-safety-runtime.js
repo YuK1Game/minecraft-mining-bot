@@ -1,9 +1,6 @@
 'use strict'
 
-// Moved from runtime.js by scripts/extract-runtime-block.js.
-// `rt` exposes the runtime closure bindings this code uses; each read or write
-// of rt.<name> reads or writes the runtime's own variable at that moment.
-// Modules are loaded through rt.require, the runtime's own require.
+// Live rt aliases use declared port groups; rt.require stays relative to runtime.js.
 
 const { prepareEscapePort } = require('./idle-escape/escape-port-prepare')
 const { collectEscapeCandidates } = require('./idle-escape/escape-port-search')
@@ -13,6 +10,7 @@ const { tryDetour } = require('./idle-escape/escape-port-detour')
 const { trySurfaceRetreat } = require('./idle-escape/escape-port-surface')
 
 function createIdleSafetyRuntime (rt) {
+  rt = rt.require('./runtime/runtime-ports').bindRuntimePorts(rt, 'safety')
   const { threatFields } = rt.require('./safety/threat-policy'), { splitExposed } = rt.require('./safety/exposed-actors')
   const { createSafetyOwnership } = rt.require('./runtime/safety-ownership')
     const generationGuardRoute = rt.createGuardedRoute({

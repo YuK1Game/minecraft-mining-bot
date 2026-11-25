@@ -10,6 +10,7 @@ const { supplyNeeds, ladderBatches, builtWork } = require('./mine-needs')
 const { occupied } = require('./mine-carry')
 const { count } = require('../dragon-supply-kit')
 const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
+const { prerequisiteResult } = require('./mine-common')
 
 // Infrastructure is prepared in bounded batches. Torches can bootstrap from
 // charcoal, so preparing a coal mine never recursively starts another mine.
@@ -23,8 +24,8 @@ function createMineSupplies (ctx, actions, storage) {
   const openStand = createOpenStand({ getBlock: (x, y, z) => actions.block({ x, y, z }), getFeet: ctx.getFeet, walk: to => actions.walk(to) })
   async function acquire (name, amount) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
-    await ctx.supplies.acquire(name, amount)
-    return wait('MINE_SUPPLIES_IN_PROGRESS', `${name} ${have(name)}/${amount}`)
+    const supplied = await ctx.supplies.acquire(name, amount)
+    return prerequisiteResult(supplied, wait('MINE_SUPPLIES_IN_PROGRESS', `${name} ${have(name)}/${amount}`))
   }
   function nearby (name) {
     const p = ctx.getFeet()

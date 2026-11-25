@@ -1,6 +1,6 @@
 'use strict'
-const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),Module=require('node:module'),{setImmediate:turn}=require('node:timers/promises')
-const canonical=path.resolve(__dirname,'../.local/operator-live-helpers.cjs'),loaded=new Module(canonical,module);loaded.filename=canonical;loaded.paths=Module._nodeModulePaths(path.dirname(canonical));loaded._compile(fs.readFileSync(process.env.OPERATOR_HELPER_TEST_SOURCE??canonical,'utf8'),canonical);const {createOperatorHelpers}=loaded.exports
+const {test}=require('node:test'),assert=require('node:assert/strict'),{setImmediate:turn}=require('node:timers/promises')
+const {createOperatorHelpers}=require('../scripts/lib/operator-helpers')
 function scene({failLong=false,replaceMove=false}={}){
  const calls=[],state={phase:'spawned',profile:'bot',realm:{id:'21225335'},connectionId:'CONTROLLED',startedAt:'2026-11-01T00:00:00Z',runtimeEntityId:'1',dimension:'overworld',lifecycle:{deathId:0},position:{x:.5,y:66.62,z:.5},health:20,inventory:{known:true,items:[]},entities:[],entityStats:{unknownPositions:0},agent:{busy:false,actionActive:false},depotMission:{enabled:true,busy:false},safety:{running:true,busy:false},userBehaviors:{enabled:true,busy:false},movement:{phase:'idle'},mining:{phase:'idle'}}
  const response=x=>({ok:true,text:async()=>JSON.stringify(x)})

@@ -129,6 +129,9 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
         if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','ハザード支線の埋戻し状態を保存します。','owner_released')
         return closeHazardBranch(out.code,attempts)
       }
+      // The bounded failure decision changed: the next look can choose a
+      // different branch or finish its closure without a new terrain packet.
+      if(attempts<=4 || !branch.segmentTask)return {...out,retry:{kind:'now'}}
     }
     return out
   }
@@ -331,7 +334,7 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
         branch.capacityDestination='home'
         return outcome(blocked('MINE_CHECKPOINT','切り替える収納先を保存します。','owner_released'))
       }
-      return outcome(blocked('MINE_CAPACITY_ROUTE_CHANGED','採掘場の確認済みラージチェストへ収納先を切り替えました。','position_changed'))
+      return outcome(blocked('MINE_CAPACITY_ROUTE_CHANGED','採掘場の確認済みラージチェストへ収納先を切り替えました。','now'))
     }
     return outcome(out??blocked('MINE_HOME_STORAGE_UNAVAILABLE','地上のラージチェストを確認します。'),'本拠点のラージチェストへ採掘物を収納します。')
   }

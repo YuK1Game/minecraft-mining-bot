@@ -38,12 +38,12 @@ async function visitDeferred (ctx, search, offsets) {
     try { trip = await ctx.travelTo({ destination: centre }, { aborted: () => !live(ctx, before) }) } catch (error) {
       if (!live(ctx, before)) return { result: stopped() }
       ctx.log?.(`プレイヤーモード: ${name} への長距離移動を始められません（${String(error?.code ?? error?.message ?? error).slice(0, 80)}）。ほかの候補を先に調べます`)
-      return { result: blocked('MINE_SITE_VISIT_UNAVAILABLE', '採掘候補への長距離移動を始められません。', 'position_changed') }
+      return { result: blocked('MINE_SITE_VISIT_UNAVAILABLE', '採掘候補への長距離移動を始められません。', 'now') }
     }
     if (!live(ctx, before)) return { result: stopped() }
     if (away(ctx, centre) > ARRIVED_M) {
       ctx.log?.(`プレイヤーモード: ${name} の場所へ着けませんでした（残り ${Math.round(away(ctx, centre))}m、${trip?.reason ?? trip?.ended ?? '理由不明'}）。ほかの候補を先に調べます`)
-      return { result: blocked('MINE_SITE_VISIT_INCOMPLETE', '採掘候補の場所へ着けませんでした。ほかの候補を先に調べます。', 'position_changed') }
+      return { result: blocked('MINE_SITE_VISIT_INCOMPLETE', '採掘候補の場所へ着けませんでした。ほかの候補を先に調べます。', 'now') }
     }
   }
   search.index = index

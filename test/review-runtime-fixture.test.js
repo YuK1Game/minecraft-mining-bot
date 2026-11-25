@@ -16,6 +16,35 @@ const runtimeFile = path.resolve(__dirname, '../src/runtime.js')
 const runtimeDirectory = path.resolve(__dirname, '../src/runtime') + path.sep
 const nativeRead = fs.readFileSync
 
+test('real factories use declared port groups, preserve live state and only write owned bindings', async t => {
+  const real = require('../src/runtime/runtime-ports'), seen = new Map()
+  const f = fixture.exports.scene(t, { runtimeOverrides: {
+    './runtime/runtime-ports': { ...real, bindRuntimePorts (bindings, name) {
+      const alias = real.bindRuntimePorts(bindings, name)
+      seen.set(name, { alias, ports: real.runtimePortGroups(alias) })
+      return alias
+    } }
+  } })
+  assert.deepEqual([...seen.keys()].sort(), ['operations', 'safety', 'travel', 'userControl'])
+  for (const { alias, ports } of seen.values()) {
+    assert.ok(Object.isFrozen(alias)); assert.ok(Object.isFrozen(ports))
+    assert.equal(Reflect.set(alias, 'host', {}), false, 'a factory cannot replace the shared host')
+    assert.equal(Reflect.set(alias, 'raw', () => ({ health: 20 })), false, 'a factory cannot replace received state with a fabricated reading')
+    assert.equal(Reflect.set(alias, 'undeclared', true), false)
+  }
+  const user = seen.get('userControl')
+  f.raw.health = 17
+  assert.equal(user.ports.observation.working().health, 17, 'ports read the current closure rather than a creation-time copy')
+  assert.equal(Reflect.set(user.alias, 'disposed', true), false)
+  const context = { kind: 'combat', claimId: 'ports-real-lease', scope: f.scope() }
+  const token = await f.facadeOptions.acquireControl(context)
+  assert.notEqual(token.acquired, false)
+  assert.equal(user.ports.protection.userBehaviorLease.claimId, context.claimId)
+  await f.facadeOptions.resumeControl({ ...context, token })
+  assert.equal(user.ports.protection.userBehaviorLease, null)
+  assert.deepEqual(f.wire, [], 'port and lease checks do not create an attack receipt or queue a game action')
+})
+
 for (const rootCrlf of [true, false]) test(`real Runtime and divided control modules execute with ${rootCrlf ? 'root and child' : 'child-only'} CRLF sources`, async t => {
   const crlfReads = new Set(), transformed = new Set()
   t.mock.method(fs, 'readFileSync', (filename, ...args) => {

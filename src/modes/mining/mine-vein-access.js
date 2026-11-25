@@ -1,6 +1,6 @@
 'use strict'
 
-const {at,solid,count,scope,live,received,save,blocked,stopped,results}=require('./mine-common')
+const {at,solid,count,scope,live,received,save,blocked,stopped,results,prerequisiteResult}=require('./mine-common')
 const {walkCell}=require('./mine-excavate')
 const {reachLayer,walkLayer,leaveMine}=require('./mine-route')
 const {reachStorage}=require('./mine-stock')
@@ -61,9 +61,10 @@ async function prepareVeinReturn(ctx,branch){
       if(!live(ctx,before))return stopped()
       const previous=ctx.mineSupplyWork
       ctx.mineSupplyWork=true
-      try{await ctx.supplies.acquire('cobblestone',needed)}
+      let supplied
+      try{supplied=await ctx.supplies.acquire('cobblestone',needed)}
       finally{ctx.mineSupplyWork=previous}
-      return live(ctx,before) ? blocked('MINE_VEIN_FILL_SUPPLY','未完の鉱脈を閉じる丸石を地上で補給します。','inventory_update') : stopped()
+      return live(ctx,before) ? prerequisiteResult(supplied,blocked('MINE_VEIN_FILL_SUPPLY','未完の鉱脈を閉じる丸石を地上で補給します。','inventory_update')) : stopped()
     }
   }
   return reachVein(ctx,branch,layer)

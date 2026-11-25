@@ -21,10 +21,15 @@ const live = (ctx, before = scope(ctx)) => !!before && !ctx.cancelled() && scope
 const blocked = (code, detail, kind = 'terrain_received') => results.blocked(code, { kind }, { detail })
 const pending = (reason, result) => ({ done: false, reason, ...(result ? { result } : {}) })
 const stopped = () => results.interrupted('MINE_INTERRUPTED')
+// A nested supply step keeps its own retry precondition. Its completion only
+// completes that ingredient; the caller must still verify the requested tool
+// or material, so a nested completed result never authorizes construction.
+const prerequisiteResult = (value, fallback) => value?.result && ['partial', 'blocked', 'failed', 'interrupted', 'cancelled'].includes(value.result.status) ? value.result : fallback
 
 async function observe (ctx, cells, reason) {
-  if (!ctx.cancelled()) await ctx.minePorts?.observe?.({ cells: cells.map(point).filter(Boolean), reason })
-  return blocked('MINE_TERRAIN_UNKNOWN', reason)
+  const terrainCells = cells.map(point).filter(Boolean)
+  if (!ctx.cancelled()) await ctx.minePorts?.observe?.({ cells: terrainCells, reason })
+  return results.blocked('MINE_TERRAIN_UNKNOWN', { kind: terrainCells.every(p => at(ctx, p)?.known === true) ? 'now' : 'terrain_received', terrainCells }, { detail: reason })
 }
 
 // The intent is durable before an input can be sent. Rechecking the life and inventory after every await also
@@ -32,7 +37,10 @@ async function observe (ctx, cells, reason) {
 async function save (ctx, branch, before = scope(ctx)) {
   if (!live(ctx, before)) return false
   if (typeof ctx.saveMine !== 'function') return false
-  return await ctx.saveMine() === true && live(ctx, before)
+  try { return await ctx.saveMine() === true && live(ctx, before) } catch (error) {
+    ctx.log?.(`採掘場: チェックポイントを保存できません: ${String(error.message ?? error).slice(0, 160)}`)
+    return false
+  }
 }
 
 async function action (ctx, branch, intent, call, confirm = () => true) {
@@ -59,4 +67,4 @@ async function action (ctx, branch, intent, call, confirm = () => true) {
 
 const feetAt = (ctx, target) => { const feet = ctx.getFeet(); return !!feet && Math.hypot(feet.x - target.x, feet.z - target.z) <= 0.2 && Math.abs(feet.y - target.y) < 0.12 }
 
-module.exports = { key, point, centre, at, air, open, wet, solid, standY, received, inventory, count, scope, live, blocked, pending, stopped, observe, save, action, feetAt, results }
+module.exports = { key, point, centre, at, air, open, wet, solid, standY, received, inventory, count, scope, live, blocked, pending, stopped, prerequisiteResult, observe, save, action, feetAt, results }

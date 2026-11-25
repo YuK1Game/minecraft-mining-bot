@@ -1,7 +1,7 @@
 'use strict'
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
-const { madeObservedProgress } = require('../.local/root-low-health-recovery')
+const { madeObservedProgress } = require('../scripts/lib/operator-helpers')
 
 test('a further recovery batch needs fresh server movement without damage', () => {
   const before = { connectionId: 'one', health: 10, rawServerPosition: { x: 0, y: 65, z: 0 }, rawServerPositionUpdatedAt: 1000 }

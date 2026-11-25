@@ -76,7 +76,8 @@ async function surveyMine ({ world, getState, bounds, requestSections = null, ma
       const i = ((p.y - bounds.min.y) * size.z + p.z - bounds.min.z) * size.x + p.x - bounds.min.x, block = palette[ids[i]]
       return block ? { ...block, position: p } : { known: false, position: p, reason: 'unreceived_mine_terrain' }
     }
-    return { status: unknown ? 'partial' : 'ready', scope, liveScope, bounds: structuredClone(bounds), revision: capturedRevision, known, unknown, total, requests, ores,
+    const terrainReceipt = witness ?? { current: () => capturedRevision == null || world.revision?.() === capturedRevision }
+    return { status: unknown ? 'partial' : 'ready', scope, liveScope, bounds: structuredClone(bounds), revision: capturedRevision, known, unknown, total, requests, ores, terrainReceipt,
       needsObservation: [...unknownSections.values()], at, current: () => { try { check(); return true } catch { return false } } }
   } catch (error) {
     return { status: error.code === 'MINE_CANCELLED' ? 'cancelled' : 'observing', code: error.code ?? 'MINE_SURVEY_FAILED', requests, reason: error.message }

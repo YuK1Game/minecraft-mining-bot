@@ -180,9 +180,21 @@ function createDragonRuntime (ports) {
     if (result.done) { record.early.finished = true; record.stage = 'nether' }
     return result
   }
-  const expedition = createDragonExpedition({ ...ports, now, state, raw, run, legacyNeeded })
+  const retryState = () => {
+    const host = runtime.host?.(), inventory = shared.inventoryStore, chest = ports.operations?.chest?.snapshot?.()
+    const night = require('../travel/night-stop').dayPhase(runtime.travel?.()?.travelClock?.())
+    return {
+      position: ports.getFeet?.(), terrainRevision: typeof host?.world?.revision === 'function' ? host.world.revision() : host?.world?.revision ?? null,
+      inventoryRevision: JSON.stringify([inventory?.revision ?? null, Object.values(inventory?.containers?.main ?? {}).map(slot => slot.at)]),
+      containerRevision: chest ? JSON.stringify([chest.window?.epoch, chest.contentsKnown, chest.slots]) : null,
+      buildFree: ports.retryBuildFree?.() === true,
+      priority: [ports.threatened?.() === true, ports.operations?.food?.snapshot?.()?.hunger ?? null, night.known, night.shelter, shared.inventoryUncertain === true]
+    }
+  }
+  const expedition = createDragonExpedition({ ...ports, now, state, raw, run, legacyNeeded, retryState })
   // What a goal decided again forgets (dragon-progress.js): the pinned kit item, the home-approach rests, and the step itself.
   const progress = createProgress({ shared, ledger, now, log: ports.log, onReset: ({ waiting = null } = {}) => {
+    expedition.reconsider()
     // Only a step that has not returned for LET_GO_MS is let go: one that answers every two seconds is asked again anyway.
     const letGo = expedition.stepMs() >= LET_GO_MS && expedition.abandon('進まない遠征の1歩をやめて、状態を再確認します。') && 'step'
     // A wait past its limit (another owner, the night) is only looked at again; the step's choices are for work that stood.

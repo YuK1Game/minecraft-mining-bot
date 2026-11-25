@@ -63,7 +63,7 @@ function requestLocalStatus ({ apiPort, timeoutMs, signal }) {
     }
     const abort = () => { const error = new Error('Status observation cancelled'); request?.destroy(error); finish(error) }
     if (signal?.aborted) return abort()
-    request = http.request({ hostname: HOST, port: apiPort, path: '/status', method: 'GET', agent: false, headers: { Host: `${HOST}:${apiPort}`, Accept: 'application/json' } }, response => {
+    request = http.request({ hostname: HOST, port: apiPort, path: '/dashboard/snapshot', method: 'GET', agent: false, headers: { Host: `${HOST}:${apiPort}`, Accept: 'application/json' } }, response => {
       if (response.statusCode !== 200 || !/^application\/json(?:;|$)/i.test(response.headers['content-type'] ?? '')) { response.resume(); request.destroy(); finish(new Error('Status endpoint unavailable')); return }
       let size = 0
       const chunks = []

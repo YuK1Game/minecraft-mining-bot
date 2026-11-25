@@ -6,6 +6,7 @@
 // Modules are loaded through rt.require, the require of runtime.js.
 
 function createRuntimeOperations (rt) {
+  rt = rt.require('./runtime/runtime-ports').bindRuntimePorts(rt, 'operations')
   const operations = {
     loadout: { preview: input => { rt.requireIdle({ loadoutHandoff: true }); return rt.ensureLoadoutReset().prepare({ area: rt.normalizeChunkArea(input?.area) }) },
       start: input => { rt.requireIdle({ loadoutHandoff: true }); return rt.ensureLoadoutReset().start({ ...input, area: rt.normalizeChunkArea(input?.area) }) },
@@ -479,6 +480,7 @@ function createRuntimeOperations (rt) {
       cancel: () => { rt.cancelQuarryRestore(); rt.cancelChunkMovement('QUARRY_CANCEL'); return rt.quarryJob ? rt.quarryJob.cancel() : rt.quarrySnapshot() },
       load: jobId => rt.loadQuarryFile(jobId),
       status: () => rt.quarrySnapshot(),
+      summary: () => rt.quarrySnapshot({ detail: false }),
       document: () => rt.quarryJob?.document() ?? structuredClone(rt.host.shared.quarryDocument ?? null)
     },
     storage: {

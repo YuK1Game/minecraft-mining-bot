@@ -2,6 +2,7 @@
 
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
+const { replayTerrain } = require('../src/modes/incident-terrain')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
@@ -43,7 +44,8 @@ test('incident-snapshot: captures compact terrain, inventory, goal and journal w
   assert.equal(saved.world.health, 14)
   assert.equal(saved.world.hunger, 17)
   assert.equal(saved.inventory.items[0].name, 'minecraft:iron_pickaxe')
-  assert.ok(saved.terrain.nonAirKnown.some(([, y, , name]) => y === 63 && name === 'minecraft:stone'))
+  assert.equal(saved.version, 2)
+  assert.equal(replayTerrain(saved.terrain).getBlock(10, 63, -5).name, 'minecraft:stone')
   assert.ok(saved.terrain.unknownCount > 0)
 
   // Same key within cooldown is deduplicated.

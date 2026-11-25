@@ -1287,13 +1287,52 @@ function createRuntime (host) {
       publishControlPrediction({ position: state.predictedPosition, source: 'client_prediction', serverConfirmed: false }, 'flat_walk')
     }
   }
-  function getSnapshot () {
-    publishWalker()
-    const state = observedState()
-    const prospect = prospecting.snapshot()
-    const observedOres = prospect.phase === 'idle' ? host.shared.prospecting ?? prospect : prospect
-    return { ownedCampBootstrap: structuredClone(host.shared.ownedCampBootstrap ?? null), workHold: host.shared.legacyWorkHoldLease ? {leaseId:host.shared.legacyWorkHoldLease.id,scope:host.shared.legacyWorkHoldLease.scope,expiresAt:host.shared.legacyWorkHoldLease.expiresAt} : null, recentDamageRetreat: structuredClone(host.shared.recentDamageRetreatDiagnostic ?? null), survivalWorkClearance: state.survivalWorkClearance === true, spawnRangedClearance: state.spawnRangedClearance === true, depotPrebuild: depotPrebuild?.snapshot() ?? null, depotMission: depotMission?.snapshot() ?? null, surfaceReturn: surfaceReturn?.snapshot() ?? null, inventoryResync: structuredClone(host.shared.inventoryResync?.lastRequest ?? null), movementCalibration: structuredClone(movementCalibration), learningShoreEscape: structuredClone(host.shared.learningShoreEscape ?? null), startupPriority: structuredClone(host.shared.startupPriority ?? null), userBehaviors: userBehaviorSnapshot(), lowHealthWater: host.shared.lowHealthWaterDiagnostic ? { ...structuredClone(host.shared.lowHealthWaterDiagnostic), timing: structuredClone(host.shared.lowHealthWaterTiming ?? null) } : null, clearance: structuredClone(host.shared.clearanceDiagnostic ?? null), safety: safetySnapshot(), guardRoute: guardRouteSnapshot(), boundedJumpSearch: structuredClone(boundedJumpSearch), queuedPrediction: inputHistory?.snapshot() ?? null, queuedWireClock: structuredClone(actualWireClock.snapshot()), missionMemory: missionJournal.snapshot(), hut: hut?.snapshot() ?? null, shelter: activeBase()?.snapshot() ?? null, shelterKind: activeBase() === hut ? "hut" : "soil_hill", ...require('./runtime/start-info')(host.meta.startGame), worldClocks: structuredClone(host.shared.worldClocks ?? {}), lastServerMotion: structuredClone(host.shared.lastServerMotion ?? null), lastServerCorrection: structuredClone(host.shared.lastServerCorrection ?? null), worldTime: structuredClone(host.shared.worldTime ?? null), threatPolicy: state.threatPolicy, playerPlay: state.playerPlay, foraging: foraging?.snapshot() ?? null, food: food.snapshot(), vitals: structuredClone(host.shared.vitals ?? {}), recovery: recovery?.snapshot() ?? null, excavation: excavation?.snapshot() ?? null, quarry: quarrySnapshot(), tunneling: tunneling?.snapshot() ?? null, heldItem: state.heldItem, runtimeVersion: RUNTIME_VERSION, inventory: state.inventory, inventoryDetails: inventoryInspection.snapshot(state), inventoryStore: inventoryStore.snapshot(), inventoryConfidence: { known: !host.shared.inventoryUncertain, unresolved: host.shared.inventoryUncertain ?? null }, stations: structuredClone(host.shared.stations ?? {}), stationCatalog: structuredClone(host.shared.stationCatalog ?? null), portableWorksite: structuredClone(host.shared.portableWorksiteMemo ?? null), prospecting: observedOres, furnace: furnace.snapshot(), chest: chest.snapshot(), entities: state.entities, hostiles: state.hostiles, input: input?.stats() ?? null, mining: mining.snapshot(), walking: walker?.snapshot() ?? null, movement: movement ? { ...movement.snapshot(), runtimeHandoff: structuredClone(host.shared.movementHandoffTiming ?? null) } : null, crafting: crafting.snapshot(), inventoryActions: inventory.snapshot(), interactions: interactions.snapshot(), combat: combat?.snapshot() ?? null, agent: autonomyRuntime.autonomy.snapshot(), idle: { owner: inputOwner, enabled: idleTimer !== null, error: host.shared.idleError ?? null, lastFailure: structuredClone(host.shared.lastInputFailure ?? null) } }
-  }
+  // This part lives in status-snapshot.js. It reads and writes these bindings of
+  // this closure through accessors, so each use sees the current value exactly
+  // as the code did when it was written here.
+  const statusSnapshot = require('./runtime/status-snapshot').createStatusSnapshot({
+    get activeBase () { return activeBase },
+    get actualWireClock () { return actualWireClock },
+    get autonomyRuntime () { return autonomyRuntime },
+    get boundedJumpSearch () { return boundedJumpSearch },
+    get chest () { return chest },
+    get combat () { return combat },
+    get crafting () { return crafting },
+    get depotMission () { return depotMission },
+    get depotPrebuild () { return depotPrebuild },
+    get excavation () { return excavation },
+    get food () { return food },
+    get foraging () { return foraging },
+    get furnace () { return furnace },
+    get guardRouteSnapshot () { return guardRouteSnapshot },
+    get host () { return host },
+    get hut () { return hut },
+    get idleTimer () { return idleTimer },
+    get input () { return input },
+    get inputHistory () { return inputHistory },
+    get inputOwner () { return inputOwner },
+    get interactions () { return interactions },
+    get inventory () { return inventory },
+    get inventoryInspection () { return inventoryInspection },
+    get inventoryStore () { return inventoryStore },
+    get mining () { return mining },
+    get missionJournal () { return missionJournal },
+    get movement () { return movement },
+    get movementCalibration () { return movementCalibration },
+    get observedState () { return observedState },
+    get prospecting () { return prospecting },
+    get publishWalker () { return publishWalker },
+    get quarrySnapshot () { return quarrySnapshot },
+    get recovery () { return recovery },
+    get require () { return require },
+    get RUNTIME_VERSION () { return RUNTIME_VERSION },
+    get safetySnapshot () { return safetySnapshot },
+    get surfaceReturn () { return surfaceReturn },
+    get tunneling () { return tunneling },
+    get userBehaviorSnapshot () { return userBehaviorSnapshot },
+    get walker () { return walker }
+  })
+  function getSnapshot (...args) { return statusSnapshot.getSnapshot(...args) }
   const http = createHttpClient({ baseUrl: host.apiUrl })
   function runnerFoodWalkBody (body) {
     if (!body || typeof body!=='object' || body.options!=null&&(typeof body.options!=='object'||Array.isArray(body.options)) || Object.hasOwn(body.options??{},'sprint')) return body
@@ -2278,12 +2317,12 @@ function createRuntime (host) {
       } catch { return false }
     }
 
-    const routeMovement = {
+    const routeMovement = require('./movement/cooperative-movement').cooperativeMovement({
       preview: own((target, options) => { motionOrigin = working(); return generationMovement.preview(target, options) }),
       start: own((target, options) => { crafting.closeContainer(); stopIdleStream(); idlePhysicsState = null; motionOrigin = working(); host.shared.motionSource = 'navigation'; return generationMovement.start(target, options) }),
       settle: own(options => { stopIdleStream(); idlePhysicsState = null; motionOrigin = working(); host.shared.motionSource = 'navigation_settle'; return generationMovement.settle(options) }),
       stop: reason => { if (!combatOwnsInput()) return generationMovement.stop(reason) }
-    }
+    }, { movement: generationMovement, prepare: own(() => { motionOrigin = working() }), check: own(() => true) })
     const routeInventory = {
       equip: own(async (slot, { signal } = {}) => {
         const cancel = () => { if (currentGeneration()) cancelBackgroundInventory('経路の持ち替えを中断しました。') }
@@ -4066,7 +4105,7 @@ function createRuntime (host) {
     try { const status = quarryJob.status(); return status.portableStorage != null || status.supplies?.active != null } catch { return true }
   }
   return {
-    operations: runtimeOperations.operations, snapshot: getSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
+    operations: runtimeOperations.operations, snapshot: getSnapshot, dashboardSnapshot: statusSnapshot.getDashboardSnapshot, applyPacket, onSpawn, onRespawn, stopActions, resumeRequested,
     canReload: () => {
       const snapshot = createSnapshotReader()
       return !quarryPlacementPreparation && !chunkMoveHeld() && !resetHeld() && !manualChestStorage?.isBusy() && !host.shared.quarrySurfaceStorageOwner && !quarryV22Equipment.status().busy && !quarryPackingBusy() && !manualShulkerTask && !manualArmorOwner && !armor.snapshot().busy && !quarryPortableStorage?.snapshot?.().busy && !quarrySupplies?.snapshot().busy && !quarryPillar?.snapshot().busy && !quarryPillarTask && !mineLadder?.snapshot().busy && !mineLadderTask && !depotPrebuild?.snapshot().busy && !depotMission?.isBusy() && !userBehaviorOwns() && !userBehaviorTickTask && pendingStops.size === 0 && snapshot(mining).phase !== 'mining' && !idleSafety?.snapshot().busy && !['scheduled', 'in_flight'].includes(host.shared.safetyEmergency?.status) && !guardRoute?.snapshot().busy && !hut?.snapshot().busy && !shelter?.snapshot().busy && !snapshot(food).busy && !(foraging?.snapshot().busy || surfaceReturn?.snapshot().busy) && !recovery?.snapshot().busy && !tunneling?.snapshot().busy && !excavation?.snapshot().busy && !(snapshot(furnace).busy || chestStatus().busy) && !inventory.snapshot().busy && craftStatus().pendingRequestId == null && !interactions.snapshot().pendingOperation && !snapshot(combat)?.busy && !snapshot(combat)?.defending && !snapshot(combat)?.engaging

@@ -9,6 +9,7 @@ const { setImmediate: turn } = require('node:timers/promises')
 const { createUserBehaviors } = require('../src/combat/user-behaviors')
 const { createFood } = require('../src/actions/food')
 const { createArmor } = require('../src/actions/armor')
+const { combatSearchBudgetFor } = require('../src/combat/combat-search-budget')
 const worksite = require('../src/survival/worksite-camp')
 
 const file = require.resolve('./runtime-user-behaviors.test')
@@ -22,10 +23,24 @@ function defer () {
   return { promise, resolve }
 }
 async function turns (count = 16) { for (let i=0;i<count;i++) await turn() }
+async function observed (promise, label, inspect) {
+  let timer
+  try {
+    return await Promise.race([promise, new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label}: ${JSON.stringify(inspect())}`)), 1000)
+    })])
+  } finally { clearTimeout(timer) }
+}
 function scene (t) {
+  // The base scene mocks only setInterval. Advance the monotonic budget clock
+  // with its game ticks as well, while retaining real CPU time inside every
+  // search. A frozen clock would disable the production search deadlines.
+  const realNow = performance.now.bind(performance)
+  let intervalElapsed = 0
+  t.mock.method(performance, 'now', () => realNow() + intervalElapsed)
   const directory = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'minecraft-combat-priority-'))
   const events=[], flags={meal:false,armor:false,prebuild:false}
-  const release=defer(), bedRelease=defer(), attackRelease=defer()
+  const release=defer(), bedRelease=defer(), attackRelease=defer(), combatAcquired=defer(), attackStarted=defer()
   let options,facade,f,combatContext
   const attack = kind => ({
     preview: () => ({ready:true}), snapshot: () => ({busy:false}), applyPacket(){}, cancel(){}, async drain(){},
@@ -33,6 +48,7 @@ function scene (t) {
       events.push({ kind, id })
       const target=f.actors.find(v=>String(v.runtimeId)===String(id))
       assert.ok(target?.hostile && target.positionKnown)
+      attackStarted.resolve({ kind, id })
       if(flags.holdAttack) await attackRelease.promise
       target.alive=false
       target.lastEvent={event:'death_animation'}
@@ -52,7 +68,7 @@ function scene (t) {
       facade=createUserBehaviors({...o,controllers:{melee:attack('melee'),ranged:attack('ranged'),bed},
         acquireControl:async context=>{
           const token=await o.acquireControl(context)
-          if(context.kind==='combat'&&token&&token.acquired!==false)combatContext={...context,token:token.token??token}
+          if(context.kind==='combat'&&token&&token.acquired!==false){combatContext={...context,token:token.token??token};combatAcquired.resolve(combatContext)}
           return token
         }})
       return facade
@@ -97,6 +113,10 @@ function scene (t) {
     }
   }
   f=loaded.exports(t,{runtimeOverrides:modules})
+  // These priority cases use an immutable, fully known flat world. Give it
+  // the host's revision guarantee so successive combat guards can reuse the
+  // same route instead of spending their shared CPU budget on it repeatedly.
+  f.host.world.revision = () => 0
   t.after(() => fs.promises.rm(directory, { recursive: true, force: true }))
   const rawStack=(network_id,count,stack_id)=>({network_id,count,stack_id,metadata:0,has_stack_id:!!count,block_runtime_id:0,extra:{has_nbt:'false',can_destroy:[],can_place_on:[]}})
   const bow=rawStack(302,1,17), arrow=rawStack(303,30,18), sword=rawStack(318,1,19)
@@ -110,8 +130,9 @@ function scene (t) {
     const actor={kind:'mob',runtimeId:'141',uniqueId:'1411',entityType:'minecraft:'+type,dimension:'overworld',hostile:true,alive:true,positionKnown:true,positionSource:'move_entity_delta',position:{x:f.raw.position.x+distance,y:65,z:f.raw.position.z}}
     f.actors.push(actor);return actor
   }
-  return {...f,events,flags,options,facade,add,release,bedRelease,attackRelease,
-    combatContext:()=>combatContext,tick:async()=>{f.advance(50);await turns(30)}}
+  const advance = ms => { intervalElapsed += ms; f.advance(ms) }
+  return {...f,advance,events,flags,options,facade,add,release,bedRelease,attackRelease,combatAcquired:combatAcquired.promise,attackStarted:attackStarted.promise,
+    combatContext:()=>combatContext,tick:async()=>{advance(50);await turns(30)}}
 }
 
 test('connect-only default defense fights the selected threat and leaves other automatic work off',async t=>{
@@ -149,6 +170,34 @@ test('ranged combat is ready immediately even when improved armor is available',
     assert.ok(f.events.some(e=>e.kind==='ranged'&&e.id===enemy.runtimeId))
     assert.ok(!f.events.some(e=>e.kind==='armor_started'))
   }finally{f.release.resolve();await turns()}
+})
+
+test('the next combat tick can interrupt a meal after the prior terrain search exhausted its budget', async t => {
+  const f = scene(t); await turns()
+  f.flags.meal = true
+  await f.tick()
+  const target = f.add(12, 'creeper')
+  // Begin at the start of a window so consuming this budget does not usually
+  // cross into the next real-time window. The next game tick must advance it.
+  // Real CPU time still advances within seekCells and budget accounting.
+  const clock = performance.now.bind(performance), started = clock()
+  t.mock.method(performance, 'now', () => 100000 + clock() - started)
+  const budget = combatSearchBudgetFor(f.host.world)
+  budget.search(() => {
+    const until = performance.now() + 8.1
+    while (performance.now() < until) {}
+  }, { maxMs: 8 })
+  assert.ok(budget.snapshot().normalUsed >= 8, 'the real CPU guard accounts for the preceding search')
+  assert.deepEqual(f.events, [], 'a search alone must not claim combat or interrupt a meal')
+  const before = budget.snapshot().searches
+  const inspect = () => ({ events: f.events, budget: budget.snapshot(), combat: f.facade.snapshot().combat })
+  f.advance(50)
+  const acquired = await observed(f.combatAcquired, 'the next tick did not finish acquiring combat', inspect)
+  assert.equal(acquired.target.runtimeId, target.runtimeId)
+  assert.ok(budget.snapshot().searches > before, 'the next window must permit a fresh route search; no route was prewarmed')
+  assert.ok(f.events.some(event => event.kind === 'food_cancel'))
+  const attack = await observed(f.attackStarted, 'the acquired combat claim did not start its attack', inspect)
+  assert.deepEqual(attack, { kind: 'ranged', id: target.runtimeId })
 })
 
 test('explicit defense stop, dead or unspawned state never acquires combat for the visible target',async t=>{

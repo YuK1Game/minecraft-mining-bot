@@ -90,6 +90,7 @@ test('a cancelled return cannot start long travel after its saved route finishes
   const runtime = {
     host: { shared: {} },
     require: name => {
+      if (name === './runtime/runtime-ports') return require('../src/runtime/runtime-ports')
       if (name === './modes/mode-runtime') return { attachModeOperations () {} }
       if (name === './modes/dragon-ports') return { createDragonRuntimePorts: () => ({}) }
       if (name === './modes/player-workstation-runtime') return { createPlayerWorkstationRuntime: () => ({}) }
@@ -127,6 +128,7 @@ test('resuming the same saved route creates a new travel owner that an old retur
   const runtime = {
     host: { shared: {} },
     require: name => {
+      if (name === './runtime/runtime-ports') return require('../src/runtime/runtime-ports')
       if (name === './modes/mode-runtime') return { attachModeOperations () {} }
       if (name === './modes/dragon-ports') return { createDragonRuntimePorts: () => ({}) }
       if (name === './modes/player-workstation-runtime') return { createPlayerWorkstationRuntime: () => ({}) }

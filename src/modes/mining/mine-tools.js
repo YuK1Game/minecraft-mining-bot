@@ -7,6 +7,7 @@ const { pickFor } = require('../dragon-supply-recipes')
 const { count } = require('../dragon-supply-kit')
 const { blocked, interrupted } = require('../return/return-result')
 const { scopeOf } = require('./mine-observed')
+const { prerequisiteResult } = require('./mine-common')
 const PICKS = ['wooden', 'wooden', 'stone', 'iron', 'diamond']
 
 // Admission and the actual mining hand use the same received durability
@@ -37,9 +38,9 @@ function createMineTools (ctx, actions) {
     const scope = scopeOf(ctx)
     // acquire's exact count includes a worn two-use pick. Ask for one more
     // using its own counting rule, so it cannot answer "already carried".
-    await ctx.supplies.acquire(name, count(name, inventory.items) + 1)
+    const supplied = await ctx.supplies.acquire(name, count(name, inventory.items) + 1)
     if (ctx.cancelled() || ctx.signal?.aborted || scopeOf(ctx) !== scope) return interrupted('MINE_INTERRUPTED')
-    return blocked('MINE_TOOL_SUPPLY', { kind: 'inventory_update' }, { detail: `${name} の稼働可能な耐久度を受信してから施工します。` })
+    return prerequisiteResult(supplied, blocked('MINE_TOOL_SUPPLY', { kind: 'inventory_update' }, { detail: `${name} の稼働可能な耐久度を受信してから施工します。` }))
   }
 }
 

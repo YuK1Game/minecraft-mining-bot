@@ -26,7 +26,14 @@ for (const [owner, least, landmarks] of [
       const moved = read(`${part.module}.js`)
       const body = moved.slice(moved.indexOf(`function ${part.factory} (rt) {\n`), moved.lastIndexOf('\n  return {\n')).split('\n').slice(1)
       // A long line of the moved code that needed no prefix is in the text as it is.
-      const sample = body.filter(line => line.length > 80 && !line.includes('rt.')).slice(0, 3)
+      let sample = body.filter(line => line.length > 80 && !line.includes('rt.')).slice(0, 3)
+      // A compact snapshot factory may consist entirely of port reads. Check
+      // its actual return expression after alias expansion, instead of forcing
+      // production code to contain an arbitrary long, alias-free line.
+      if (!sample.length) sample = body.filter(line => /^\s*return \{/.test(line) && line.length > 80).slice(0, 1).map(line => line
+        .replace(/\b(\w+): rt\.\1(?=\s*[,}])/g, '$1')
+        .replace(/\brt\./g, '')
+        .replace(new RegExp(`\\b(?:${parts.map(value => value.instance).join('|')})\\.`, 'g'), ''))
       assert.ok(sample.length > 0, part.module)
       for (const line of sample) assert.ok(text.includes(line), `a line of ${part.module} is present`)
     }
