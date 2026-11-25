@@ -650,7 +650,12 @@ function createNavigator ({ world, version = '1.26.60', allowWater = false, phys
             // Reuse the existing bounded, fully simulated one-block descent
             // or level recenter. Later graph nodes and final arrivals still
             // require complete support; no airborne/gap start is synthesized.
-            if ((!partialDrop && !partialRecenter) || candidate.medium !== 'land' || !fullFootprintSupport(candidate.position) || !plan(initialState, candidate.position, { maxDistance: 2, maxExpanded: 64, avoidance: circles, partialDrop, partialRecenter }).ready) continue
+            if ((!partialDrop && !partialRecenter) || candidate.medium !== 'land' || !fullFootprintSupport(candidate.position)) continue
+            // A connector is part of this search, including its cancellation,
+            // CPU slice and terrain witness. Do not enter a synchronous plan
+            // that drains its whole physics tape before the next async yield.
+            const connector = yield * planWithoutCache(initialState, candidate.position, { maxDistance: 2, maxExpanded: 64, avoidance: circles, partialDrop, partialRecenter }, control)
+            if (!connector.ready) continue
           }
           const g = current.g + 1 + Math.abs(dy) * 0.3 + (action === 'jump' ? 0.8 : action === 'swim' ? 3 : 0)
           const previous = records.get(candidateKey)

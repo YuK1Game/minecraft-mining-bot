@@ -56,6 +56,40 @@ test('ordinary native planning yields repeatedly and a stopped pending preparati
   } finally { running = false; f.movement.stop() }
 })
 
+test('a partial-origin connector yields and observes cancellation before draining its native physics tape', async t => {
+  const f = scene(), physics = f.navigator.physics
+  f.block(-1, 63, 0, 0)
+  f.state.position.x = 0.1
+  const initial = physics.fromServer(f.state, { onGround: true, velocity: { x: 0, y: -0.0784000015258789, z: 0 } })
+  const destination = { x: 1.1, y: 64, z: 0.5 }
+  assert.equal(f.navigator.verifyOrigin(initial), false)
+  assert.equal(f.navigator.verifyOrigin(initial, { stablePartialOrigin: true }), true)
+  const step = physics.step, realNow = performance.now.bind(performance), controller = new AbortController()
+  let steps = 0, armed = false, cancellationQueued = false, cpuOffset = 0
+  t.mock.method(physics, 'step', (...args) => {
+    steps++
+    if (armed && args[1]?.forward && !cancellationQueued) {
+      cancellationQueued = true
+      cpuOffset += 9
+      setImmediate(() => controller.abort(new Error('partial connector cancelled')))
+    }
+    return step(...args)
+  })
+  const primitive = f.navigator.plan(initial, destination, { partialRecenter: true, maxDistance: 2, maxExpanded: 64 })
+  assert.equal(primitive.ready, true, primitive.reason)
+  const wholeTapeSteps = steps
+  assert.ok(primitive.predictedTrace.length > 2)
+  steps = 0; armed = true
+  // Model one expensive native frame, retaining the real geometry and physics.
+  // The next event-loop turn must cancel the enclosing search before it
+  // finishes the same bounded connector that was measured above.
+  t.mock.method(performance, 'now', () => realNow() + cpuOffset)
+  await assert.rejects(f.navigator.planAsync(initial, destination, { stablePartialOrigin: true, exactGoal: true, maxDistance: 2, signal: controller.signal }), /partial connector cancelled/)
+  assert.equal(cancellationQueued, true, 'the real nested connector reached its first moving frame')
+  assert.ok(steps < wholeTapeSteps, `cancelled after ${steps} physics steps, before the ${wholeTapeSteps}-step connector completed`)
+  assert.equal(f.packets.length, 0)
+})
+
 test('navigation geometry survives unrelated real packets and cached reads retain their dependency witness', () => {
   const f = scene(), options = { maxDistance: 12 }
   assert.equal(f.navigator.plan(f.initial, target, options).ready, true)
