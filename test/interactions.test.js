@@ -670,3 +670,18 @@ test('placing an obsidian portal frame block needs both the real terrain update 
   f.interactions.applyPacket('inventory_slot', { window_id: 'inventory', slot: 0, item: emptyItem() })
   assert.equal((await placed).confirmedBy, 'server_block_and_inventory')
 })
+
+test('ProtoDef li64 player unique_id is cleared by remove_entity and re-enables block placement', () => {
+  const numeric = require('protodef/src/datatypes/numeric')
+  const bytes = Buffer.alloc(8)
+  bytes.writeBigInt64LE(-639950116340n)
+  const decoded = numeric.li64[0](bytes, 0).value
+
+  const f = fixture()
+  f.interactions.applyPacket('start_game', { runtime_entity_id: 41n })
+  f.interactions.applyPacket('add_player', { runtime_id: 50n, unique_id: decoded, position: { x: 1.5, y: 66.62, z: 0.5 } })
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, false)
+  f.interactions.applyPacket('remove_entity', { entity_id_self: -639950116340n })
+  assert.equal(f.interactions.snapshot().trackedPlayers, 0)
+  assert.equal(f.interactions.previewPlace({ position: f.target, slot: 0 }).ready, true)
+})

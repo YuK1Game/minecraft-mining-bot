@@ -10,6 +10,19 @@ function normalizeId (value, signed = false) {
     return String(value)
   }
   if (typeof value === 'bigint') return !signed && value < 0n ? null : String(value)
+  if (Array.isArray(value) && value.length === 2 && value.every(part => Number.isInteger(part))) {
+    // ProtoDef's li64/lu64 decoder returns a two-word SignedBigInt/BigInt array
+    // whose custom toString() yields the exact 64-bit decimal string (live
+    // 2026-11-25: add_player.unique_id became null, leaving a ghost player that
+    // remove_entity could never clear). Plain arrays stringify with a comma and
+    // are rejected by the regex below.
+    const text = String(value)
+    if (!(signed ? /^-?\d+$/ : /^\d+$/).test(text)) return null
+    try {
+      const n = BigInt(text)
+      return !signed && n < 0n ? null : String(n)
+    } catch { return null }
+  }
   if (typeof value !== 'string' || !(signed ? /^-?\d+$/ : /^\d+$/).test(value)) return null
   try { return String(BigInt(value)) } catch { return null }
 }

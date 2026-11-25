@@ -469,11 +469,14 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     // unrelated mob traffic, including while a placement is pending.
     if (name === 'add_player') {
       if (ownRuntimeId == null) { const state = getState(); ownRuntimeId = state.runtimeEntityId == null ? null : String(state.runtimeEntityId) }
-      if (String(packet.runtime_id) !== ownRuntimeId && finitePosition(packet.position)) players.set(String(packet.runtime_id), { uniqueId: String(packet.unique_id), position: copy(packet.position) })
+      if (String(packet.runtime_id) !== ownRuntimeId && finitePosition(packet.position)) {
+        players.set(String(packet.runtime_id), { uniqueId: packet.unique_id == null ? null : String(packet.unique_id), position: copy(packet.position) })
+      }
       return
     }
     if (name === 'remove_entity') {
-      for (const [id, player] of players) if (player.uniqueId === String(packet.entity_id_self)) players.delete(id)
+      const targetId = String(packet.entity_id_self)
+      for (const [id, player] of players) if (player.uniqueId != null && player.uniqueId === targetId) players.delete(id)
       return
     }
     if (name === 'move_player') {

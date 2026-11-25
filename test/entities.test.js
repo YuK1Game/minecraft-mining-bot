@@ -295,3 +295,25 @@ test('animal identity metadata is recorded only when received (quarry animal cle
   const cow = entities.snapshot({ kind: 'all' }).find(e => e.runtimeId === '8')
   assert.equal(cow.animalMeta, undefined, 'no metadata received: nothing is assumed')
 })
+
+test('ProtoDef li64 decoded player unique_id is preserved so remove_entity clears departed players', () => {
+  const numeric = require('protodef/src/datatypes/numeric')
+  const bytes = Buffer.alloc(8)
+  bytes.writeBigInt64LE(-639950116340n)
+  const decoded = numeric.li64[0](bytes, 0).value
+  assert.equal(Array.isArray(decoded), true)
+
+  const tracker = createEntities()
+  tracker.applyPacket('start_game', { runtime_entity_id: 1n, entity_id: 101n, dimension: 0 })
+  tracker.applyPacket('add_player', { runtime_id: 11043n, unique_id: decoded, username: 'Visitor', position: { x: 9784, y: 17, z: 10249 } })
+  const added = tracker.snapshot({ kind: 'player' })
+  assert.equal(added.length, 1)
+  assert.equal(added[0].uniqueId, '-639950116340')
+
+  tracker.applyPacket('remove_entity', { entity_id_self: -639950116340n })
+  assert.equal(tracker.snapshot({ kind: 'player' }).length, 0)
+
+  // Plain 2-element arrays without ProtoDef's integer toString remain rejected.
+  tracker.applyPacket('add_player', { runtime_id: 11044n, unique_id: [1, 2], username: 'Invalid', position: { x: 1, y: 64, z: 1 } })
+  assert.equal(tracker.get(11044n).uniqueId, null)
+})
