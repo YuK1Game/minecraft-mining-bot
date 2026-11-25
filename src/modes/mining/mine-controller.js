@@ -31,6 +31,9 @@ const DEPOSIT_AT=33
 // block outside the automatic mining list): it is refused the same way from every stand, so the branch is sealed and
 // skipped like a hazard (live 2026-11-26 03:22-03:31 JST, upper:branch-44-right:12, (9753,17,10228): 「対象の隣に液体・
 // 落下ブロックなどがあります」 for ten minutes). A refusal for reach, sight or a missing tool is not one.
+// MINE_FINISH_STAND_UNAVAILABLE (an opening of the section, usually into a cave, that no received stand can reach
+// to close) is counted and closed the same way (live 2026-11-26 05:21, 05:48 and 07:16-07:21 JST: the section's
+// finish held the mine five minutes and more each time).
 const hazardRefusal=out=>out?.code==='MINE_DIG_REFUSED' && /液体・落下ブロック|自動採掘の対象外|追加レイヤー/.test(String(out.detail??''))
 
 function remainingPickBlock(ctx,branch,step){
@@ -110,7 +113,7 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
   const out=await excavateSegment(ctx,branch,step,cells)
   if(!live(ctx,before))return stopped()
   if(!received(out)){
-    if(out.status==='failed' || out.status==='blocked' && /HAZARD|UNSAFE|REFUSED|BLOCKED/.test(out.code??'')){
+    if(out.status==='failed' || out.status==='blocked' && /HAZARD|UNSAFE|REFUSED|BLOCKED|FINISH_STAND_UNAVAILABLE/.test(out.code??'')){
       const id=step.segmentId,attempts=branch.failures[id]=(branch.failures[id]??0)+1
       ctx.goal?.fail?.({stage:'mine',target:id,code:out.code})
       // Skipping an unopened branch changes only the future plan. Once any
@@ -120,7 +123,7 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
         branch.progress[layer]=state.skipMineSegment(progress,{segmentId:id,code:out.code,attempts,plan:branch.plan,liveScope:before})
         delete branch.segmentTask
         await save(ctx,branch,before)
-      } else if(attempts>=4 && step.kind==='branch' && (['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE'].includes(out.code) || hazardRefusal(out)) && typeof state.skipMineSegment==='function'){
+      } else if(attempts>=4 && step.kind==='branch' && (['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE','MINE_FINISH_STAND_UNAVAILABLE'].includes(out.code) || hazardRefusal(out)) && typeof state.skipMineSegment==='function'){
         // A partially opened branch hit water/lava/overhead gravel, an unminable structure block,
         // or an unsafe cave boundary (live 2026-11-25/26: 2,370 loops on branch-35-left:15 and
         // 2,103 loops on branch-38-right:18). Persist closingHazard so retries finish refilling
