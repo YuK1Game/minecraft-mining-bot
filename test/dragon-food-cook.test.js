@@ -73,6 +73,12 @@ test('with nothing to burn the fuel is fetched before the walk to the furnace: l
   assert.deepEqual(fuelWanted(meat, 3, { getFeet: feet, getBlock: air }), { name: 'coal', count: 1 })
   assert.deepEqual(fuelWanted(meat, 3, { getFeet: feet, getBlock: () => ({ known: false, name: 'minecraft:oak_log' }) }), { name: 'coal', count: 1 }, 'a log that was not received is not a tree')
   assert.equal(fuelWanted([...meat, { name: 'minecraft:coal', count: 1, slot: 1 }], 3, { getFeet: feet, getBlock: tree }), null)
+  // Mixed or split single-log stacks (total 2 logs, no single stack >= 2): craft held log into
+  // 4 same-kind planks instead of requesting `log` 2 and spinning forever (live 2026-11-25).
+  const mixedLogs = [...meat, { name: 'minecraft:oak_log', count: 1, slot: 1 }, { name: 'minecraft:birch_log', count: 1, slot: 2 }]
+  assert.equal(require('../src/modes/cook-fuel').cookFuel(mixedLogs, 3), null)
+  assert.deepEqual(fuelWanted(mixedLogs, 3, { getFeet: feet, getBlock: tree }), { name: 'planks', count: 4 })
+  assert.deepEqual(fuelWanted([...mixedLogs, { name: 'minecraft:spruce_planks', count: 1, slot: 3 }], 3, { getFeet: feet, getBlock: air }), { name: 'planks', count: 5 })
 
   const asked = []
   let walked = 0

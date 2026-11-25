@@ -24,9 +24,20 @@ function cookFuel (items = [], amount = 1) {
 // step walked into the house, found no fuel at the furnace and asked for coal; the coal step left the house; the
 // next decision was the cook again, which walked back in. 13 rounds in 25 minutes, nothing cooked, no coal mined.
 const LOG = /^minecraft:(?!stripped_)[a-z_]+_(?:log|stem)$/
+const HELD_LOG = /_(?:log|stem)$/
+const HELD_PLANKS = /_planks$/
 function fuelWanted (items, amount, ctx) {
   if (cookFuel(items, amount)) return null
   const need = Math.ceil(Math.max(1, amount) / PER_WOOD)
+  // If logs are already held (e.g. mixed oak_log:1 + birch_log:1 or split stacks whose
+  // total reaches `need`), acquiring `log` returns immediately without producing a single
+  // stack of size >= need (live 2026-11-25: 1,740 iterations in 10 min on `food 1/6 <- log 2/2`).
+  // Craft 1 held log into 4 same-kind planks instead so cookFuel immediately has a single stack.
+  const heldLogs = (items ?? []).filter(item => item?.count > 0 && HELD_LOG.test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
+  if (heldLogs > 0) {
+    const heldPlanks = (items ?? []).filter(item => item?.count > 0 && HELD_PLANKS.test(item.name ?? '')).reduce((sum, item) => sum + item.count, 0)
+    return { name: 'planks', count: heldPlanks + Math.max(need, 4) }
+  }
   const feet = ctx?.getFeet?.()
   if (feet && ctx.getBlock) {
     const x0 = Math.floor(feet.x), y0 = Math.floor(feet.y), z0 = Math.floor(feet.z)
