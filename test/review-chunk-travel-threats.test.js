@@ -3,7 +3,7 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { evaluateThreats } = require('../src/combat/threats')
-const { chunkTravelThreatsClear } = require('../src/travel/chunk-travel-threats')
+const { chunkTravelThreatsClear, chunkTravelAvoidance } = require('../src/travel/chunk-travel-threats')
 const point = x => ({ x, y: 64, z: 0 })
 const actor = (type = 'drowned', x = 10.877, extra = {}) => ({ runtimeId: '22', uniqueId: '-22', kind: 'mob', entityType: `minecraft:${type}`, dimension: 'overworld', alive: true, hostile: true, positionKnown: true, position: point(x), ...extra })
 function fixture (entity = actor()) {
@@ -157,4 +157,29 @@ test('waterExit allows climbing onto dry land despite a reachable drowned/hostil
 
   const farCreeper = fixture(actor('creeper', 7))
   assert.equal(farCreeper.clear({ waterExit: true, previous: point(0), next: point(0.5), attackExposure: () => assert.fail('creeper uses blast check') }), true, 'unprimed creeper outside fuse range does not trap the Bot in water')
+})
+
+test('escapePaused allows stepping away from a non-creeper outside 3m while still blocking approaches, close melee, creepers and unknown threats', () => {
+  const z = fixture(actor('zombie', 4.4))
+  const exposed = () => ({ intercept: true, unknown: false })
+  assert.equal(z.clear({ previous: point(0), next: point(-0.5), attackExposure: exposed }), false, 'default still blocks')
+  assert.equal(z.clear({ escapePaused: true, previous: point(0), next: point(-0.5), attackExposure: exposed }), true, 'stepping away from 4.4m zombie is allowed while escape is paused')
+  assert.equal(z.clear({ escapePaused: true, previous: point(0), next: point(0.5), attackExposure: exposed }), false, 'stepping toward the zombie remains blocked')
+  assert.equal(z.clear({ escapePaused: true, previous: point(0), next: point(-0.5), attackExposure: () => ({ intercept: true, unknown: true }) }), false, 'unknown exposure stays blocked')
+
+  const closeZ = fixture(actor('zombie', 2.5))
+  assert.equal(closeZ.clear({ escapePaused: true, previous: point(0), next: point(-0.5), attackExposure: exposed }), false, 'melee-contact zombie <= 3m remains blocked')
+
+  const creeper = fixture(actor('creeper', 5))
+  assert.equal(creeper.clear({ escapePaused: true, previous: point(0), next: point(-0.5), attackExposure: () => assert.fail('creeper uses blast check') }), false, 'creepers are never relaxed by escapePaused')
+
+  const state = { ...z.state, entityStats: { unknownPositions: 0 } }
+  assert.equal(chunkTravelAvoidance({ state, attackExposure: exposed, escapePaused: false }).code, 'NEARBY_THREAT')
+  const plan = chunkTravelAvoidance({ state, attackExposure: exposed, escapePaused: true })
+  assert.equal(plan.ready, true)
+  assert.equal(plan.avoidance.length, 1)
+  assert.ok(plan.avoidance[0].minDistance < 4.4 && plan.avoidance[0].minDistance >= 2.0, 'avoidance ring stays inside current distance so planner can step away')
+
+  const closeState = { ...closeZ.state, entityStats: { unknownPositions: 0 } }
+  assert.equal(chunkTravelAvoidance({ state: closeState, attackExposure: exposed, escapePaused: true }).code, 'NEARBY_THREAT')
 })

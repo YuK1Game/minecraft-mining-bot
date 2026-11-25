@@ -20,7 +20,7 @@ function segmentDistance (point, from, to) {
 const STILL_CREEPER_RADIUS = 4.5
 const creeperRadius = entry => entry.standingStill === true ? Math.min(entry.dangerRadius, STILL_CREEPER_RADIUS) : entry.dangerRadius
 
-function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure, waterExit = false, onReject = null } = {}) {
+function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure, waterExit = false, escapePaused = false, onReject = null } = {}) {
   const deny = reason => { try { onReject?.(reason) } catch {} return false }
   try {
     if (!finite(state?.position) || !finite(previous) || !finite(next) || !Array.isArray(state.entities) || state.entities.length > 1024 || typeof state.dimension !== 'string' || typeof attackExposure !== 'function' ||
@@ -81,7 +81,18 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure,
       if (!before) return false
       const verdict = attackExposure(before.actor, { ...state, position: { ...position } })
       if (verdict?.then) { void Promise.resolve(verdict).catch(() => {}); return false }
-      if (typeof verdict?.unknown !== 'boolean' || verdict.intercept !== false || !resolve(entry, pins.get(id(entry.runtimeId)))) return false
+      if (typeof verdict?.unknown !== 'boolean' || !resolve(entry, pins.get(id(entry.runtimeId)))) return false
+      if (verdict.intercept !== false) {
+        // When idle escape is paused after 3 no-route failures without taking damage (live 2026-11-25:
+        // a zombie 2.8 blocks below on a cliff at 4.4 m trapped long-travel for 8+ min), allow non-creeper
+        // steps that stay outside melee reach (> 3 m) and do not close in toward that hostile.
+        if (escapePaused === true && verdict.unknown === false && before.entityType !== 'minecraft:creeper') {
+          const prevDist = Math.hypot(before.position.x - previous.x, before.position.y - previous.y, before.position.z - previous.z)
+          const nextDist = Math.hypot(before.position.x - next.x, before.position.y - next.y, before.position.z - next.z)
+          if (prevDist > 3.0 && nextDist > 3.0 && nextDist >= prevDist - 0.15) continue
+        }
+        return false
+      }
       // Far outside actors can have an intentionally unsearched attack route.
       // Only that case retains the existing complete outside-circle corridor.
       // Actors set aside by terrain or as unreachable get the same corridor
@@ -99,23 +110,29 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure,
 // Build the planner's circles from the same received actors and admission rule
 // as the live frame guard. Known blocked attack access stays traversable;
 // creepers and unsearched far actors keep their existing distance corridor.
-function chunkTravelAvoidance ({ state, attackExposure } = {}) {
+function chunkTravelAvoidance ({ state, attackExposure, escapePaused = false } = {}) {
   const unknown = () => ({ ready: false, code: 'THREAT_OBSERVATION_UNKNOWN', reason: '敵の位置・状態の確認を待っています。' })
   try {
     if (state?.emptyHandedPrep === true) return { ready: true, avoidance: [] }
     if (state?.entityStats?.unknownPositions !== 0) return unknown()
-    const risk = evaluateThreats(state, state.entities, { observationRadius: 32 }), unsearched = new Set()
-    const clear = chunkTravelThreatsClear({ state, previous: state.position, next: state.position, risk,
+    const risk = evaluateThreats(state, state.entities, { observationRadius: 32 }), unsearched = new Set(), bypassed = new Set()
+    const clear = chunkTravelThreatsClear({ state, previous: state.position, next: state.position, risk, escapePaused,
       attackExposure: (actor, projected) => {
         const result = attackExposure(actor, projected)
         if (result?.unknown === true) unsearched.add(String(actor.runtimeId))
+        else if (escapePaused === true && result?.intercept === true) bypassed.add(String(actor.runtimeId))
         return result
       } })
     if (!clear) return risk.requiresObservation ? unknown() : { ready: false, code: 'NEARBY_THREAT', reason: '現在の敵を避けて歩ける状態になるまで待ちます。' }
     const avoidance = []
     for (const group of ['threats', 'outsideDanger', 'suppressedByTerrain', 'unreachable']) for (const entry of risk[group]) {
-      if (entry.name !== 'minecraft:creeper' && !unsearched.has(entry.runtimeId)) continue
-      avoidance.push({ id: entry.runtimeId, position: { ...entry.position }, minDistance: entry.name === 'minecraft:creeper' ? creeperRadius(entry) : entry.dangerRadius, padding: 0.15 })
+      if (entry.name !== 'minecraft:creeper' && !unsearched.has(entry.runtimeId) && !bypassed.has(entry.runtimeId)) continue
+      let minDistance = entry.name === 'minecraft:creeper' ? creeperRadius(entry) : entry.dangerRadius
+      if (bypassed.has(entry.runtimeId) && entry.name !== 'minecraft:creeper') {
+        const dist = Math.hypot(entry.position.x - state.position.x, entry.position.y - state.position.y, entry.position.z - state.position.z)
+        minDistance = Math.min(minDistance, Math.max(2.0, dist - 0.5))
+      }
+      avoidance.push({ id: entry.runtimeId, position: { ...entry.position }, minDistance, padding: 0.15 })
     }
     return avoidance.length > 64 ? unknown() : { ready: true, avoidance }
   } catch { return unknown() }

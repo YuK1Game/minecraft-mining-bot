@@ -729,7 +729,7 @@ function createLongTravelRuntime (rt) {
       getMovement: () => rt.require('./travel/chunk-travel-errors').movementStatus(rt.movement?.snapshot(), rt.chunkMoveLease?.guardFailure),
       generation: () => rt.host.shared.loadoutGeneration, jobIdentity: rt.chunkMoveJobIdentity, log: message => rt.host.log(message),
       routePointAllowed: (point, medium) => planner?.validateRoutePoint(point, medium) === true,
-      planningOptions: state => rt.require('./travel/chunk-travel-threats').chunkTravelAvoidance({ state, attackExposure: rt.combatAttackExposure }),
+      planningOptions: state => rt.require('./travel/chunk-travel-threats').chunkTravelAvoidance({ state, attackExposure: rt.combatAttackExposure, escapePaused: rt.escapePaused?.() === true }),
       planRoute: async (target, options) => {
         if (!rt.idlePhysics) return { ready: false, reason: '移動に必要な地形が未受信です。' }
         planner ??= rt.createNavigator({ world: rt.host.world, version: rt.host.meta.version, allowWater: true,

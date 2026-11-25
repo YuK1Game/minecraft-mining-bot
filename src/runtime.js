@@ -2846,12 +2846,10 @@ function createRuntime (host) {
       if(current.emptyHandedPrep!==true){if(current.health<initial.health)return G('hurt');if(current.entityStats?.unknownPositions!==0)return G('unknown')}
       if(!p||!n?.position||!['x','y','z'].every(k=>Number.isFinite(p[k])&&Number.isFinite(n.position[k]))||Math.hypot(p.x-n.position.x,p.y-n.position.y-1.62,p.z-n.position.z)>1e-4||n.isInLava)return G('packet')
       const risk=evaluateThreats(current,current.entities,{observationRadius:32})
-      // Empty-handed trip prep (2026-11-14): nothing to lose, so hostiles near
-      // the water do not hold the bot (live 10:19: a drowned refused every swim).
       host.shared.waterGuardDetail = null
       if (current.emptyHandedPrep === true) {}
       else if (combatAware) {
-        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure, waterExit: options?.waterExit === true, onReject: r => { host.shared.waterGuardDetail = r } })) return G('threat')
+        if (!chunkTravelThreatsClear({ state: current, previous, next: p, risk, attackExposure: combatAttackExposure, waterExit: options?.waterExit === true, escapePaused: escapePaused(), onReject: r => { host.shared.waterGuardDetail = r } })) return G('threat')
       } else {
         if(risk.requiresObservation||risk.threats.length)return G('threat')
         for(const a of [...risk.outsideDanger,...risk.suppressedByTerrain]){
