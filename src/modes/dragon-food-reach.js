@@ -33,14 +33,21 @@ function foodReach (shared, { now = Date.now } = {}) {
   // A source that already failed to reach once must not cancel a search trip when its short foraging cooldown expires.
   const missed = id => (entry(id)?.count ?? 0) > 0
   // What a finished hunt says about its source. Returns the entry on the miss that gives it up.
-  function note (result) {
+  // `feet`: where the Bot stands after the hunt. A chase that ended nearer its source than the last one is
+  // progress, not a miss: a hunt batch ends after a fixed number of steps, and an animal that walks off is closed
+  // on over several batches (live 2026-11-26 03:13-07:01 JST: chicken, cow, pig and sheep each given up after
+  // 「このbatchの陸上移動上限に達しました。」, and the Bot walked 400 m and more to other sources at 9-12 health).
+  function note (result, feet = null) {
     const target = result?.target
     if (target?.runtimeId == null) return null
     const id = String(target.runtimeId)
     if (result.foodGained > 0 || result.hits > 0) { if (held[id]) { held[id].count = 0; held[id].chases = 0 } return null }
     const seen = held[id] ??= { count: 0, chases: 0, at: now(), tripped: false }
+    const at = target.position, gap = at && feet && [at.x, at.z, feet.x, feet.z].every(Number.isFinite) ? Math.hypot(at.x - feet.x, at.z - feet.z) : null
+    const closer = gap !== null && Number.isFinite(seen.gap) && gap < seen.gap - 1
+    if (gap !== null) seen.gap = gap
     if (result.steps > 0) {
-      seen.count = 0; seen.chases = (seen.chases ?? 0) + 1; seen.at = now()
+      seen.count = 0; seen.chases = closer ? 0 : (seen.chases ?? 0) + 1; seen.at = now()
       if (seen.chases < CHASES) return null
       Object.assign(seen, { count: MISSES, chases: 0, tripped: true, chased: true })
       return seen

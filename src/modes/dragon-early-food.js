@@ -190,7 +190,7 @@ async function provisionFood (ctx, wanted = 32) {
     ctx.signal.addEventListener('abort', stop, { once: true })
     let hunt
     try { hunt = await forage.execute({ stockpile: true, timeoutMs: 12000 }) } finally { ctx.signal.removeEventListener('abort', stop) }
-    const gave = reach.note(hunt)
+    const gave = reach.note(hunt, ctx.getFeet?.())
     if (gave) ctx.log?.(gave.chased ? `プレイヤーモード: 食料源 ${name(hunt.target)} は歩いても当てられないため、5分あけて別の食料源を探します（${hunt.reason ?? '理由不明'}）` : `プレイヤーモード: 食料源 ${name(hunt.target)} へ歩いて近づけません（${hunt.reason ?? '理由不明'}）`)
     return pending('狩りで得た肉を確認して調理します。', gave ? failed(gave.chased ? 'HUNT_NO_HIT' : 'HUNT_NOT_REACHED', { remaining: left('gather') }) : partial('FOOD_HUNT', { remaining: left('gather') }))
   }

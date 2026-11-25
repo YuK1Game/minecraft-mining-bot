@@ -113,3 +113,14 @@ test('a source that already missed once does not cancel a search trip when its s
   assert.equal(f.trips.length, 1)
   assert.deepEqual(f.untils, [false], 'a previously missed source must not abort an ongoing search trip')
 })
+
+test('a chase that ends nearer its source each time is progress, not a miss', () => {
+  const { foodReach, CHASES } = require('../src/modes/dragon-food-reach')
+  const shared = {}, reach = foodReach(shared, { now: () => 1000 })
+  const hunt = { target: { runtimeId: 7, position: { x: 0, y: 64, z: 0 } }, steps: 8, hits: 0, foodGained: 0 }
+  for (let i = 0; i < CHASES + 2; i++) assert.equal(reach.note(hunt, { x: 30 - 4 * i, y: 64, z: 0 }), null)
+  assert.equal(reach.given(7), false)
+  let gave = null
+  for (let i = 0; i <= CHASES && !gave; i++) gave = reach.note(hunt, { x: 10, y: 64, z: 0 })
+  assert.equal(gave?.chased, true)
+})
