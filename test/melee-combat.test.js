@@ -159,6 +159,11 @@ test('known blocked/unknown LOS and actual player/friendly aim interceptors prev
   const f = fixture(); f.blocks.set('1,66,0', { known: false }); assert.equal(f.melee.preview('70').code, 'LOS_BLOCKED')
   const p = fixture(); p.actors.push({ ...p.target, runtimeId: '71', uniqueId: '-701', kind: 'player', entityType: 'minecraft:player', position: { x: 1.3, y: 65, z: 0.5 } }); assert.equal(p.melee.preview('70').code, 'FRIENDLY_IN_PATH')
   const friendly = fixture(); friendly.actors.push({ ...friendly.target, runtimeId: '71', uniqueId: '-701', entityType: 'minecraft:cow', hostile: false, position: { x: 1.3, y: 65, z: 0.5 } }); assert.equal(friendly.melee.preview('70').code, 'FRIENDLY_IN_PATH')
+  // Experience orbs between attacker and hostile are non-intercepting entities (live 2026-11-25).
+  for (const orbType of ['minecraft:xp_orb', 'minecraft:experience_orb', 'minecraft:xp_bottle']) {
+    const orb = fixture(); orb.actors.push({ ...orb.target, runtimeId: '71', uniqueId: '-701', kind: 'entity', entityType: orbType, hostile: false, position: { x: 1.3, y: 65, z: 0.5 } })
+    assert.equal(orb.melee.preview('70').ready, true, `${orbType} must not trigger FRIENDLY_IN_PATH`)
+  }
 })
 
 test('known coplayer five metres off the existing melee ray permits NPC combat while unknown player scope or position fails closed', async () => {

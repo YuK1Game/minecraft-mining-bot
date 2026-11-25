@@ -195,3 +195,26 @@ test('physical home reserve keeps a working pick, and can re-equip a bare respaw
   assert.equal(earlyObjective({ inventory: observed(main), house, memory: record }).id, 'home_reserve')
   assert.ok(slots.every(i => i.count === 0))
 })
+
+test('bare respawn outside an active mine hands back to starter jobs instead of departing unarmed', () => {
+  const memory = { early: { spawnReady: true, mine: { branch: { request: { resource: 'raw_iron', targetHeld: 33, layer: 'upper' } } } } }
+  // Bare respawn at home (inMine: false): must craft basic tools/weapon before walking to the mine.
+  const outsideBare = earlyObjective({ inventory: observed([]), house, memory, inMine: false })
+  assert.equal(outsideBare.id, 'wood')
+  assert.equal(outsideBare.legacy, true)
+  const outsideWooden = earlyObjective({ inventory: observed([{ name: 'minecraft:wooden_pickaxe', count: 1 }]), house, memory, inMine: false })
+  assert.equal(outsideWooden.id, 'stone')
+  assert.equal(outsideWooden.legacy, true)
+  // Once a working stone+ pickaxe is held outside the mine, expedition resumes home_reserve.
+  const outsideStone = earlyObjective({ inventory: observed([{ name: 'minecraft:stone_pickaxe', count: 1 }]), house, memory, inMine: false })
+  assert.equal(outsideStone.id, 'home_reserve')
+  assert.equal(outsideStone.legacy, false)
+  // Inside/at the mine site (inMine: true) or when carrying cobblestone to remake a stone pickaxe,
+  // a broken pickaxe stays with home_reserve so the mine uses its own chests/cobblestone.
+  const insideBroken = earlyObjective({ inventory: observed([]), house, memory, inMine: true })
+  assert.equal(insideBroken.id, 'home_reserve')
+  assert.equal(insideBroken.legacy, false)
+  const outsideWithCobble = earlyObjective({ inventory: observed([{ name: 'minecraft:cobblestone', count: 3 }]), house, memory, inMine: false })
+  assert.equal(outsideWithCobble.id, 'home_reserve')
+  assert.equal(outsideWithCobble.legacy, false)
+})

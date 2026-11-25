@@ -10,18 +10,29 @@ const { homeTarget, homeUse, same } = require('./dragon-home-use')
 const { failed } = require('./return/return-result')
 const { diamondNeed, prepareDiamonds } = require('./dragon-diamond')
 const homeIron = require('./dragon-home-iron')
+const { mineLocation } = require('./mining/mine-location')
+
+const atOwnMine = ({ runtime, getFeet, record }) => {
+  const branch = record?.early?.mine?.branch
+  if (!branch?.plan || !branch.shaft) return false
+  try { return mineLocation({ runtime, getFeet }, branch) !== null } catch { return false }
+}
 
 // The starter jobs build the house and tools. Before mining for diamonds,
 // establish the respawn point and physically stock the first recovery kit.
 // The house is the starter jobs' while it is being built or repaired (house/house-repair.js `houseDuty`); a
 // damaged house whose repair is held is not: each step then asks for the one thing it needs, from that thing's
 // received blocks (dragon-home-use.js), and goes on when it stands.
-function earlyObjective ({ inventory, worn, house, memory = {} }) {
+function earlyObjective ({ inventory, worn, house, memory = {}, inMine = false }) {
   const step = (id, label, legacy = false, ready = false) => ({ id, label, next: label, legacy, ready })
   if (inventory?.known !== true || inventory.uncertain || !Array.isArray(inventory.items)) return step('observe', '持ち物の受信を待ちます。')
   const held = inventory.items.filter(item => item?.count > 0)
   const duty = house?.origin ? houseDuty(house) : 'build'
-  const activeMine = !duty && memory.early?.spawnReady === true && !!memory.early?.mine?.branch?.request
+  // Keep ownership while at the active mine site or carrying cobblestone to remake a disposable stone pickaxe.
+  // On a bare respawn away from the mine (e.g. at home with empty bag), hand back to starter jobs so the Bot
+  // crafts a pickaxe and stone sword before departing unarmed (live 2026-11-25).
+  const cobbleHeld = held.filter(item => item.name === 'minecraft:cobblestone').reduce((sum, item) => sum + item.count, 0)
+  const activeMine = !duty && memory.early?.spawnReady === true && !!memory.early?.mine?.branch?.request && (inMine === true || cobbleHeld >= 3)
   if (!activeMine && !hasWorkingPick(held, 'wooden')) return step('wood', '原木から最初の道具を作ります。', true)
   if (duty) return step('base', duty === 'repair' ? '壊れた本拠点を直します。' : 'ベッドとラージチェストのある本拠点を作ります。', true)
   if (!activeMine && !hasWorkingPick(held, 'stone')) return step('stone', '鉄鉱石を採れる石以上のツルハシを用意します。', true)
@@ -40,8 +51,9 @@ function earlyObjective ({ inventory, worn, house, memory = {} }) {
 // first tools" and did nothing, and the starter jobs never got the player.
 // Live 2026-11-20 02:21-02:32 JST: the stone pickaxe reached 0 of 131 while digging a way down; for eleven minutes
 // the Bot stood at y 54 under 「原木から最初の道具を作ります。」 with no move, no dig and the starter jobs not started.
-const objectiveNow = ({ runtime, shared, memory }) => earlyObjective({ inventory: shared.inventoryUncertain ? null : runtime.inventory(),
-  worn: runtime.armor?.(), house: shared.playerHouse, memory })
+const objectiveNow = ({ runtime, shared, memory, getFeet = null }) => earlyObjective({ inventory: shared.inventoryUncertain ? null : runtime.inventory(),
+  worn: runtime.armor?.(), house: shared.playerHouse, memory,
+  inMine: atOwnMine({ runtime, getFeet: getFeet ?? (() => runtime.raw?.()?.position), record: memory }) })
 
 const distanceToBed = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const playerSpawn = receipt => !!receipt?.position && [0, 'player'].includes(receipt.type)
@@ -53,7 +65,7 @@ async function runDragonEarly (ctx) {
   const { shared, memory, runtime, supplies, cancelled } = ctx
   const state = memory.early ??= {}
   const result = reason => ({ done: false, reason })
-  const next = objectiveNow({ runtime, shared, memory })
+  const next = objectiveNow({ runtime, shared, memory, getFeet: ctx.getFeet })
   if (cancelled() || next.legacy || next.id === 'observe') return result(next.label)
   if (next.ready) return { done: true, reason: next.label }
   const origin = shared.playerHouse.origin

@@ -119,7 +119,7 @@ function createMeleeCombat ({ log = () => {}, client, getState, getRawState, wor
   }
   function actorGuards (s, target, aim, all) {
     for (const e of all) {
-      if (id(e.runtimeId) === id(target.runtimeId) || id(e.runtimeId) === id(s.state.runtimeEntityId) || e.alive === false || e.kind === 'item' || e.entityType === 'minecraft:arrow' || e.dimension != null && e.dimension !== s.state.dimension) continue
+      if (id(e.runtimeId) === id(target.runtimeId) || id(e.runtimeId) === id(s.state.runtimeEntityId) || e.alive === false || e.kind === 'item' || /^minecraft:(?:arrow|xp_orb|experience_orb|xp_bottle|item)$/.test(e.entityType ?? '') || e.dimension != null && e.dimension !== s.state.dimension) continue
       if (e.positionKnown !== true || !finite(e.position)) throw failure('Another actor position is unknown', 'ACTOR_UNKNOWN')
       const player = e.kind === 'player' || e.entityType === 'minecraft:player'
       if (player && (e.dimension !== s.state.dimension || id(e.runtimeId) === null)) throw failure('Another player identity or world scope is unknown', 'ACTOR_UNKNOWN')

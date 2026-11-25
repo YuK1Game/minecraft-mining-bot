@@ -35,7 +35,7 @@ function createDragonRuntime (ports) {
   const state = createDragonState({ root, shared, getState: raw, getBlock,
     getLife: () => runtime.host().getLife?.(), getWorldId: () => runtime.host().meta?.startGame?.seed })
   // The starter jobs get the player at the mine's entrance, not inside the mine (dragon-mine-exit.js).
-  const legacyNeeded = memory => objectiveNow({ runtime, shared, memory }).legacy === true &&
+  const legacyNeeded = memory => objectiveNow({ runtime, shared, memory, getFeet: ports.getFeet }).legacy === true &&
     !inOwnMine({ runtime, getFeet: ports.getFeet ?? (() => raw()?.position), record: memory })
   let stepRecord = null, unpin = false, triedFinishHold = null
   // The parent goal of the work (goal/goal-ledger.js): its clock, its budget and its hold are in `shared`, and
@@ -104,15 +104,21 @@ function createDragonRuntime (ports) {
     // Hunger of 6 or less and nothing to eat: a meal or the way to food before the work (dragon-heal.js).
     const want = hungry({ ctx, record, dim, shared, runtime, threatened: ports.threatened })
     if (want) { judge(...says.hungry(ctx.operations.food?.snapshot?.()?.hunger, want)); return feed(want, { ctx, supplies }) }
+    const hadRecovery = Boolean(record.recovery)
     if (record.recovery || record.lootRecovery) {
       judge(...says.recover(record))
       const recovery = await recoverDragon(ctx, record)
       if (!recovery.done) return { phase: 'recovering', reason: recovery.reason }
+      // When recovery cleared immediately (e.g. no reserve kit stocked yet) at night, re-check nightHome before leaving the house.
+      if (hadRecovery && !record.recovery && dim === 'overworld' && record.stage === 'early' && !rest.inside() && !(recoverHealth && ports.threatened())) {
+        const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
+        if (night) { judge(...says.night(runtime.travel?.()?.travelClock?.())); return night }
+      }
     }
     // Work of the starter jobs is due and the Bot is inside the mine: out by the ladder first (dragon-mine-exit.js).
-    if (dim === 'overworld' && record.stage === 'early' && objectiveNow({ runtime, shared, memory: record }).legacy === true) {
+    if (dim === 'overworld' && record.stage === 'early' && objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet }).legacy === true) {
       const leaving = await leaveOwnMine(ctx)
-      if (leaving) { judge(...says.mineExit(objectiveNow({ runtime, shared, memory: record }).label)); return leaving }
+      if (leaving) { judge(...says.mineExit(objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet }).label)); return leaving }
     }
     // No weapon in the bag: a stone sword is made of what is carried before other work (carry-weapon.js).
     if (dim === 'overworld' && record.stage === 'early') {
@@ -169,7 +175,7 @@ function createDragonRuntime (ports) {
       if (result.ready) { record.stronghold.prepared = true; record.stage = 'end' }
       return result
     }
-    judge(...says.early(objectiveNow({ runtime, shared, memory: record }), record))
+    judge(...says.early(objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet }), record))
     const result = await (ports.early ?? runDragonEarly)(ctx)
     if (result.done) { record.early.finished = true; record.stage = 'nether' }
     return result
@@ -194,7 +200,7 @@ function createDragonRuntime (ports) {
     if (!record) { try { record = state.snapshot() } catch { return null } }
     if (!record || state.scope() == null) return null
     if (record.stage !== 'early') return { key: goalKey(record), record }
-    const objective = objectiveNow({ runtime, shared, memory: record })
+    const objective = objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet })
     // No objective of its own to name (the inventory is not received, or the expedition owns the player only to
     // recover what a death left): the goal it had goes on.
     return { key: goalKey(record, objective) ?? ledger.goal()?.key ?? 'early.recover', record }
@@ -231,7 +237,7 @@ function createDragonRuntime (ports) {
     return { ...supplies, [request.resource]: request.targetHeld }
   }
   // The early objective as it reads now, for whoever names the owner in the log; null outside the early stage.
-  const objective = () => { const record = keyNow()?.record; return record?.stage === 'early' ? objectiveNow({ runtime, shared, memory: record }) : null }
+  const objective = () => { const record = keyNow()?.record; return record?.stage === 'early' ? objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet }) : null }
   return { ...expedition, tick, record: state.record, goal, mineKeep, objective }
 }
 module.exports = { createDragonRuntime }
