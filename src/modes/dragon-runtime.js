@@ -123,7 +123,11 @@ function createDragonRuntime (ports) {
     // No weapon in the bag: a stone sword is made of what is carried before other work (carry-weapon.js).
     if (dim === 'overworld' && record.stage === 'early') {
       const way = supplies.weapon()
-      if (way && !ports.threatened()) { judge(...says.weapon()); return supplies.arm(way) }
+      // With the parts carried the sword is made even while hostiles are about: it is a moment's crafting, and the
+      // fight preempts it as any other step. Waiting for a quiet moment kept the Bot unarmed among zombies (live
+      // 2026-11-26 04:38-05:13 JST after the death at 04:34: 74 cobblestone, logs and a stick carried, no sword made,
+      // 「被弾したため、攻撃を中断して退避します」 again and again at 10-15 health). Fetching wood still waits.
+      if (way && (way.code === 'NOT_MADE' || !ports.threatened())) { judge(...says.weapon()); return supplies.arm(way) }
     }
     // A tree that was begun is cut down to its last log before other work (dragon-tree.js).
     if (dim === 'overworld' && (shared.playerTree || shared.playerScaffoldDebt) && !ports.threatened()) {

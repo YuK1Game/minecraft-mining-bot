@@ -118,13 +118,9 @@ test('underground with no wood and no log in view nothing is fetched: the work g
   assert.equal(w.said(WOOD).length + w.said(NO_WOOD).length, 0, log)
 })
 
-test('with an enemy near the sword is not begun; it is made when the enemy is gone', async t => {
+test('with an enemy near and the parts carried the sword is still made (an unarmed Bot among zombies does not wait)', async t => {
   const w = await expedition(t)
   w.threatened = true
-  await w.pass(10000, { tickMs: 2000 })
-  assert.deepEqual(w.dig.crafted, [])
-  assert.equal(w.dig.tables.length, 0)
-  w.threatened = false
   await w.pass(20000, { tickMs: 2000 })
   assert.equal(w.swords(), 1, w.lines.join('\n'))
 })
