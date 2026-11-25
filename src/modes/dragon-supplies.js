@@ -145,6 +145,13 @@ function createDragonSupplies (ctx) {
     const parts = () => [held(item), held('stick'), held('planks'), held('log'), held('crafting_table'), !!bench.tableNear()].join()
     const before = held(item), was = parts()
     if (way === wood && !ctx.shared[says.flag]) { ctx.shared[says.flag] = true; ctx.log?.('プレイヤーモード: ' + says.wood) }
+    // With the planks for it carried and no table carried or near, the table is made in the bag first, so the tool is
+    // made here and the search for a table does not walk off to one far away (live 2026-11-26 05:14-05:17 JST: three
+    // tries at the stone sword, each a trip, then the way was spent and the Bot went back into the mine unarmed).
+    if (way !== wood && !held('crafting_table') && !bench.tableNear() && !cancelled()) {
+      if (held('planks') < 4 && held('log') > 0) await acquire('planks', 4)
+      if (held('planks') >= 4 && !cancelled()) await bench.craftSmall(full('crafting_table'), 1)
+    }
     await acquire(item, before + 1)
     if (held(item) > before) { delete ctx.shared[says.flag]; ctx.log?.('プレイヤーモード: ' + says.made); return true }
     if (!cancelled() && parts() === was && ctx.goal?.fail?.(way, { paceMs: way === wood ? 20000 : 15000 })?.exhausted && way === wood) { delete ctx.shared[says.flag]; ctx.log?.('プレイヤーモード: ' + says.none) }
