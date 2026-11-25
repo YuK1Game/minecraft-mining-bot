@@ -22,7 +22,7 @@ const { GEAR } = require('../survival/diamond-gear')
 
 const RAW_FOOD = /^minecraft:(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
 const SUPPORT = ['log', 'planks', 'stick', 'cobblestone', 'coal', 'charcoal', 'crafting_table', 'furnace', 'chest', 'stone_pickaxe', 'wooden_pickaxe']
-const EXTRA = [['blaze_rod', 8], ['ender_pearl', 16], ['ender_eye', 16], ['obsidian', 14], ['diamond', 32]]
+const EXTRA = [['blaze_rod', 8], ['ender_pearl', 20], ['ender_eye', 20], ['gold_ingot', 48], ['obsidian', 14], ['diamond', 32]]
 // Keys of the saved record that are choices and counters, not confirmed steps.
 const VOLATILE = new Set(['gather', 'supplySearch', 'foodSearch', 'cookSaidAt', 'plots', 'returning', 'mine', 'returnAttempt', 'reserveAt', 'reserveIron'])
 const STEP = 1000

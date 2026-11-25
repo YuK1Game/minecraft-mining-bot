@@ -1,9 +1,11 @@
 'use strict'
 
 const { toolOf } = require('../quarry/quarry-rules')
+const { ingredient } = require('./dragon-supply-recipes')
 
 const FOOD = /^minecraft:(?:bread|baked_potato|cooked_(?:beef|porkchop|mutton|chicken|salmon|cod|rabbit))$/
 const ITEMS = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots', 'iron_sword', 'iron_pickaxe', 'shield']
+const SPARE_CRAFTED = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots', 'iron_sword', 'shield']
 // The first kit at home: armour and a sword come before the food, and the food is a small first stock.
 // The kit is held twice (one in the chest, one carried). With 32 food second in the list the Bot hunted for
 // 64 cooked food with a stone sword and no armour, and every death sent it back to wooden tools
@@ -11,6 +13,11 @@ const ITEMS = ['iron_helmet', 'iron_chestplate', 'iron_leggings', 'iron_boots', 
 const HOME_FOOD = 8
 const home = [['iron_pickaxe', 1], ...ITEMS.filter(name => name !== 'iron_pickaxe').map(name => [name, 1]), ['food', HOME_FOOD], ['bucket', 1]]
 const spare = [...ITEMS.map(name => [name === 'iron_pickaxe' ? 'diamond_pickaxe' : name, 1]), ['bow', 1], ['arrow', 64], ['water_bucket', 1], ['food', 32], ['cobblestone', 128]]
+// Compressed stronghold departure materials for the spare outpost chest:
+// replace the 6 unstackable iron/shield pieces with stackable iron ingots (27),
+// planks (12, covering shield 6 + sticks 2 + torch/stick margin 4) and 1 crafting
+// table, then craft the full `spare` kit at the stronghold outpost chest.
+const spareCompact = [['iron_ingot', 27], ['planks', 12], ['crafting_table', 1], ['diamond_pickaxe', 1], ['bow', 1], ['arrow', 64], ['water_bucket', 1], ['food', 32], ['cobblestone', 128]]
 const active = ['diamond_helmet', 'diamond_chestplate', 'diamond_leggings', 'diamond_boots', 'diamond_pickaxe', 'diamond_sword', 'shield', 'water_bucket', 'bow'].map(name => [name, 1])
 const end = [...active, ['food', 32], ['arrow', 128], ['cobblestone', 128]]
 const nether = [['golden_boots', 1], ['shield', 1], ['flint_and_steel', 1], ['bow', 1], ['arrow', 32], ['food', 32], ['cobblestone', 128]]
@@ -56,4 +63,35 @@ const combined = (...lists) => {
   for (const [name, value] of lists.flat()) amounts.set(name, (amounts.get(name) ?? 0) + value)
   return [...amounts]
 }
-module.exports = { home, spare, end, nether, combined, matches, count, full, bare, workingPickTier, hasWorkingPick, homeCarryNeed }
+
+// Combined `end` combat kit plus compact outpost spare materials. Any unstackable
+// spare piece already held beyond the active `end` kit reduces the ingots/planks
+// requested so the Bot never mines redundant iron or wood.
+function compactReserveKit (items = [], worn = []) {
+  const carried = [...items, ...worn]
+  const endMap = new Map(end)
+  const extraParts = []
+  let iron = 0, planks = 0, sticks = 0, needsCraft = false
+  for (const [name, amount] of spare) {
+    if (!SPARE_CRAFTED.includes(name)) {
+      extraParts.push([name, amount])
+      continue
+    }
+    const activeNeed = endMap.get(name) ?? 0
+    const spareHave = Math.max(0, count(name, carried) - activeNeed)
+    const missing = Math.max(0, amount - spareHave)
+    if (missing <= 0) continue
+    needsCraft = true
+    const recipe = ingredient[name] ?? {}
+    iron += (recipe.iron_ingot ?? 0) * missing
+    planks += (recipe.planks ?? 0) * missing
+    sticks += (recipe.stick ?? 0) * missing
+  }
+  const stickPlanks = sticks > 0 ? Math.ceil(sticks / 4) * 2 : 0
+  if (iron > 0) extraParts.push(['iron_ingot', iron])
+  if (planks + stickPlanks > 0) extraParts.push(['planks', planks + stickPlanks + 4])
+  if (needsCraft) extraParts.push(['crafting_table', 1])
+  return combined(end, extraParts)
+}
+
+module.exports = { home, spare, spareCompact, end, nether, combined, compactReserveKit, matches, count, full, bare, workingPickTier, hasWorkingPick, homeCarryNeed }

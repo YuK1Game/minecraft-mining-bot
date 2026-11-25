@@ -185,4 +185,5 @@ test('stage details list exact transition item requirements and live received co
 
   const stronghold = viewStages.find(s => s.id === 'stronghold')
   assert.equal(stronghold.checks[0].value, 'アイ 0/20（玉7）')
+  assert.equal(stronghold.checks.find(c => c.label.includes('前哨予備の圧縮資材')).value, '鉄4/27・板0/12・台0/1')
 })

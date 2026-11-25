@@ -6,7 +6,7 @@ const { createHousePorts } = require('./house/house-ports')
 const { createContainerPorts } = require('./return/container-ports')
 const { approach, findCells, inView, collect, SOURCES, MOBS } = require('./dragon-supply-gather')
 const { createDragonBrewing } = require('./dragon-brew')
-const { home, end, nether, spare, combined, matches, count, full, bare, homeCarryNeed, hasWorkingPick } = require('./dragon-supply-kit')
+const { home, end, nether, spare, combined, compactReserveKit, matches, count, full, bare, homeCarryNeed, hasWorkingPick } = require('./dragon-supply-kit')
 const { provisionFood } = require('./dragon-early-food')
 const { placeStation } = require('./station-room')
 const { reserveRoom } = require('./dragon-reserve-room')
@@ -353,13 +353,16 @@ function createDragonSupplies (ctx) {
   const brewing = createDragonBrewing(ctx, { rows, acquire, station, fill, sleep })
   async function prepare (kind) {
     if (!getInventory() || cancelled()) return pending('遠征用の持ち物の受信を待ちます。')
-    const kit = kind === 'nether' ? nether : kind === 'reserve-end' ? combined(end, spare) : end
+    const kit = kind === 'nether' ? nether
+      : kind === 'reserve-end' ? combined(end, spare)
+        : kind === 'reserve-end-compact' ? compactReserveKit(rows(), worn())
+          : end
     for (const [name, need] of kit) {
       const equipped = count(name, worn()), carried = held(name)
       if (equipped + carried >= need) continue
       return { ...await acquire(name, need - equipped), done: false }
     }
-    const wantedPotions = kind === 'reserve-end' ? 8 : 4
+    const wantedPotions = kind === 'reserve-end' || kind === 'reserve-end-compact' ? 8 : 4
     if (kind !== 'nether' && brewing.countPotion('slow_falling') < wantedPotions &&
         (held('phantom_membrane') > 0 || ctx.operations.perception.entities().some(e => e.entityType === 'minecraft:phantom' && e.alive !== false))) {
       return { ...await brewing.brew('slow_falling', { count:wantedPotions }), done:false }

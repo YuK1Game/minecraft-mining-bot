@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const { brewStep, EFFECTS } = require('../src/modes/dragon-brew')
 const { observeBrewing, windowAt, transferBrew } = require('../src/modes/dragon-brew-window')
 const { dragonWaterPlan } = require('../src/actions/dragon-water-use')
-const { combined, count, end, spare } = require('../src/modes/dragon-supply-kit')
+const { combined, compactReserveKit, count, end, spare, spareCompact } = require('../src/modes/dragon-supply-kit')
 const { createDragonSupplies } = require('../src/modes/dragon-supplies')
 
 const air = () => ({network_id:0,count:0,metadata:0})
@@ -56,6 +56,36 @@ test('reserve-end package accounts for carried and stored ammunition, food and b
   const kit=Object.fromEntries(combined(end,spare))
   assert.equal(kit.diamond_pickaxe,2);assert.equal(kit.arrow,192);assert.equal(kit.cobblestone,256);assert.equal(kit.food,64)
   assert.equal(count('food',[{name:'minecraft:cooked_beef',count:8},{name:'minecraft:rotten_flesh',count:64}]),8)
+})
+
+test('compactReserveKit compresses the 6 unstackable spare iron/shield pieces into stackable ingots, planks and a crafting table', () => {
+  const fullCompact = Object.fromEntries(compactReserveKit([], []))
+  assert.equal(fullCompact.iron_ingot, 27)
+  assert.equal(fullCompact.planks, 12)
+  assert.equal(fullCompact.crafting_table, 1)
+  assert.equal(fullCompact.diamond_pickaxe, 2)
+  assert.equal(fullCompact.bow, 2)
+  assert.equal(fullCompact.water_bucket, 2)
+  assert.equal(fullCompact.arrow, 192)
+  assert.equal(fullCompact.food, 64)
+  assert.equal(fullCompact.cobblestone, 256)
+  assert.equal(fullCompact.iron_helmet, undefined)
+  assert.equal(fullCompact.iron_sword, undefined)
+  assert.equal(fullCompact.shield, 1) // active end kit shield only
+
+  const compactDefaults = Object.fromEntries(spareCompact)
+  assert.equal(compactDefaults.iron_ingot, 27)
+  assert.equal(compactDefaults.planks, 12)
+  assert.equal(compactDefaults.crafting_table, 1)
+
+  // Already carrying a spare iron chestplate + spare shield deducts 9 iron and 6 planks.
+  const partial = Object.fromEntries(compactReserveKit([
+    { name: 'minecraft:iron_chestplate', count: 1 },
+    { name: 'minecraft:shield', count: 2 }
+  ], []))
+  assert.equal(partial.iron_ingot, 18)
+  assert.equal(partial.planks, 6) // 2 for iron_sword stick + 4 margin
+  assert.equal(partial.crafting_table, 1)
 })
 
 test('water use requires real water source, known overhead, matching held stack and reachable top',()=>{

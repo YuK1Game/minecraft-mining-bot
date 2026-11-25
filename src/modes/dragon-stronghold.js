@@ -148,7 +148,28 @@ function createDragonStronghold (ctx) {
       await ports.craft(POWDER, Math.min(count(ROD), Math.ceil(needed / 2)))
       return working('ブレイズロッドからパウダーを作り、受信数を確認します。')
     }
-    if (!count(PEARL)) return pearls(record.stronghold, signal)
+    if (!count(PEARL)) {
+      const feet = getFeet()
+      const nearPearl = actors().find(a => a.kind === 'item' && a.name === PEARL && a.position && distance(a.position, feet) < 15)
+      if (nearPearl) {
+        await hands.approach(nearPearl.position, 0.9)
+        return working('観測したエンダーパールを回収します。')
+      }
+      const s = record.stronghold, gate = record.nether?.homeGate
+      if (gate && record.nether.barterExhausted !== true && typeof supplies?.acquire === 'function') {
+        if (flat(feet, gate) > 24) {
+          if (operations.quarry.travelStatus().busy) return working('ピグリン交易のため地上のゲートへ戻ります。')
+          if (ctx.climbUp && underCover(getBlock, ctx.where())) await ctx.climbUp(cancelled)
+          else await trip(gate)
+          return working('ピグリン交易のため地上のゲートへ戻ります。')
+        }
+        if (s.surface) s.resumeSurface = true
+        record.nether.barterGoal = target
+        record.stage = 'nether'
+        return working('エンダーパールをネザーのピグリン交易で集めます（金インゴットを準備して出発します）。')
+      }
+      return pearls(record.stronghold, signal)
+    }
     await ports.craft(EYE, Math.min(needed, count(POWDER), count(PEARL)))
     return working('パールとブレイズパウダーからエンダーアイを作ります。')
   }
@@ -289,10 +310,10 @@ function createDragonStronghold (ctx) {
       for (const [name, need] of [['minecraft:bed', 1], ['minecraft:chest', 2]]) if (count(name) < need) return working((await supplies.acquire(name, need)).reason)
       const combat = await supplies.prepare('end')
       if (!combat.done) return working(combat.reason)
-      const spare = await supplies.prepare('reserve-end')
+      const spare = await supplies.prepare('reserve-end-compact')
       if (!spare.done) return working(spare.reason)
       s.departed = true
-      return working('アイ20個・ベッド・ラージチェストの材料・戦闘装備と復帰用品をそろえました。')
+      return working('アイ20個・ベッド・ラージチェストの材料・戦闘装備と前哨予備のクラフト資材をそろえました。')
     }
     if (operations.quarry.travelStatus().busy) return working('記録した目的地まで地上を移動しています。')
     if (s.resumeSurface && s.surface) {

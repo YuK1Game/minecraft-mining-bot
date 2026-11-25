@@ -295,15 +295,18 @@ function stageChecks (stage, rawItems, house, record, options = {}) {
     }
     case 'stronghold': {
       const departed = Boolean(stronghold?.departed || stronghold?.portal || stage.reached)
-      const eyes = held(items, 'ender_eye'), pearls = held(items, 'ender_pearl')
+      const eyes = held(items, 'ender_eye'), pearls = held(items, 'ender_pearl'), gold = held(items, 'gold_ingot')
       const beds = held(items, 'bed'), chests = held(items, 'chest')
+      const iron = held(items, 'iron_ingot'), planks = held(items, 'planks'), tables = held(items, 'crafting_table')
       const arrows = held(items, 'arrow'), food = held(items, 'food'), cobble = held(items, 'cobblestone'), water = held(items, 'water_bucket')
+      const pearlSummary = gold > 0 ? `アイ ${eyes}/20（玉${pearls}・金${gold}）` : `アイ ${eyes}/20（玉${pearls}）`
       return [
-        check('エンダーアイを 20 個用意（パール＋パウダー各 20）', departed || (known && eyes >= 20), departed ? '20 / 20 個' : known ? `アイ ${eyes}/20（玉${pearls}）` : '受信待ち'),
+        check('エンダーアイを 20 個用意（ピグリン交易等でパール収集）', departed || (known && eyes >= 20), departed ? '20 / 20 個' : known ? pearlSummary : '受信待ち'),
         check('前哨用のベッド 1 個・チェスト 2 個を用意', departed || (known && beds >= 1 && chests >= 2), departed ? '準備済み' : known ? `ベッド${beds}/1・箱${chests}/2` : '受信待ち'),
+        check('前哨予備の圧縮資材（鉄27・板材12・作業台1）', departed || Boolean(stronghold?.reserve) || (known && iron >= 27 && planks >= 12 && tables >= 1), departed || stronghold?.reserve ? '準備済み' : known ? `鉄${iron}/27・板${planks}/12・台${tables}/1` : '受信待ち'),
         check('地下要塞のポータル部屋を発見', Boolean(stronghold?.portal || stage.reached)),
         check('前哨ベッドを復帰地点に設定', Boolean(stronghold?.spawnAt || stage.reached)),
-        check('前哨チェストに再出撃装備を備蓄（矢64・食料32・丸石128等）', Boolean(stronghold?.reserve || stage.reached)),
+        check('前哨チェストに再出撃装備を現地クラフトして備蓄', Boolean(stronghold?.reserve || stage.reached)),
         check('本戦用の消耗品（矢128・食料32・丸石128・水バケツ1）', stage.reached || (known && arrows >= 128 && food >= 32 && cobble >= 128 && water >= 1), stage.reached ? '確認済み' : known ? `矢${arrows}/128・食${food}/32・石${cobble}/128` : '受信待ち'),
         check('起動したポータル 9 マスと本戦の装備を確認（達成で次へ）', stage.reached)
       ]

@@ -113,7 +113,7 @@ async function survey (ctx, nether, objective = 'blaze') {
     nether.fortress = findBricks(ctx.getBlock, at)
     nether.scanned = sector
   }
-  const goal = objective === 'magma' ? null : objective === 'wart' ? nether.fortress : nether.blazeSite ?? nether.fortress
+  const goal = objective === 'magma' ? null : objective === 'piglin' ? nether.piglinSite ?? null : objective === 'wart' ? nether.fortress : nether.blazeSite ?? nether.fortress
   const target = goal && distance(at, goal) > 7 ? goal : null
   const heading = nether.heading ??= { x: at.x + 2000, y: at.y, z: at.z }
   const around = reachable(ctx).filter(p => distance(at, p) >= 4 && distance(at, p) <= 10)
@@ -125,7 +125,7 @@ async function survey (ctx, nether, objective = 'blaze') {
     visits[key] = (visits[key] ?? 0) + 1
     if (await walkTo(ctx, p)) {
       recordStep(nether, cell(ctx.getFeet()))
-      return pending(target ? '退路を記録しながら要塞へ近づきます' : '往復できる地形をたどってブレイズを探します')
+      return pending(objective === 'piglin' ? '退路を記録しながら交易できるピグリンを探します' : target ? '退路を記録しながら要塞へ近づきます' : '往復できる地形をたどってブレイズを探します')
     }
   }
   const result = await tunnel(ctx, nether, at)

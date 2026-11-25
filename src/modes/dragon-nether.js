@@ -7,6 +7,7 @@ const { chestOf } = require('./house/house-spawn')
 const { inside, leaveHouse } = require('./house/house-exit')
 const { openDoor } = require('./house/house-door')
 const { nearby, recordStep, retrieve, returnAlongRoute, survey, findWart, reachable } = require('./dragon-nether-route')
+const { barterGoldGoal, pearlProgress, stepBarter } = require('./dragon-barter')
 
 const count = (ctx, name) => held(ctx, 'minecraft:' + name)
 const eyeBudget = ctx => count(ctx, 'ender_eye') + count(ctx, 'blaze_powder') + 2 * count(ctx, 'blaze_rod')
@@ -215,6 +216,7 @@ async function overworld (ctx, n) {
   if (proof && n.returning) {
     if (n.returning === 'unsafe_exit') n.unsafeExit = true
     if (n.returning === 'probe') n.roundTrip = true
+    if (n.returning === 'barter_none') n.barterExhausted = true
     if (count(ctx, 'blaze_rod') >= 2) n.firstReturned = true
     if (n.returning === 'rods') n.fortressReturn = true
     n.route = []
@@ -226,7 +228,18 @@ async function overworld (ctx, n) {
     n.route = []
   }
   if (n.unsafeExit) return stopped('ネザー側の足場を確保できず地上へ帰還しました。出口の修復後、ネザーで地形を再確認します。')
-  if (n.roundTrip && n.brewed && n.fortressReturn && eyeBudget(ctx) >= 20) {
+  if (n.barterGoal) {
+    if (pearlProgress(ctx) >= n.barterGoal) {
+      delete n.barterGoal
+      ctx.shared.dragonGoldBoots = false
+      return { done: true, reason: 'ピグリン交易で必要なエンダーパールを確認し、現世へ戻りました。' }
+    }
+    if (n.barterExhausted) {
+      delete n.barterGoal
+      ctx.shared.dragonGoldBoots = false
+      return { done: true, reason: 'ネザーで交易できるピグリンが見つからなかったため、現世の洞窟探索へ切り替えます。' }
+    }
+  } else if (n.roundTrip && n.brewed && n.fortressReturn && eyeBudget(ctx) >= 20) {
     ctx.shared.dragonGoldBoots = false
     return { done: true, reason: 'ネザー往復と、地上でアイ20個分のブレイズ素材を確認しました。' }
   }
@@ -264,6 +277,10 @@ async function overworld (ctx, n) {
     return pending('金のブーツを装備枠で確認しています')
   }
   if (count(ctx, 'cobblestone') < 24 && !n.sheltered) return pending((await ctx.supplies.acquire('cobblestone', 24)).reason)
+  if (n.barterGoal && typeof ctx.supplies?.acquire === 'function') {
+    const goldGoal = barterGoldGoal(Math.max(1, n.barterGoal - pearlProgress(ctx)))
+    if (count(ctx, 'gold_ingot') < goldGoal) return pending((await ctx.supplies.acquire('gold_ingot', goldGoal)).reason)
+  }
   if (inside(ctx.shared.playerHouse?.origin, ctx.getFeet())) return exitHome(ctx)
   return cross(ctx, n.homeGate, 'nether')
 }
@@ -304,6 +321,7 @@ async function stepNether (ctx) {
     if (walking) return walking
     return cross(ctx, n.gate, 'overworld')
   }
+  if (n.barterGoal) return stepBarter(ctx, n, { pearlTarget: n.barterGoal })
   return hunt(ctx, n)
 }
 
