@@ -27,6 +27,11 @@ const mineOf=ctx=>ctx.memory?.early?.mine?.branch
 const inside=insideMine
 // Occupied main slots at which the layer's chest is visited; three stay free for ore of a new kind meanwhile.
 const DEPOSIT_AT=33
+// A dig the mining action refused for the target itself or its neighbours (a fluid or falling block beside it, a
+// block outside the automatic mining list): it is refused the same way from every stand, so the branch is sealed and
+// skipped like a hazard (live 2026-11-26 03:22-03:31 JST, upper:branch-44-right:12, (9753,17,10228): 「対象の隣に液体・
+// 落下ブロックなどがあります」 for ten minutes). A refusal for reach, sight or a missing tool is not one.
+const hazardRefusal=out=>out?.code==='MINE_DIG_REFUSED' && /液体・落下ブロック|自動採掘の対象外|追加レイヤー/.test(String(out.detail??''))
 
 function remainingPickBlock(ctx,branch,step){
   let name=null,tier=0
@@ -115,7 +120,7 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
         branch.progress[layer]=state.skipMineSegment(progress,{segmentId:id,code:out.code,attempts,plan:branch.plan,liveScope:before})
         delete branch.segmentTask
         await save(ctx,branch,before)
-      } else if(attempts>=4 && step.kind==='branch' && ['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE'].includes(out.code) && typeof state.skipMineSegment==='function'){
+      } else if(attempts>=4 && step.kind==='branch' && (['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE'].includes(out.code) || hazardRefusal(out)) && typeof state.skipMineSegment==='function'){
         // A partially opened branch hit water/lava/overhead gravel, an unminable structure block,
         // or an unsafe cave boundary (live 2026-11-25/26: 2,370 loops on branch-35-left:15 and
         // 2,103 loops on branch-38-right:18). Persist closingHazard so retries finish refilling
@@ -336,4 +341,4 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
   return outcome(out,'採掘物を計画済みのラージチェストへ収納します。')
 }
 
-module.exports={requestMine,createBranchMine:ctx=>({request:request=>requestMine(ctx,request)}),MINERALS,enabled,layerFor,beforeSurfaceSupply,finishMineWork,minePackRoom,stepLayer,remainingPickBlock}
+module.exports={hazardRefusal,requestMine,createBranchMine:ctx=>({request:request=>requestMine(ctx,request)}),MINERALS,enabled,layerFor,beforeSurfaceSupply,finishMineWork,minePackRoom,stepLayer,remainingPickBlock}
