@@ -129,6 +129,11 @@ test('mine-lighting accepts a solidly-supported gravel side wall and wall-torch 
   })
   const ok = await lighting.finish(plan, cells)
   assert.equal(ok.status, 'completed', JSON.stringify(ok))
+  // Natural dripstone cave rock on the boundary wall is a closed full block, not an unsafe cave.
+  const wallPos = { ...cells.clear[0], y: cells.clear[0].y + 2 }
+  blocks.set(key(wallPos), solidBlock('dripstone_block'))
+  const dripstoneOk = await lighting.finish(plan, cells)
+  assert.equal(dripstoneOk.status, 'completed', JSON.stringify(dripstoneOk))
   // Removing stone support under the gravel column turns it into floating gravel and must block.
   blocks.set(key({ ...torch.support, y: torch.support.y - 2 }), airBlock())
   const bad = await lighting.finish(plan, cells)

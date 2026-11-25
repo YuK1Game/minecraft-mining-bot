@@ -183,3 +183,26 @@ test('three failed attempts cannot skip a branch whose opening still needs finis
   assert.equal(w.branch.segmentTask,undefined)
   assert.ok(w.branch.progress.upper.blocked.length>0)
 })
+
+test('an opened branch that hits MINE_CAVE_BOUNDARY_UNSAFE refills its opened cells and skips after 4 attempts',async t=>{
+  const w=await upper(t),steps=mineSteps(w.plan,{layer:'upper'}),index=steps.findIndex(step=>step.kind==='branch'),step=steps[index],cells=stepCells(w.plan,step)
+  w.branch.progress.upper.cursor=index
+  w.branch.request={resource:'coal',targetHeld:3,layer:'upper'}
+  w.setFeet(cells.approach)
+  // Open all clear cells and place a non-closed water block on the ceiling boundary so finish() returns MINE_CAVE_BOUNDARY_UNSAFE.
+  for(const p of cells.clear)w.put(p,'air')
+  const top=cells.clear.reduce((best,p)=>p.y>best.y?p:best,cells.clear[0])
+  w.put({...top,y:top.y+1},'water',{liquid_depth:0})
+  for(let i=0;i<3;i++){
+    const out=await stepLayer(w.ctx,w.branch,'upper')
+    assert.equal(out.code,'MINE_CAVE_BOUNDARY_UNSAFE',JSON.stringify(out))
+  }
+  assert.equal(w.branch.progress.upper.cursor,index)
+  assert.equal(w.branch.segmentTask.stepId,step.id)
+  const closed=await stepLayer(w.ctx,w.branch,'upper')
+  assert.equal(closed.code,'MINE_SEGMENT_CLOSED',JSON.stringify(closed))
+  for(const p of cells.clear)assert.equal(w.getBlock(p.x,p.y,p.z).name,'minecraft:cobblestone',`cell ${p.x},${p.y},${p.z} must be sealed`)
+  assert.ok(w.branch.progress.upper.cursor>index)
+  assert.equal(w.branch.segmentTask,undefined)
+  assert.ok(w.branch.progress.upper.blocked.length>0)
+})

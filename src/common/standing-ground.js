@@ -8,7 +8,7 @@
 // exploration had 0 candidates, and a held crafting table had no cell).
 // Redstone ore glows (lit_*) once touched or stood on; it is the same floor.
 const ORE_GROUND = [...['coal', 'iron', 'copper', 'gold', 'lapis', 'redstone', 'diamond', 'emerald'].flatMap(name => [`${name}_ore`, `deepslate_${name}_ore`]), 'lit_redstone_ore', 'lit_deepslate_redstone_ore']
-const STANDING_GROUND = Object.freeze(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', ...ORE_GROUND])
+const STANDING_GROUND = Object.freeze(['grass_block', 'dirt', 'coarse_dirt', 'rooted_dirt', 'dirt_with_roots', 'stone', 'cobblestone', 'deepslate', 'cobbled_deepslate', 'andesite', 'diorite', 'granite', 'tuff', 'calcite', 'dripstone_block', 'smooth_basalt', 'clay', 'moss_block', ...ORE_GROUND])
 
 const ORE_NAME = /^(?:minecraft:)?(?:lit_)?(?:deepslate_)?(?:coal|iron|copper|gold|lapis|redstone|diamond|emerald)_ore$/
 // For the modules that test ground by a pattern of their own (with planks, logs, stations).

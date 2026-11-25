@@ -1,7 +1,7 @@
 'use strict'
 
 const {classifyMineCell}=require('./mine-geometry')
-const NATURAL=/^(?:minecraft:)(?:stone|deepslate|tuff|andesite|diorite|granite|dirt|grass_block|(?:deepslate_)?(?:coal|iron|gold|diamond|copper|emerald|lapis|redstone)_ore|lit_(?:deepslate_)?redstone_ore)$/
+const NATURAL=/^(?:minecraft:)(?:stone|deepslate|tuff|calcite|dripstone_block|smooth_basalt|andesite|diorite|granite|dirt|grass_block|(?:deepslate_)?(?:coal|iron|gold|diamond|copper|emerald|lapis|redstone)_ore|lit_(?:deepslate_)?redstone_ore)$/
 const isMineNaturalBlock=block=>block?.known===true && block.natural!==false && !block.protected && !block.protectionSource && !block.extra?.length && NATURAL.test(block.name??'')
 
 // Shared by expected yield and execution. Only a two-high pocket adjoining the currently open frontier is

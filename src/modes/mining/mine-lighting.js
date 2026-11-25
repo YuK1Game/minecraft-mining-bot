@@ -185,7 +185,15 @@ function createMineLighting (ctx, actions) {
         const out = await actions.place(stand.plan)
         if (!confirmed(out)) return out
         if (++changed >= 12) return pause()
-      } else if (!wallClosed(p, b)) return wait('MINE_CAVE_BOUNDARY_UNSAFE')
+      } else if (!wallClosed(p, b)) {
+        const said = ctx.shared && (ctx.shared.mineUnsafeWallSaid ??= {})
+        const sig = `${cells.id ?? ''}:${key(p)}:${b?.name ?? '?'}`
+        if (said && said.sig !== sig) {
+          said.sig = sig
+          ctx.log?.(`採掘場: ${cells.id ?? '?'} の境界 (${key(p)}) に安全に閉じられないブロック (${b?.name ?? '?'}) があります`)
+        }
+        return wait('MINE_CAVE_BOUNDARY_UNSAFE')
+      }
     }
     for (const p of floors) {
       if (stopped()) return interrupted('MINE_INTERRUPTED')

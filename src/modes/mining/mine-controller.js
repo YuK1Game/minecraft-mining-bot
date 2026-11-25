@@ -113,10 +113,11 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
         branch.progress[layer]=state.skipMineSegment(progress,{segmentId:id,code:out.code,attempts,plan:branch.plan,liveScope:before})
         delete branch.segmentTask
         await save(ctx,branch,before)
-      } else if(attempts>=4 && step.kind==='branch' && ['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE'].includes(out.code) && typeof state.skipMineSegment==='function'){
-        // A partially opened branch hit water/lava/overhead gravel or an unminable structure block
-        // (live 2026-11-25: 2,370 loops on upper:branch-35-left:15). Persist closingHazard so retries
-        // finish refilling opened cells without trying to re-dig placed cobblestone, then skip.
+      } else if(attempts>=4 && step.kind==='branch' && ['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE'].includes(out.code) && typeof state.skipMineSegment==='function'){
+        // A partially opened branch hit water/lava/overhead gravel, an unminable structure block,
+        // or an unsafe cave boundary (live 2026-11-25/26: 2,370 loops on branch-35-left:15 and
+        // 2,103 loops on branch-38-right:18). Persist closingHazard so retries finish refilling
+        // opened cells without trying to re-dig placed cobblestone, then skip.
         branch.segmentTask={...branch.segmentTask,closingHazard:true,hazardCode:out.code}
         if(!await save(ctx,branch,before))return blocked('MINE_CHECKPOINT','ハザード支線の埋戻し状態を保存します。','owner_released')
         return closeHazardBranch(out.code,attempts)
