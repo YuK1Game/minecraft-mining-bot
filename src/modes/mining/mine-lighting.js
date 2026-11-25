@@ -196,7 +196,15 @@ function createMineLighting (ctx, actions) {
       const stand = await approach(p, feet => floorVisible(p, feet))
       if (!confirmed(stand)) return stand
       if (!air(block(p))) {
-        const out = await actions.mine(p)
+        const found = block(p)
+        // Live 2026-11-25 06:31-09:41 JST: a natural gravel floor cell in upper:branch-14-left:51
+        // (9783,15,10295) was refused 41,726 times because plain actions.mine(p) did not opt into
+        // safe top-down mine_gravel clearing (Y=16 above the floor is already received air).
+        const dig = found?.known === true && found.name === 'minecraft:gravel' && found.natural !== false &&
+          !found.protected && !found.protectionSource && !found.extra?.length
+          ? { ...p, accessPreparation: 'mine_gravel', expectedName: found.name, expectedRuntimeId: found.runtimeId ?? null }
+          : p
+        const out = await actions.mine(dig)
         if (!confirmed(out)) return out
       }
       const out = await actions.place({ position: p, name: 'cobblestone_slab', clickY: 0.25 })

@@ -168,7 +168,15 @@ function createMineActions (ctx) {
     // Breaking the same received, unchanged block is safe to retry. No item
     // placement/transfer can be replayed through this path.
     if (block(position)?.known === true) await clear(actionKey)
-    return wait(mined ? 'MINE_BLOCK_UNCONFIRMED' : 'MINE_DIG_REFUSED', 'terrain_received', { detail: ctx.hands.why?.() })
+    const why = ctx.hands.why?.()
+    if (!mined) {
+      const line = `${key(position)} を掘れません（${String(why ?? '理由不明').replace(/[\p{C}§]/gu, ' ').slice(0, 120)}）`
+      if (ctx.shared && ctx.shared.mineDigSaid !== line) {
+        ctx.shared.mineDigSaid = line
+        ctx.log?.('採掘場: ' + line)
+      }
+    }
+    return wait(mined ? 'MINE_BLOCK_UNCONFIRMED' : 'MINE_DIG_REFUSED', 'terrain_received', { detail: why })
   }
   const placement = request => placements(block, request)[0] ?? null
   // A placement that was not made says where and why, once for each place and reason (it is tried again every step).

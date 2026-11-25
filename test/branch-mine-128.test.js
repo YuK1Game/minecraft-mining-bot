@@ -215,3 +215,55 @@ test('walkLayer advances along received 128x128 corridor floors when the target 
   assert.equal(broken.code, 'MINE_ROUTE_UNKNOWN')
   assert.equal(walks.length, beforeBroken)
 })
+
+test('mine-lighting clears natural gravel floor cells with accessPreparation mine_gravel before placing slabs', async () => {
+  const { createMineLighting } = require('../src/modes/mining/mine-lighting')
+  const { mineSteps, stepCells } = require('../src/modes/mining/mine-geometry')
+  const plan = createMineGeometry({ scope, anchor: { x: 0, z: 0 }, direction: 'east', width: 16, length: 16, surfaceY: 64, upperY: 16 })
+  const step = mineSteps(plan, { layer: 'upper' })[0]
+  const cells = stepCells(plan, step)
+  const blocks = new Map()
+  const key = p => `${p.x},${p.y},${p.z}`
+  const solidBlock = name => ({ known: true, name: `minecraft:${name}`, boundingBox: 'block', runtimeId: 1, extra: [] })
+  const airBlock = () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty', runtimeId: 0, extra: [] })
+  const slabBlock = () => ({ known: true, name: 'minecraft:cobblestone_slab', boundingBox: 'block', runtimeId: 2, properties: { 'minecraft:vertical_half': 'bottom' }, extra: [] })
+  const torchBlock = () => ({ known: true, name: 'minecraft:torch', boundingBox: 'empty', runtimeId: 3, extra: [] })
+  for (const p of cells.clear) blocks.set(key(p), airBlock())
+  for (const f of cells.floor) blocks.set(key(f.position), slabBlock())
+  for (const t of cells.torch) blocks.set(key(t.position), torchBlock())
+  // Turn one floor cell into natural gravel (reproducing upper:branch-14-left:51 at 9783,15,10295).
+  const gravelFloor = cells.floor[0].position
+  blocks.set(key(gravelFloor), solidBlock('gravel'))
+  const getBlock = (x, y, z) => blocks.get(`${x},${y},${z}`) ?? solidBlock('stone')
+  const mined = [], placed = []
+  let feet = { x: gravelFloor.x + 1.5, y: 15.5, z: gravelFloor.z + 0.5 }
+  const lighting = createMineLighting({
+    getBlock,
+    getFeet: () => ({ ...feet }),
+    cancelled: () => false,
+    signal: new AbortController().signal,
+    memory: { early: { mine: { branch: { progress: { upper: { cursor: 0 } }, shaft: { landings: { upper: true } } } } } }
+  }, {
+    block: p => getBlock(p.x, p.y, p.z),
+    inventory: () => ({ known: true, items: [{ name: 'minecraft:cobblestone_slab', count: 16 }] }),
+    walk: async to => { feet = { ...to }; return { status: 'completed', code: 'MINE_POSITION_RECEIVED', serverConfirmed: true } },
+    mine: async target => {
+      mined.push(target)
+      blocks.set(key(target), airBlock())
+      return { status: 'completed', code: 'MINE_AIR_RECEIVED', serverConfirmed: true }
+    },
+    place: async req => {
+      placed.push(req)
+      blocks.set(key(req.position), slabBlock())
+      return { status: 'completed', code: 'MINE_PLACEMENT_RECEIVED', serverConfirmed: true }
+    },
+    done: code => ({ status: 'completed', code, serverConfirmed: true })
+  })
+  const ok = await lighting.finish(plan, cells)
+  assert.equal(ok.status, 'completed', JSON.stringify(ok))
+  assert.equal(mined.length, 1)
+  assert.equal(mined[0].accessPreparation, 'mine_gravel')
+  assert.equal(mined[0].expectedName, 'minecraft:gravel')
+  assert.equal(placed.length, 1)
+  assert.equal(placed[0].name, 'cobblestone_slab')
+})
