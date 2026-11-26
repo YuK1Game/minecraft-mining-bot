@@ -29,12 +29,13 @@ const inside=insideMine
 const DEPOSIT_AT=33
 // A dig the mining action refused for the target itself or its neighbours (a fluid or falling block beside it, a
 // block outside the automatic mining list): it is refused the same way from every stand, so the branch is sealed and
-// skipped like a hazard (live 2026-11-26 03:22-03:31 JST, upper:branch-44-right:12, (9753,17,10228): 「対象の隣に液体・
+// skipped like a hazard; so is a face no received stand can see, after the same four tries (live 2026-11-26 15:09-15:29 JST,
+// upper:branch-110-right:9, (9687,17,10230): 「射程内の採掘面への視線が遮られているか、未取得です」 from every stand) (live 2026-11-26 03:22-03:31 JST, upper:branch-44-right:12, (9753,17,10228): 「対象の隣に液体・
 // 落下ブロックなどがあります」 for ten minutes). A refusal for reach, sight or a missing tool is not one.
 // MINE_FINISH_STAND_UNAVAILABLE (an opening of the section, usually into a cave, that no received stand can reach
 // to close) is counted and closed the same way (live 2026-11-26 05:21, 05:48 and 07:16-07:21 JST: the section's
 // finish held the mine five minutes and more each time).
-const hazardRefusal=out=>out?.code==='MINE_DIG_REFUSED' && /液体・落下ブロック|自動採掘の対象外|追加レイヤー/.test(String(out.detail??''))
+const hazardRefusal=out=>out?.code==='MINE_DIG_REFUSED' && /液体・落下ブロック|自動採掘の対象外|追加レイヤー|採掘面への視線が遮られているか、未取得/.test(String(out.detail??''))
 
 function remainingPickBlock(ctx,branch,step){
   let name=null,tier=0

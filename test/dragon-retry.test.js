@@ -113,3 +113,14 @@ test('real goal watchdog reconsiders a blocked task without a time-based hold an
   await w.pass(10000)
   assert.equal(w.calls, 3)
 })
+
+test('a wait of a kind the watcher does not follow (position_changed) is looked at again after a minute', () => {
+  const { createExpeditionRetry, LOOK_AGAIN_MS } = require('../src/modes/dragon-retry')
+  let at = 0
+  const retry = createExpeditionRetry({ raw: () => ({ position: { x: 1, y: 2, z: 3 }, inventory: { known: true, items: [] } }), lifeKey: () => 'life', legacyBusy: () => false, legacyIdle: () => true, loading: () => false, now: () => at })
+  retry.arm({ status: 'blocked', retry: { kind: 'position_changed' } }, retry.snapshot())
+  at = LOOK_AGAIN_MS - 1
+  assert.equal(retry.ready(), false)
+  at = LOOK_AGAIN_MS
+  assert.equal(retry.ready(), true)
+})
