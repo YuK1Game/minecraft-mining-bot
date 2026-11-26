@@ -91,12 +91,15 @@ test('a skeleton in the open cuts the repair short, and the line says who it was
   assert.deepEqual(f.placed, [WALL])
 })
 
-test('a walker within 12 m counts unless there is fresh evidence of no route; an archer that has not moved for a minute does not', async () => {
+test('a walker within 12 m counts unless there is fresh evidence of no route or it is levels away behind solid rock; an archer that has not moved for a minute does not', async () => {
   const f = scene()
   const under = { x: f.feet.x + 3, y: ORIGIN.y - 8, z: f.feet.z }
+  // Nine below inside solid stone on every line: not near for the work (live 2026-11-26, a zombie under the house).
   f.actors = [mob('zombie', under)]
-  assert.deepEqual({ ...f.danger.why(), distance: Math.round(f.danger.why().distance) }, { code: 'NEAR', type: 'minecraft:zombie', distance: 11, rise: -9 })
-  assert.equal(f.danger.text(), 'zombie 11m・9段下')
+  assert.equal(f.danger.near(), false, 'a walker levels below behind solid rock does not cut the work short')
+  const beside = { x: f.feet.x + 6, y: f.feet.y, z: f.feet.z }
+  f.actors = [mob('zombie', beside)]
+  assert.equal(f.danger.why()?.code, 'NEAR')
   f.unreachable = true
   assert.equal(f.danger.near(), false)
   f.actors = [mob('creeper', under)]
