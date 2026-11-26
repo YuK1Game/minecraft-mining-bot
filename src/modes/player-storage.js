@@ -243,6 +243,12 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     const reserved = !single ? unfinished.find(entry => entry.stages?.every(stage => stage === 'reserved') && entry.cells.every(at => chestCell(getBlock, feet, at)))?.cells : null
     if (unfinished.length && !single && !reserved) return null
     if (discard && hands.drop && !woodFor(single ? 1 : 2) && await discardJunk({ drop: hands.drop, walk, why, cells, getInventory, getFeet, shared, say, now })) return true
+    // A single chest with no free cell beside it cannot become a large chest: a new pair is set down instead of
+    // returning nothing (live 2026-11-26 20:40-22:22 JST: the half at (9885, 64, 10141) refused every new base chest).
+    if (single && !(await besideSingle(single.position)).length && !stopped()) {
+      say(`チェスト (${single.position.x}, ${single.position.y}, ${single.position.z}) の横に2つ目を置けないため、別の場所にラージチェストを置きます`)
+      single = null
+    }
     if (single) {
       let cells = await besideSingle(single.position)
       if (!cells.length || !await makeChests(1, cells, stopped) || stopped()) return null
