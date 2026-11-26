@@ -537,6 +537,8 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     if (!live() || busy || travel.status()?.busy || now() < waitUntil || !due()) return null
     if (blocked() || hostile()) {
       const why = hostile() ? `敵が近い（${hostileWhy() ?? '不明'}）` : '体力・空腹・ほかの作業待ち'
+      // An enemy near holds the start as it holds a run (above): the expedition works meanwhile (dragon-early.js).
+      if (hostile()) shared.playerHousePausedUntil = now() + 120000
       if (skipNote !== why) { skipNote = why; say(`拠点の家: 開始を待っています（${why}）`) }
       return null
     }
