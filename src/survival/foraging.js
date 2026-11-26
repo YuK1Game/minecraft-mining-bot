@@ -49,7 +49,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
 
   function actors (state) { return Array.isArray(state.entities) ? state.entities : entities.snapshot({ kind: 'all', includeUnknown: true }) }
   const timingDiagnostics = { observation: { reads: 0, getStateMs: 0, maxGetStateMs: 0, evaluationMs: 0 }, calls: {} }
-  function observe (baseline = null) {
+  function observe (baseline = null, { allowSlotChange = false } = {}) {
     const observeStarted = performance.now()
     const state = getState()
     const stateMs = performance.now() - observeStarted
@@ -63,7 +63,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
     const selected = selectedSlot(state)
     if (!Number.isInteger(selected) || selected < 0 || selected > 8) throw new ForagingError('サーバーで確定した選択スロットが必要です。', 'SELECTED_SLOT_UNKNOWN')
     if (baseline) {
-      if (selected !== selectedSlot(baseline)) throw new ForagingError('作業中に主手の選択スロットが変わりました。', 'SELECTED_SLOT_CHANGED')
+      if (!allowSlotChange && selected !== selectedSlot(baseline)) throw new ForagingError('作業中に主手の選択スロットが変わりました。', 'SELECTED_SLOT_CHANGED')
       if (['startedAt', 'connectionId', 'runtimeEntityId'].some(field => baseline[field] != null && baseline[field] !== state[field]) || baseline.lifecycle?.deathId != null && baseline.lifecycle.deathId !== state.lifecycle?.deathId || dimension(state.dimension) !== dimension(baseline.dimension)) throw new ForagingError('食料探し中に接続・次元が変わりました。', 'SESSION_CHANGED')
       if (state.health < baseline.health) throw new ForagingError('被ダメージを確認したため食料探しを中断します。', 'TOOK_DAMAGE')
     }
@@ -220,7 +220,7 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
   function check (run) {
     if (run.signal.aborted) throw run.signal.reason instanceof Error ? run.signal.reason : new ForagingError('食料探しを停止しました。', 'ABORTED')
     if (clock() >= run.deadline) throw new ForagingError('食料探しのbatch制限時間に達しました。', 'TIMEOUT')
-    return observe(run.baseline)
+    return observe(run.baseline, { allowSlotChange: run.hunting === true })
   }
   async function call (run, fn, label = 'other') {
     const started = performance.now(), timing = { at: Date.now(), label, outcome: 'checking' }
@@ -428,7 +428,19 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
             if (!waiting) {
               status.hits++; entry.hits++
               report('hunting', { target: status.target, collected: false })
-              const result = await call(run, () => combat.hunt(String(idOf(target))))
+              let result
+              run.hunting = true
+              try {
+                result = await call(run, () => combat.hunt(String(idOf(target))))
+              } finally {
+                // combat.hunt() may switch to the strongest melee weapon (hunt-weapon.js);
+                // adopt the new server-confirmed slot before resuming strict slot monitoring.
+                const afterHunt = selectedSlot(getState() ?? {})
+                if (Number.isInteger(afterHunt) && afterHunt >= 0 && afterHunt <= 8) {
+                  run.baseline = { ...run.baseline, rawServerSelectedSlot: afterHunt, rawSelectedSlot: afterHunt }
+                }
+                run.hunting = false
+              }
               if (result?.phase !== 'observed') { cooldown(target, 30000, 'hunt_unconfirmed'); status.reason = '狩りのサーバー反応が未確認のため別の食料源へ戻ります。'; break }
               entry.hitAt = clock(); entry.knock = knockFrom(observation.state.position, target.position, entry.hitAt)
               if (run.pin?.kind === 'prey' && String(result.targetRuntimeId) === run.pin.runtimeId && ['death_animation', 'target_removed'].includes(result.reaction)) run.pin.terminalObserved = true

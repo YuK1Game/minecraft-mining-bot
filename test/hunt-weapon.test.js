@@ -28,3 +28,97 @@ test('the received state (host getServerState: `selectedSlot` only) still switch
   await huntArmed({ hunt: async id => { calls.push(`hunt ${id}`); return { phase: 'observed' } }, equip: async slot => { calls.push(`equip ${slot}`); return { phase: 'completed' } }, crafting: { inventorySnapshot: () => ({ inventory: items }), rawItem }, getState: () => ({ selectedSlot: 3 }) }, '42')
   assert.deepEqual(calls, ['equip 7', 'hunt 42'])
 })
+
+test('foraging accepts weapon slot switch performed by combat.hunt without SELECTED_SLOT_CHANGED, while still rejecting external switches', async () => {
+  const { createForaging } = require('../src/survival/foraging')
+  let selected = 3
+  let beefCount = 0
+  let preyAlive = true
+  const prey = () => ({ kind: 'mob', runtimeId: '50', uniqueId: '50', entityType: 'minecraft:cow', dimension: 'overworld', alive: preyAlive, hostile: false, positionKnown: true, position: { x: 1.5, y: 65, z: 0.5 } })
+  const state = () => ({
+    phase: 'spawned',
+    gameMode: 'survival',
+    dimension: 'overworld',
+    health: 20,
+    dead: false,
+    profile: 'bot',
+    realm: { id: '42' },
+    connectionId: 'c1',
+    startedAt: '2026-11-27T00:00:00.000Z',
+    runtimeEntityId: '1',
+    lifecycle: { deathId: 0 },
+    position: { x: 0.5, y: 66.62, z: 0.5 },
+    rawServerSelectedSlot: selected,
+    rawSelectedSlot: selected,
+    inventory: {
+      known: true,
+      uncertain: false,
+      items: [
+        ...items,
+        ...(beefCount > 0 ? [{ slot: 4, name: 'minecraft:beef', count: beefCount }] : [])
+      ]
+    },
+    entities: [prey()]
+  })
+  const world = {
+    getBlock: (x, y, z) => y <= 64
+      ? { known: true, name: 'minecraft:grass_block', boundingBox: 'block' }
+      : { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+  }
+  const entities = { snapshot: () => [prey()] }
+  const movement = { preview: () => ({ ready: false }), start: async () => {}, stop: async () => {} }
+  const foraging = createForaging({
+    getState: state,
+    world,
+    entities,
+    movement,
+    getMovement: () => ({ phase: 'idle' }),
+    combat: {
+      previewHunt: () => ({ ready: true, cooldownRemainingMs: 0 }),
+      hunt: id => huntArmed({
+        equip: async slot => {
+          selected = slot
+          // Span across foraging's 100ms heartbeat to ensure no race causes SELECTED_SLOT_CHANGED.
+          await new Promise(resolve => setTimeout(resolve, 130))
+          return { serverConfirmed: true }
+        },
+        hunt: async targetId => {
+          preyAlive = false
+          beefCount = 2
+          return { phase: 'observed', targetRuntimeId: targetId, reaction: 'death_animation' }
+        },
+        crafting: { inventorySnapshot: () => ({ inventory: items }), rawItem },
+        getState: () => ({ selectedSlot: selected })
+      }, id),
+      cancel: async () => {}
+    }
+  })
+
+  const out = await foraging.execute({ maxSteps: 3, maxHits: 3, timeoutMs: 5000 })
+  assert.equal(out.ok, true)
+  assert.equal(out.collected, true)
+  assert.equal(selected, 7)
+
+  // External slot change outside combat.hunt (during cooldown pause) is still rejected.
+  selected = 3
+  beefCount = 0
+  preyAlive = true
+  let flipped = false
+  const externalForaging = createForaging({
+    getState: state,
+    world,
+    entities,
+    movement,
+    getMovement: () => ({ phase: 'idle' }),
+    combat: {
+      previewHunt: () => ({ ready: true, cooldownRemainingMs: 250 }),
+      hunt: async () => ({ phase: 'observed' }),
+      cancel: async () => {}
+    },
+    delay: async ms => {
+      if (!flipped) { flipped = true; selected = 1 }
+      await new Promise(resolve => setTimeout(resolve, Math.min(ms, 40)))
+    }
+  })
+  await assert.rejects(() => externalForaging.execute({ maxSteps: 3, maxHits: 3, timeoutMs: 3000 }), err => err?.code === 'SELECTED_SLOT_CHANGED')
+})
