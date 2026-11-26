@@ -77,7 +77,18 @@ async function prepareHomeIron (ctx, batch, { held, house, acquire }) {
   }
 
   const failure = at => ({ stage: 'reserve', target: [at.x, at.y, at.z].join(','), code: 'IRON_FURNACE_UNREAD' })
-  const oven = await homeStation(ctx, 'furnace', { spent: at => ctx.goal?.spent?.(failure(at)) === true })
+  // Both house furnaces spent hold the batch with its raw iron inside them; after a two-minute wait (dragon-home-use.js)
+  // their failures are forgotten and they are tried again (live 2026-11-26 17:10-17:24 JST: 16/63 ingots, both furnaces
+  // spent after unanswered open clicks, the batch waited for a change of supplies that the furnaces alone could bring).
+  const spentAll = at => ctx.goal?.spent?.(failure(at)) === true
+  const seen = homeTarget(ctx, 'furnace', { spent: spentAll })
+  const now = (ctx.now ?? Date.now)()
+  if (seen.state === 'spent' && now - (batch.spentAt ?? now) >= 120000) {
+    ctx.goal?.clearFailures?.()
+    delete batch.spentAt
+  } else if (seen.state === 'spent') batch.spentAt ??= now
+  else delete batch.spentAt
+  const oven = await homeStation(ctx, 'furnace', { spent: spentAll })
   if (!oven.at) return oven
   const left = batch.target - held('iron_ingot')
   if (left <= 0) return { done: true, reason: '携行用と予備用に必要な鉄インゴットを確認しました。' }

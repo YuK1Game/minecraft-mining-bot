@@ -29,7 +29,7 @@ function homeUse (ctx, name, options = {}) {
   if (seen.state === 'standing') return { ok: true, at: seen.at, alternative: seen.alternative }
   const no = (reason, result) => ({ ok: false, state: seen.state, at: seen.at, reason, result })
   if (seen.state === 'unknown') return no(`本拠点の${label}のブロックの受信を待ちます。`, blocked('HOME_FACILITY_UNKNOWN', { kind: 'terrain_received' }))
-  if (seen.state === 'spent') return no(`本拠点の${label}は立っていますが使えなかったため、場所か状態が変わるまで保留します。`, blocked('HOME_FACILITY_SPENT', { kind: 'supplies_changed' }))
+  if (seen.state === 'spent') return no(`本拠点の${label}は立っていますが使えなかったため、場所か状態が変わるまで保留します。`, blocked('HOME_FACILITY_SPENT', { kind: 'time', ms: 120000 }))
   const asked = needHouse(ctx.shared, ctx.getBlock, name, { now: (ctx.now ?? Date.now)(), log: ctx.log })
   return asked.state === 'held'
     ? no(`本拠点の${label}が壊れていて、修理は保留中です（材料か家の様子が変わった時に見直します）。`, blocked('HOME_FACILITY_HELD', { kind: 'supplies_changed' }))
