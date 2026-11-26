@@ -79,7 +79,11 @@ async function recoverDragon (ctx, record) {
   const outpost = record.stronghold.outpostChest
   const useOutpost = outpost && record.stage === 'end'
   const home = ctx.shared.playerHouse?.origin
-  const chest = useOutpost ? outpost : record.early.reserveReady && (home ? record.early.reserveAt ?? chestOf(home) : ctx.shared.playerBase)
+  // A reserve still being stocked is used too: what it already holds (an iron sword, armour) is taken back, nothing is
+  // gathered for what it lacks (live 2026-11-26 22:40 JST: died while the reserve held an iron sword and four iron pieces,
+  // and the recovery ended at once because the reserve was not ready, leaving the Bot with a wooden sword).
+  const partial = !useOutpost && !record.early.reserveReady && !!home
+  const chest = useOutpost ? outpost : home ? (record.early.reserveReady || partial ? record.early.reserveAt ?? chestOf(home) : null) : record.early.reserveReady && ctx.shared.playerBase
   if (!chest) {
     record.recovery = null
     return { done: true }
@@ -100,7 +104,7 @@ async function recoverDragon (ctx, record) {
     else return working('復帰地点から出撃所までの安全な経路を確認しています。')
     return working('記録した予備装備チェストへ戻っています。')
   }
-  const options = { mode: 'recover', kit: useOutpost ? 'end' : 'home', keepReserve: recovery.repeated === true, signal: ctx.signal, aborted: ctx.cancelled }
+  const options = { mode: 'recover', kit: useOutpost ? 'end' : 'home', keepReserve: recovery.repeated === true, partial, signal: ctx.signal, aborted: ctx.cancelled }
   const kit = await ctx.supplies.reserve(chest, options)
   if (!kit.done || ctx.cancelled()) {
     if (kit.missing?.name && Number.isFinite(kit.missing.count)) recovery.gather = { name: kit.missing.name, count: kit.missing.count }

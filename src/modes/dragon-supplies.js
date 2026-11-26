@@ -315,7 +315,7 @@ function createDragonSupplies (ctx) {
     await moveStock(pos, name, amount - observed, take)
     return pending(name + ' の移動後の数量を確認します。')
   }
-  async function reserve (pos, { mode, kit, keepReserve = false } = {}) {
+  async function reserve (pos, { mode, kit, keepReserve = false, partial = false } = {}) {
     const recovering = mode === 'recover', desired = kit === 'end' ? spare : home
     const slots = await inspect(pos)
     if (!slots) return unread ? { ...pending('予備のラージチェストの54枠を受信できません（' + unread + '）。'), unread } : pending('予備のラージチェスト54枠と持ち物を確認します。')
@@ -341,6 +341,7 @@ function createDragonSupplies (ctx) {
       const weapons = rows().filter(row => /_sword$|_axe$/.test(String(row.name)) && !/_pickaxe$/.test(String(row.name))).reduce((sum, row) => sum + row.count, 0)
       const lastWeapon = !recovering && /_sword$/.test(name) ? Math.max(0, 1 - (weapons - carried)) : 0
       const available = Math.max(0, recovering ? inChest - (keepReserve ? amount : 0) : carried - Math.max(keep, lastWeapon))
+      if (available < 1 && recovering && partial) continue
       if (available < 1) {
         const target = recovering ? amount - equipped : wanted + keep
         return { ...pending(name + ' を予備用に補給します。'), missing:{name, count:target} }
