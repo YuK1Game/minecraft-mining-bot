@@ -104,6 +104,9 @@ function createDragonRuntime (ports) {
     // Hunger of 6 or less and nothing to eat: a meal or the way to food before the work (dragon-heal.js).
     const want = hungry({ ctx, record, dim, shared, runtime, threatened: ports.threatened })
     if (want) { judge(...says.hungry(ctx.operations.food?.snapshot?.()?.hunger, want)); return feed(want, { ctx, supplies }) }
+    // Bare while the house reserve already holds iron gear (a death while it was being stocked): the recovery is opened
+    // once to take it back from the partial reserve (dragon-rearm.js, dragon-recovery.js `partial`).
+    if (!record.recovery && dim === 'overworld' && record.stage === 'early' && !record.early?.reserveReady && require('./dragon-rearm').rearmWanted(ctx, record)) record.recovery = { at: Date.now(), cause: 'rearm', lootChecked: true, rearm: true }
     const hadRecovery = Boolean(record.recovery)
     if (record.recovery || record.lootRecovery) {
       judge(...says.recover(record))
