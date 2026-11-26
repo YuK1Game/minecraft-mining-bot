@@ -13,11 +13,12 @@ const AGAIN_MS = 10 * 60000
 
 function rearmWanted (ctx, record, now = Date.now()) {
   // Live only, with the other live player rules (mode-runtime.js sets the armed-entry rule for the running Bot).
+  if (now - (ctx.shared.dragonRearmLooked ?? 0) > AGAIN_MS) { ctx.shared.dragonRearmLooked = now; ctx.log?.('プレイヤーモード: 予備装備の取り戻し判定を行います') }
   if (ctx.shared.mineArmedEntry !== true) return false
   if (now - (ctx.shared.dragonRearmAt ?? -Infinity) < AGAIN_MS) return false
   const items = ctx.runtime.inventory?.()?.items ?? []
   const worn = ctx.runtime.armor?.()
-  if (!Array.isArray(items) || worn?.known !== true) return false
+  if (!Array.isArray(items) || worn?.known !== true) { if (now - (ctx.shared.dragonRearmSaid ?? 0) > AGAIN_MS) { ctx.shared.dragonRearmSaid = now; ctx.log?.('プレイヤーモード: 予備装備の取り戻し判定: 装備の受信待ち（' + (worn ? 'known=' + worn.known : '装備なし') + '）') } return false }
   const ironWeapon = items.some(item => item.count > 0 && /^minecraft:(?:iron|diamond|netherite)_(?:sword|axe)$/.test(item.name))
   const armour = (worn.worn ?? []).some(item => item?.name)
   if (ironWeapon && armour) return false
@@ -29,7 +30,7 @@ function rearmWanted (ctx, record, now = Date.now()) {
     const slots = ctx.shared.playerChestMemory?.seen?.get(`${at.x},${at.y},${at.z}`)
     if (slots) inChest = Object.fromEntries(GEAR.map(name => [name, slots.filter(slot => slot.name === 'minecraft:' + name).reduce((sum, slot) => sum + slot.count, 0)]))
   }
-  if (!inChest || !GEAR.some(name => (inChest[name] ?? 0) > 0)) return false
+  if (!inChest || !GEAR.some(name => (inChest[name] ?? 0) > 0)) { if (now - (ctx.shared.dragonRearmSaid ?? 0) > AGAIN_MS) { ctx.shared.dragonRearmSaid = now; ctx.log?.('プレイヤーモード: 予備装備の取り戻し判定: 予備チェストに鉄の装備を確認できません（' + JSON.stringify(inChest) + '）') } return false }
   ctx.shared.dragonRearmAt = now
   ctx.log?.('プレイヤーモード: 予備チェストに鉄の装備があり、持っていないため、取り出して装備します')
   return true

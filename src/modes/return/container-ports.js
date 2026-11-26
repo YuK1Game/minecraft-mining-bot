@@ -118,6 +118,9 @@ function createContainerPorts ({ operations, getInventory, getBlock = null, getF
     // The chest module's own reading counts too (actions/chest.js: a main slot without a received stack, right
     // after a respawn): that is the Bot's inventory, and says nothing about this chest.
     if (getInventory() == null || view()?.inventoryUncertain === true || error?.code === 'INVENTORY_UNKNOWN') return blocked('INVENTORY_UNKNOWN', { kind: 'inventory_update', timeoutMs: 30000 }, { evidence, detail })
+    if (error?.code === 'LIFE_UNKNOWN' || /lifeの確認が必要|接続・Realm・自己ID|生存・接続・体力を確認/.test(String(detail ?? ''))) {
+      return blocked('CONTAINER_LIFE_UNCONFIRMED', { kind: 'time', timeoutMs: 5000 }, { evidence, detail })
+    }
     if (view()?.busy === true) return blocked('CONTAINER_BUSY', { kind: 'owner_released', timeoutMs: PATIENT_MS }, { evidence, detail })
     // The window of this chest opened and its slots did not all arrive: unknown, to be read again.
     if (at(view()?.window, position) && view().contentsKnown !== true) return blocked('CONTAINER_CONTENTS_UNKNOWN', { kind: 'container_update', timeoutMs: SLOT_MS }, { evidence, detail })

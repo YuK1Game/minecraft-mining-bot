@@ -48,3 +48,27 @@ test('a door the walk to its stand opened is not clicked again (a second click w
   assert.deepEqual(uses, [])
   assert.equal(f.state.open, true)
 })
+
+test('a door within 3 m whose sight is blocked by the wall walks to the door stand first and opens it', async () => {
+  const f = scene()
+  let clock = 0
+  let feet = { x: f.door.x - 1.5, y: f.door.y - 1, z: f.door.z + 1.5 }
+  const walks = [], uses = []
+  const ok = await openDoor({
+    origin,
+    getBlock: f.getBlock,
+    getFeet: () => feet,
+    walk: async target => { walks.push(target); feet = target; return true },
+    useDoor: async at => {
+      uses.push({ at, feet: { ...feet } })
+      if (Math.abs(feet.x - (f.door.x + 0.5)) > 0.6) throw new Error('操作対象への視線が遮られているか、未取得です。')
+      f.state.open = true
+    },
+    now: () => clock,
+    sleep: async ms => { clock += ms }
+  })
+  assert.equal(ok, true)
+  assert.equal(walks.length, 1)
+  assert.equal(uses.length, 2)
+  assert.equal(f.state.open, true)
+})

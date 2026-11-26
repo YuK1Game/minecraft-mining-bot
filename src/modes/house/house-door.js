@@ -40,6 +40,10 @@ async function openDoor ({ origin, getBlock, useDoor, walk, getFeet, reach = nul
   const far = stand => Math.hypot(stand.x - feet.x, stand.z - feet.z)
   const stands = doorStands(getBlock, at).sort((a, b) => far(a) - far(b))
   const gap = () => { const here = getFeet(); return here ? Math.hypot(at.x + 0.5 - here.x, at.y - here.y, at.z + 0.5 - here.z) : Infinity }
+  const onStand = () => {
+    const here = getFeet()
+    return Boolean(here && stands.some(stand => Math.hypot(stand.x - here.x, stand.z - here.z) <= 0.85 && Math.abs(stand.y - here.y) <= 0.6))
+  }
   if (gap() > 3 && stands.length) { try { await walk(stands[0]) } catch {} }
   if (gap() > REACH && !isOpen(getBlock(at.x, at.y, at.z)) && typeof reach === 'function') { try { await reach() } catch {} }
   if (gap() > REACH && !isOpen(getBlock(at.x, at.y, at.z))) {
@@ -47,11 +51,26 @@ async function openDoor ({ origin, getBlock, useDoor, walk, getFeet, reach = nul
     log(`プレイヤーモード: 拠点の家のドアに手の届く場所へ行けません（ドアまで ${gap().toFixed(1)}m${here ? `、足元 ${Math.floor(here.x)}, ${Math.floor(here.y)}, ${Math.floor(here.z)}` : ''}）`)
     return false
   }
+  let repositioned = false
   for (let attempt = 0; attempt < 2; attempt++) {
     // The walk to the stand may have opened it already (the hands click a closed door on their way: door-on-way.js);
     // a second click would close it again.
     if (isOpen(getBlock(at.x, at.y, at.z))) return true
-    try { await useDoor(at) } catch (error) { log(`プレイヤーモード: 拠点の家のドアを開けられません ${String(error?.message ?? error).slice(0, 80)}`); return false }
+    try {
+      await useDoor(at)
+    } catch (error) {
+      const msg = String(error?.message ?? error)
+      if (!repositioned && /視線|範囲外/.test(msg) && (stands.length || typeof reach === 'function')) {
+        repositioned = true
+        if (!onStand() && stands.length) { try { await walk(stands[0]) } catch {} }
+        if (!onStand() && !isOpen(getBlock(at.x, at.y, at.z)) && typeof reach === 'function') { try { await reach() } catch {} }
+        if (isOpen(getBlock(at.x, at.y, at.z))) return true
+        attempt--
+        continue
+      }
+      log(`プレイヤーモード: 拠点の家のドアを開けられません ${msg.slice(0, 80)}`)
+      return false
+    }
     const until = now() + 3000
     while (now() < until && !isOpen(getBlock(at.x, at.y, at.z))) await sleep(200)
     if (isOpen(getBlock(at.x, at.y, at.z))) { log(`プレイヤーモード: 拠点の家のドア (${at.x}, ${at.y}, ${at.z}) を開けました`); return true }

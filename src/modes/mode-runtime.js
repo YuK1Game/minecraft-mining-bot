@@ -332,20 +332,17 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   const crew = [recovery, shelter, flee, cover, scaffold, torch, storage, base, wool, sand, food, water, house]
   const CREW = ['立て直し', '避難', '敵から離れる', '射線から外れる', '足場', '松明', '収納', '拠点への帰還', '羊毛', '砂', '食料', '水から上がる', '家の建築']
-  const spatialNow = () => {
-    let record = null
-    try { record = expedition?.record?.() ?? null } catch { record = null }
-    return readSpatialContext({
-      dimension: runtime.raw()?.dimension ?? 'overworld',
-      feet: feetNow(),
-      position: where(),
-      getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
-      houseOrigin: shared.playerHouse?.origin ?? null,
-      baseChest: shared.playerBase ?? null,
-      mineBranch: record?.stage === 'early' ? record.early?.mine?.branch ?? null : null,
-      runtime
-    })
-  }
+  const spatialNow = ({ includeTerrain = true } = {}) => readSpatialContext({
+    dimension: runtime.raw()?.dimension,
+    feet: feetNow(),
+    position: where(),
+    getBlock: includeTerrain ? (x, y, z) => runtime.host().world.getBlock(x, y, z) : null,
+    includeTerrain,
+    houseOrigin: shared.playerHouse?.origin ?? null,
+    baseChest: shared.playerBase ?? null,
+    inBranchMine: () => { try { return expedition?.inMine?.() === true } catch { return false } },
+    runtime
+  })
   const dispatcher = createWorkDispatcher([
     { id: 'recovery', label: '立て直し', task: recovery, preconditions: { forbidBranchMine: true } },
     { id: 'shelter', label: '避難', task: shelter, preconditions: { requireOverworld: true, forbidBranchMine: true } },

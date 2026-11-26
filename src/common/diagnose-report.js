@@ -37,6 +37,32 @@ function listIncidents (root) {
   }
 }
 
+function summarizeIncidents (files) {
+  const byType = new Map()
+  const byGoal = new Map()
+  let stalledTotal = 0
+  let stalledCount = 0
+  for (const filePath of files) {
+    const doc = readJsonSafe(filePath)
+    if (!doc) continue
+    const typeKey = `${doc.source ?? 'unknown'}/${doc.code ?? 'UNKNOWN'}`
+    byType.set(typeKey, (byType.get(typeKey) ?? 0) + 1)
+    const goalKey = doc.goal?.key ?? null
+    if (goalKey) byGoal.set(goalKey, (byGoal.get(goalKey) ?? 0) + 1)
+    if (Number.isFinite(doc.goal?.stalledMs)) {
+      stalledTotal += doc.goal.stalledMs
+      stalledCount++
+    }
+  }
+  const sortDesc = map => [...map.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([key, count]) => ({ key, count }))
+  return {
+    total: files.length,
+    avgStalledSec: stalledCount > 0 ? Math.round(stalledTotal / stalledCount / 1000) : null,
+    topTypes: sortDesc(byType).slice(0, 6),
+    topGoals: sortDesc(byGoal).slice(0, 5)
+  }
+}
+
 function collectDiagnostics ({ root, incidentPath = null, liveStatus = null } = {}) {
   const baseRoot = path.resolve(root)
   const modeDoc = readJsonSafe(path.join(baseRoot, '.local', 'mode.json'))
@@ -44,6 +70,7 @@ function collectDiagnostics ({ root, incidentPath = null, liveStatus = null } = 
   const baseDoc = readJsonSafe(path.join(baseRoot, '.local', 'player-base.json'))
   const travelDoc = readJsonSafe(path.join(baseRoot, '.local', 'long-travel', 'current.json'))
   const incidents = listIncidents(baseRoot)
+  const incidentSummary = summarizeIncidents(incidents)
   const chosenIncidentFile = incidentPath ? path.resolve(baseRoot, incidentPath) : incidents.at(-1) ?? null
   const incidentDoc = chosenIncidentFile ? readJsonSafe(chosenIncidentFile) : null
   const terrain = incidentDoc?.terrain ? inspectIncidentTerrain(incidentDoc.terrain) : null
@@ -70,6 +97,7 @@ function collectDiagnostics ({ root, incidentPath = null, liveStatus = null } = 
       } : null
     } : null,
     incidentCount: incidents.length,
+    incidentSummary,
     latestIncident: incidentDoc ? {
       file: path.relative(baseRoot, chosenIncidentFile).replace(/\\/g, '/'),
       capturedAt: toJstString(incidentDoc.capturedAt),
@@ -106,6 +134,12 @@ function formatDiagnosticsText (report) {
     const dest = report.longTravel.destination ? `(${report.longTravel.destination.x}, ${report.longTravel.destination.z})` : 'なし'
     lines.push(`長距離移動記録: phase=${report.longTravel.phase ?? '?'} 目的地=${dest} 保存=${report.longTravel.savedAt}`)
   }
+  if (report.incidentSummary?.topTypes?.length) {
+    const types = report.incidentSummary.topTypes.map(t => `${t.key}x${t.count}`).join(', ')
+    const goals = report.incidentSummary.topGoals?.length ? ` | 頻出目標: ${report.incidentSummary.topGoals.map(g => `${g.key}x${g.count}`).join(', ')}` : ''
+    const avg = report.incidentSummary.avgStalledSec != null ? ` | 平均停滞: ${report.incidentSummary.avgStalledSec}秒` : ''
+    lines.push(`インシデント傾向: ${types}${goals}${avg}`)
+  }
   if (!report.latestIncident) {
     lines.push('最新インシデント: なし（.local/incidents/ に記録はありません）')
     return lines.join('\n')
@@ -137,5 +171,6 @@ module.exports = {
   collectDiagnostics,
   formatDiagnosticsText,
   listIncidents,
+  summarizeIncidents,
   toJstString
 }

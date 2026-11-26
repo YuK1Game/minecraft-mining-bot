@@ -121,7 +121,7 @@ function createDragonState ({ root, shared, getState, getLife = () => null, getW
     if (shared.botMode === 'player' && shared.playerWanted === true && stores.size) return observe()
   }
   // scope: the world this record belongs to (profile, Realm, world), null while it cannot be told.
-  return { record, save, observe, signature: value => store(environment())?.checkpoint.signature(value), scope: () => environment()?.key ?? null, snapshot: () => { const entry = store(environment()); return entry ? entry.checkpoint.copy(entry.value) : null } }
+  return { record, save, observe, signature: value => store(environment())?.checkpoint.signature(value), scope: () => environment()?.key ?? null, peek: () => store(environment())?.value ?? null, snapshot: () => { const entry = store(environment()); return entry ? entry.checkpoint.copy(entry.value) : null } }
 }
 
 module.exports = { createDragonState }

@@ -11,9 +11,18 @@ const { wetColumn } = require('../movement/water-ledges')
 const R = require('./return/return-result')
 
 const BASE_YARD_RADIUS_M = 48
+const DIMENSIONS = ['overworld', 'nether', 'end']
 
 function finitePos (pos) {
   return Boolean(pos && [pos.x, pos.y, pos.z].every(Number.isFinite))
+}
+
+function normalizeDimension (dimension) {
+  if (dimension == null) return 'overworld'
+  if (Number.isInteger(dimension) && DIMENSIONS[dimension]) return DIMENSIONS[dimension]
+  const text = String(dimension).trim().toLowerCase().replace(/^minecraft:/, '')
+  if (text === 'the_end') return 'end'
+  return text || 'overworld'
 }
 
 function readSpatialContext ({
@@ -21,9 +30,11 @@ function readSpatialContext ({
   feet = null,
   position = null,
   getBlock = null,
+  includeTerrain = true,
   houseOrigin = null,
   baseChest = null,
   mineBranch = null,
+  inBranchMine: inBranchMineInput = null,
   runtime = null
 } = {}) {
   const resolvedFeet = finitePos(feet)
@@ -37,19 +48,26 @@ function readSpatialContext ({
       ? { x: resolvedFeet.x, y: resolvedFeet.y + 1.62, z: resolvedFeet.z }
       : null
 
-  const dim = dimension ?? 'overworld'
+  const dim = normalizeDimension(dimension)
   let inBranchMine = false
-  if (dim === 'overworld' && mineBranch?.plan && mineBranch?.shaft && (runtime || resolvedFeet)) {
-    try {
-      inBranchMine = insideMine({ runtime, getFeet: () => resolvedFeet }, mineBranch) === true
-    } catch {
-      inBranchMine = false
+  if (dim === 'overworld') {
+    if (typeof inBranchMineInput === 'function') {
+      try { inBranchMine = inBranchMineInput() === true } catch { inBranchMine = false }
+    } else if (typeof inBranchMineInput === 'boolean') {
+      inBranchMine = inBranchMineInput
+    } else if (mineBranch?.plan && mineBranch?.shaft && (runtime || resolvedFeet)) {
+      try {
+        inBranchMine = insideMine({ runtime, getFeet: () => resolvedFeet }, mineBranch) === true
+      } catch {
+        inBranchMine = false
+      }
     }
   }
 
+  const scanTerrain = includeTerrain !== false && typeof getBlock === 'function'
   const inStarterHouse = dim === 'overworld' && Boolean(houseOrigin && resolvedFeet && insideHouse(houseOrigin, resolvedFeet))
-  const inWater = Boolean(getBlock && resolvedFeet && wetColumn(getBlock, resolvedFeet) !== null)
-  const covered = Boolean(getBlock && resolvedEye && !inStarterHouse && underCover(getBlock, resolvedEye))
+  const inWater = Boolean(scanTerrain && resolvedFeet && wetColumn(getBlock, resolvedFeet) !== null)
+  const covered = Boolean(scanTerrain && resolvedEye && !inStarterHouse && underCover(getBlock, resolvedEye))
   const inBaseYard = dim === 'overworld' && Boolean(
     baseChest && resolvedFeet &&
     Math.hypot(resolvedFeet.x - baseChest.x, resolvedFeet.z - baseChest.z) <= BASE_YARD_RADIUS_M

@@ -44,7 +44,8 @@ function createWorkDispatcher (entries = [], { getSpatial = null, exits = {} } =
     if (anyActive(id)) return true
     const entry = byId.get(id)
     if (entry?.preconditions && typeof getSpatial === 'function') {
-      const spatial = getSpatial()
+      let spatial = null
+      try { spatial = getSpatial({ includeTerrain: false }) } catch { spatial = null }
       if (spatial) {
         if (entry.preconditions.requireOverworld && spatial.dimension !== 'overworld') return true
         if (entry.preconditions.forbidBranchMine && spatial.inBranchMine && typeof exits.leaveBranchMine !== 'function') return true
@@ -59,18 +60,22 @@ function createWorkDispatcher (entries = [], { getSpatial = null, exits = {} } =
     if (!entry?.preconditions || typeof getSpatial !== 'function') {
       return returnResult.completed('SPATIAL_READY')
     }
-    const spatial = getSpatial()
+    const spatial = getSpatial({ includeTerrain: true })
     return ensureSpatialPreconditions(spatial, entry.preconditions, customExits ?? exits)
   }
 
   function tickMany (ids, { onError = null } = {}) {
     const targets = ids ? ids.map(id => byId.get(id)).filter(Boolean) : list
+    const needsSpatial = typeof getSpatial === 'function' && targets.some(entry => Boolean(entry.preconditions && typeof entry.task?.tick === 'function'))
+    let spatial = null
+    if (needsSpatial) {
+      try { spatial = getSpatial({ includeTerrain: false }) } catch { spatial = null }
+    }
     for (const entry of targets) {
       if (typeof entry.task?.tick !== 'function') continue
-      if (entry.preconditions && typeof getSpatial === 'function') {
-        const spatial = getSpatial()
-        if (spatial?.inBranchMine && entry.preconditions.forbidBranchMine) continue
-        if (entry.preconditions.requireOverworld && spatial && spatial.dimension !== 'overworld') continue
+      if (entry.preconditions && spatial) {
+        if (spatial.inBranchMine && entry.preconditions.forbidBranchMine) continue
+        if (entry.preconditions.requireOverworld && spatial.dimension !== 'overworld') continue
       }
       try {
         const result = entry.task.tick()

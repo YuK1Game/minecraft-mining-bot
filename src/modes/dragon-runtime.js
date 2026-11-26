@@ -216,7 +216,7 @@ function createDragonRuntime (ports) {
   // The goal the expedition works toward now; null while it cannot be told (nothing received yet).
   function keyNow () {
     let record = stepRecord
-    if (!record) { try { record = state.snapshot() } catch { return null } }
+    if (!record) { try { record = state.peek ? state.peek() : state.snapshot() } catch { return null } }
     if (!record || state.scope() == null) return null
     if (record.stage !== 'early') return { key: goalKey(record), record }
     const objective = objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet })
@@ -242,7 +242,7 @@ function createDragonRuntime (ports) {
   function mineKeep (inventory) {
     if (!ports.active() || !receivedInventory(inventory)) return null
     let record = stepRecord
-    if (!record) { try { record = state.snapshot() } catch { return null } }
+    if (!record) { try { record = state.peek ? state.peek() : state.snapshot() } catch { return null } }
     const branch = record?.early?.mine?.branch, request = branch?.request
     if (record?.stage !== 'early' || !request || branch.retiring ||
       !sameWorld(branch.plan?.scope, mineWorldScope(runtime.mineState?.() ?? raw()))) return null
@@ -257,6 +257,11 @@ function createDragonRuntime (ports) {
   }
   // The early objective as it reads now, for whoever names the owner in the log; null outside the early stage.
   const objective = () => { const record = keyNow()?.record; return record?.stage === 'early' ? objectiveNow({ runtime, shared, memory: record, getFeet: ports.getFeet }) : null }
-  return { ...expedition, tick, record: state.record, goal, mineKeep, objective }
+  const inMine = () => {
+    let record = stepRecord
+    if (!record) { try { record = state.peek ? state.peek() : null } catch { record = null } }
+    return Boolean(record && inOwnMine({ runtime, getFeet: ports.getFeet ?? (() => raw()?.position), record }))
+  }
+  return { ...expedition, tick, record: state.record, goal, mineKeep, objective, inMine }
 }
 module.exports = { createDragonRuntime }

@@ -23,7 +23,10 @@ function huntWeapon ({ items, rawItem, selected }) {
 async function huntArmed ({ hunt, equip, crafting, getState, log = () => {} }, id) {
   try {
     const state = getState(), inventory = typeof crafting.inventorySnapshot === 'function' ? crafting.inventorySnapshot() : crafting.snapshot()
-    const weapon = huntWeapon({ items: inventory?.inventory ?? [], rawItem: crafting.rawItem, selected: state?.rawServerSelectedSlot ?? state?.rawSelectedSlot })
+    // The received state names the server's slot `selectedSlot`; only the working state adds the raw* copies. The
+    // hunt is given the received one (runtime-operations.js), so the switch never ran and every hit was with whatever
+    // was held (user 2026-11-26 12:45 JST: 「殴る時に武器を装備していない」; cooked beef in hand, a stone sword in slot 2).
+    const weapon = huntWeapon({ items: inventory?.inventory ?? [], rawItem: crafting.rawItem, selected: state?.rawServerSelectedSlot ?? state?.rawSelectedSlot ?? state?.selectedSlot })
     if (weapon) {
       const result = await equip(weapon.slot)
       if (result?.serverConfirmed === true || result?.phase === 'completed') log(`狩りの前に ${String(weapon.name).replace('minecraft:', '')} に持ち替えました`)

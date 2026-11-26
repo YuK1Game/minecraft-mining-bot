@@ -45,6 +45,13 @@ function houseSandInput (state, options, sand) {
   return { state, options: { ...options, stoneCount: 2304, material: { blocks: SAND, items: SAND, count: held + sand } } }
 }
 
+// The plan input for house coal (received coal ore nearby; falls back to charcoal/planks when absent).
+const COAL_ORE = ['coal_ore', 'deepslate_coal_ore']
+function houseCoalInput (state, options, coal) {
+  const held = (state?.inventory?.items ?? []).filter(item => short(item?.name) === 'coal').reduce((sum, item) => sum + (item.count ?? 0), 0)
+  return { state, options: { ...options, stoneCount: 2304, material: { blocks: COAL_ORE, items: ['coal'], count: held + coal } } }
+}
+
 function pending ({ mode, playing, shared, state }) {
   return normalizeMode(mode) === 'player' && playing === true && houseDuty(shared?.playerHouse) !== null && hasPickaxe(state?.inventory)
 }
@@ -69,25 +76,29 @@ function needsNow ({ shared, state, getBlock }) {
   return houseNeeds(state?.inventory, counts(remaining(getBlock, origin).filter(known)))
 }
 
-function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, log = () => {} }) {
+function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = null, planLogs, planStone, planSand = null, planCoal = null, log = () => {} }) {
   if (!decision || !pending({ mode, playing, shared, state })) return decision
   const needs = needsNow({ shared, state, getBlock })
-  const gatherShort = !!needs && (needs.need.logs > 0 || needs.need.cobblestone > 0 || needs.need.sand > 0)
-  if (!gatherShort) {
-    const proposed = decision.type === 'capability_required' ? decision.proposedAction : decision
-    if (needs && mineral(proposed)) {
-      return { type: 'wait', stage: 'house', code: 'HOUSE_BUILD_PENDING', reason: '拠点の家の材料は揃っているため、建築・修繕の完了を待ちます。' }
-    }
-    return decision
-  }
   const tell = (key, text) => { if (shared.houseSupplyNote !== key) { shared.houseSupplyNote = key; log(`プレイヤーモード: ${text}`) } }
-  const { need, total } = needs
   const ask = (plan, label) => {
     let next = null
     try { next = plan() } catch (error) { log(`プレイヤーモード: 拠点の材料の計画に失敗 ${String(error?.message ?? error).slice(0, 120)}`) }
     if (!next || ['stop', 'complete', 'wait'].includes(next.type)) return null
     return { ...next, houseMaterial: label, reason: `拠点の材料を集めます（${label}）: ${next.reason ?? ''}` }
   }
+  const gatherShort = !!needs && (needs.need.logs > 0 || needs.need.cobblestone > 0 || needs.need.sand > 0)
+  if (!gatherShort) {
+    if (needs && needs.need.coal > 0 && planCoal) {
+      const coal = ask(() => planCoal(needs.need.coal), `石炭 あと${needs.need.coal}個`)
+      if (coal && coal.type !== 'scan_blocks') { tell(`coal:${needs.total.coal}`, `拠点の家の燃料・松明にする石炭を集めます（あと${needs.need.coal}個）`); return coal }
+    }
+    const proposed = decision.type === 'capability_required' ? decision.proposedAction : decision
+    if (needs && mineral(proposed)) {
+      return { type: 'wait', stage: 'house', code: 'HOUSE_BUILD_PENDING', reason: '拠点の家の材料は揃っているため、建築・修繕の完了を待ちます。' }
+    }
+    return decision
+  }
+  const { need, total } = needs
   if (need.logs > 0) {
     tell(`logs:${total.logs}`, `拠点の家の材料を集めます（原木 あと${need.logs}本・丸石 あと${need.cobblestone}個・砂 ${need.sand}・羊毛 ${need.wool}・石炭 ${need.coal}）`)
     return ask(() => planLogs(need.logs), `原木 あと${need.logs}本`) ?? decision
@@ -107,7 +118,11 @@ function withHouseSupply ({ mode, playing, shared, state, decision, getBlock = n
     try { raw = planSand(need.sand) } catch {}
     tell(`nosand:${total.sand}:${raw?.type}:${raw?.code ?? ''}`, `拠点の家のガラスにする砂が近くに見つかりません（あと${need.sand}個。計画: ${raw?.type ?? 'なし'}${raw?.code ? `・${raw.code}` : ''}${raw?.reason ? `・${String(raw.reason).slice(0, 80)}` : ''}）`)
   }
+  if (need.coal > 0 && planCoal) {
+    const coal = ask(() => planCoal(need.coal), `石炭 あと${need.coal}個`)
+    if (coal && coal.type !== 'scan_blocks') { tell(`coal:${total.coal}`, `拠点の家の燃料・松明にする石炭を集めます（あと${need.coal}個）`); return coal }
+  }
   return decision
 }
 
-module.exports = { withHouseSupply, houseLogInput, houseStoneInput, houseSandInput, pending, needsNow }
+module.exports = { withHouseSupply, houseLogInput, houseStoneInput, houseSandInput, houseCoalInput, pending, needsNow }

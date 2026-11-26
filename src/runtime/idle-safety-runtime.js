@@ -599,9 +599,9 @@ function createIdleSafetyRuntime (rt) {
             get watch () { return watch }, set watch ($value) { watch = $value },
             get yieldPlanning () { return yieldPlanning }, set yieldPlanning ($value) { yieldPlanning = $value }
           }
-          const prepareEscapePortResult = await prepareEscapePort(rt, vars)
-          if (prepareEscapePortResult && 'value' in prepareEscapePortResult) return prepareEscapePortResult.value
           try {
+            const prepareEscapePortResult = await prepareEscapePort(rt, vars)
+            if (prepareEscapePortResult && 'value' in prepareEscapePortResult) return prepareEscapePortResult.value
             timer = setTimeout(() => controller.abort(new Error('Idle escape four-second deadline')), Math.max(1, deadline - Date.now()))
             watch = setInterval(() => { try { safetyState() } catch (error) { controller.abort(error) } }, 25)
             let planningState = initial; let episodeMovementStarts = fence.starts; let boundedJumpAttempted = false; let lastBoundedPartial = null
@@ -722,8 +722,8 @@ function createIdleSafetyRuntime (rt) {
                 return await escape(next)
               }
             }
-            if (['searching', 'priority_search', 'guard_attempt'].includes(jumpSearchDiagnostic.reason)) jumpSearchDiagnostic.reason = Date.now() >= deadline || /deadline|timed out/i.test(error.message) ? 'deadline' : 'interrupted'
-            if (controller.signal.aborted && controller.signal.reason instanceof Error) throw controller.signal.reason
+            if (['searching', 'priority_search', 'guard_attempt'].includes(jumpSearchDiagnostic?.reason)) jumpSearchDiagnostic.reason = Date.now() >= deadline || /deadline|timed out/i.test(error.message) ? 'deadline' : 'interrupted'
+            if (controller?.signal.aborted && controller.signal.reason instanceof Error) throw controller.signal.reason
             throw error
           } finally {
             clearTimeout(timer); clearInterval(watch)

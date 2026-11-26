@@ -17,7 +17,6 @@ async function collectEscapeCandidates (rt, st) {
             const receivedSurfaceOrigin = rt.lowHealthSurfaceEligible(initial, known, rt.generationPhysics, { diagnostic: lowHealthSurfaceDiagnostic }); st.receivedSurfaceOrigin = receivedSurfaceOrigin
             rt.host.shared.lowHealthWaterDiagnostic = lowHealthSurfaceDiagnostic
             const alreadyShallow = receivedSurfaceOrigin || st.verifyShallowWater(initial, { signal: st.signal, allowDeepSurface: true }); st.alreadyShallow = alreadyShallow
-            await st.yieldPlanning()
             const fullOrigin = alreadyShallow || await rt.verifyRouteStanding(initial, origin, { signal: st.signal })
             const partialOrigin = !fullOrigin && await rt.verifyRouteOrigin(initial, origin, { signal: st.signal, stablePartialOrigin: true }); st.partialOrigin = partialOrigin
             if (!primary && fullOrigin && !alreadyShallow) {

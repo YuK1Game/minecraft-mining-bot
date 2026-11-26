@@ -67,6 +67,59 @@ test('work-dispatcher suppresses ground-assuming crew tasks while inside branch 
   assert.equal(torchTicked, 2)
 })
 
+test('spatial-context normalizes numeric/namespaced dimensions and skips terrain scans on fast dispatcher ticks', () => {
+  let blockReads = 0
+  const fast = readSpatialContext({
+    dimension: 0,
+    feet: { x: 10.5, y: 65, z: 10.5 },
+    includeTerrain: false,
+    getBlock: () => { blockReads++; return null },
+    inBranchMine: () => false
+  })
+  assert.equal(fast.dimension, 'overworld')
+  assert.equal(fast.inBranchMine, false)
+  assert.equal(blockReads, 0, 'fast dispatcher ticks perform zero terrain block scans')
+
+  const namespaced = readSpatialContext({ dimension: 'minecraft:overworld', includeTerrain: false })
+  assert.equal(namespaced.dimension, 'overworld')
+  const endDim = readSpatialContext({ dimension: 2, includeTerrain: false })
+  assert.equal(endDim.dimension, 'end')
+
+  let spatialCalls = 0
+  let ticked = 0
+  const dispatcher = createWorkDispatcher([
+    { id: 'a', preconditions: { requireOverworld: true, forbidBranchMine: true }, task: { tick: () => { ticked++ }, status: () => ({ active: false }) } },
+    { id: 'b', preconditions: { requireOverworld: true, forbidBranchMine: true }, task: { tick: () => { ticked++ }, status: () => ({ active: false }) } },
+    { id: 'c', preconditions: { requireOverworld: true, forbidBranchMine: true }, task: { tick: () => { ticked++ }, status: () => ({ active: false }) } }
+  ], {
+    getSpatial: opts => {
+      spatialCalls++
+      assert.equal(opts?.includeTerrain, false)
+      return fast
+    }
+  })
+  dispatcher.tickMany(['a', 'b', 'c'])
+  assert.equal(spatialCalls, 1, 'getSpatial evaluated once per tickMany instead of per task')
+  assert.equal(ticked, 3)
+})
+
+test('container-ports treats unconfirmed life/connection after reconnect as blocked instead of blacklisting chest', async () => {
+  const { createContainerPorts } = require('../src/modes/return/container-ports')
+  const ports = createContainerPorts({
+    operations: {
+      chest: {
+        snapshot: () => ({ window: null, contentsKnown: false, busy: false }),
+        open: async () => { throw new Error('チェスト操作には現在の接続・Realm・自己ID・lifeの確認が必要です。') }
+      },
+      interactions: { previewOpenChest: () => ({ ready: true }) }
+    },
+    getInventory: () => ({ known: true, items: [] })
+  })
+  const out = await ports.inspect({ x: 9880, y: 65, z: 10139 })
+  assert.equal(out.status, 'blocked')
+  assert.equal(out.code, 'CONTAINER_LIFE_UNCONFIRMED')
+})
+
 test('supply tasks record structured return-result outcomes and stop repeating after 3 identical failures', async () => {
   let now = 1000
   const shared = { playerWanted: true }

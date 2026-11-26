@@ -122,3 +122,17 @@ test('when all house materials are held during repair, mineral actions wait on h
   assert.equal(out.type, 'wait')
   assert.equal(out.code, 'HOUSE_BUILD_PENDING')
 })
+
+test('after logs, cobblestone and sand: nearby coal ore is mined for the house, and missing coal falls back cleanly', () => {
+  const { houseCoalInput } = require('../src/modes/house/house-supply')
+  const base = { type: 'tunnel' }
+  const state = { inventory: inv([['stone_pickaxe', 1], ['birch_log', 44], ['cobblestone', 68], ['sand', 6]]) }
+  const asked = []
+  const coal = withHouseSupply({ mode: 'player', playing: true, shared: {}, state, decision: base, planLogs: () => null, planStone: () => null, planSand: () => null, planCoal: count => { asked.push(count); return { type: 'mine_stone', material: true } } })
+  assert.equal(coal.type, 'mine_stone')
+  assert.deepEqual(asked, [2])
+  assert.equal(houseCoalInput(state, {}, 2).options.material.count, 2)
+  assert.deepEqual(houseCoalInput(state, {}, 2).options.material.blocks, ['coal_ore', 'deepslate_coal_ore'])
+  const fallback = withHouseSupply({ mode: 'player', playing: true, shared: {}, state, decision: base, planLogs: () => null, planStone: () => null, planSand: () => null, planCoal: () => ({ type: 'scan_blocks' }) })
+  assert.equal(fallback, base)
+})
