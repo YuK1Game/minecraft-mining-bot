@@ -5,7 +5,9 @@ const {constructionSupplies,builtWork}=require('./mine-needs')
 const {isSpentPickaxe}=require('../dig-tool')
 const bare=name=>String(name??'').replace(/^minecraft:/,'')
 const CARGO=/^(?:cobblestone|cobbled_deepslate|stone|deepslate|granite|diorite|andesite|tuff|calcite|dirt|gravel|flint|raw_iron|raw_gold|raw_copper|coal|diamond|redstone|lapis_lazuli|emerald)$/
-const RETAIN={cobblestone:64,cobbled_deepslate:16,torch:32,ladder:32,cobblestone_slab:64,stick:16}
+// Coal is kept for the torches: banked with the cargo, every torch refill climbed out, felled a tree and burnt the
+// logs to charcoal in a furnace made for it (live 2026-11-26 13:22 JST, one such trip about every 15 minutes).
+const RETAIN={cobblestone:64,cobbled_deepslate:16,torch:32,ladder:32,cobblestone_slab:64,stick:16,coal:16}
 // Collected materials are useful in storage, but are not an underground carry
 // requirement. Capacity relief can also bank confirmed spent pickaxes.
 const STORED=/^(?:wheat|carrot|potato|beetroot|melon_slice|apple|sweet_berries|glow_berries|(?:wheat|beetroot|melon|pumpkin)_seeds|beef|porkchop|mutton|chicken|rabbit|cod|salmon|rotten_flesh|feather|leather|bone|bone_meal|string|spider_eye|egg|(?:[a-z_]+_)?wool)$/
