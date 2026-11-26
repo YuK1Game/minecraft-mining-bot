@@ -23,11 +23,13 @@ const atOwnMine = ({ runtime, getFeet, record }) => {
 // The house is the starter jobs' while it is being built or repaired (house/house-repair.js `houseDuty`); a
 // damaged house whose repair is held is not: each step then asks for the one thing it needs, from that thing's
 // received blocks (dragon-home-use.js), and goes on when it stands.
-function earlyObjective ({ inventory, worn, house, memory = {}, inMine = false }) {
+function earlyObjective ({ inventory, worn, house, memory = {}, inMine = false, housePaused = false }) {
   const step = (id, label, legacy = false, ready = false) => ({ id, label, next: label, legacy, ready })
   if (inventory?.known !== true || inventory.uncertain || !Array.isArray(inventory.items)) return step('observe', '持ち物の受信を待ちます。')
   const held = inventory.items.filter(item => item?.count > 0)
-  const duty = house?.origin ? houseDuty(house) : 'build'
+  // A repair paused for an enemy near the house (house-build.js, two minutes) is not the starter jobs' for that time: the
+  // expedition goes on instead of waiting on it (live 2026-11-26 21:57-22:08 JST: 「建築・修繕の完了を待ちます」 every 1.6 s).
+  const duty = house?.origin ? (houseDuty(house) === 'repair' && housePaused ? null : houseDuty(house)) : 'build'
   // Keep ownership while at the active mine site or carrying cobblestone to remake a disposable stone pickaxe.
   // On a bare respawn away from the mine (e.g. at home with empty bag), hand back to starter jobs so the Bot
   // crafts a pickaxe and stone sword before departing unarmed (live 2026-11-25).
@@ -52,7 +54,7 @@ function earlyObjective ({ inventory, worn, house, memory = {}, inMine = false }
 // Live 2026-11-20 02:21-02:32 JST: the stone pickaxe reached 0 of 131 while digging a way down; for eleven minutes
 // the Bot stood at y 54 under 「原木から最初の道具を作ります。」 with no move, no dig and the starter jobs not started.
 const objectiveNow = ({ runtime, shared, memory, getFeet = null }) => earlyObjective({ inventory: shared.inventoryUncertain ? null : runtime.inventory(),
-  worn: runtime.armor?.(), house: shared.playerHouse, memory,
+  worn: runtime.armor?.(), house: shared.playerHouse, housePaused: Number(shared.playerHousePausedUntil) > Date.now(), memory,
   inMine: atOwnMine({ runtime, getFeet: getFeet ?? (() => runtime.raw?.()?.position), record: memory }) })
 
 const distanceToBed = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)

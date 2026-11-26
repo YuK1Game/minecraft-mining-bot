@@ -508,7 +508,7 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     // come back in 2 minutes, not 10 (live 2026-11-17 14:19 JST: a witch and two
     // skeletons by the house, 「0 個置きました」 with no reason at all).
     // Which enemy it was goes with the line (work-danger.js; live 2026-11-20 22:15-22:44 JST: six runs cut short with nothing in the log near them).
-    if (aborted() && live()) { soon = true; const who = hostile() ? hostileWhy() : null; say(`拠点の家: ${hostile() ? '敵が近い' : 'ほかの作業が始まった'}ため中断しました（2分後に続けます）${who ? `。相手: ${who}` : ''}`) }
+    if (aborted() && live()) { soon = true; if (hostile()) shared.playerHousePausedUntil = now() + 120000; const who = hostile() ? hostileWhy() : null; say(`拠点の家: ${hostile() ? '敵が近い' : 'ほかの作業が始まった'}ため中断しました（2分後に続けます）${who ? `。相手: ${who}` : ''}`) }
     const left = remaining(getBlock, origin)
     const chestsVerified = !aborted() && await verifyChests()
     for (const step of left) if ((fails.get(step.id) ?? 0) > 0 && workable(step)) failedAt.set(step.id, now())
