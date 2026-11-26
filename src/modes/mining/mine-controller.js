@@ -364,6 +364,13 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
       if(begun && far>3 && ctx.shared?.playerHouse?.origin)await require('../dragon-early-home').approachHome(ctx,begun)
       const made=await ctx.storage.chest()
       if(made && live(ctx,before))return outcome(blocked('MINE_HOME_CHEST_ADDED','本拠点に新しいラージチェストを置きました。採掘物を収納します。','time'),'本拠点に新しいラージチェストを置いて採掘物を収納します。')
+      // A half-made pair that still cannot be finished from beside it (its 54 slots never arrive: live 21:12-21:13 JST)
+      // keeps every new chest refused; after three such tries it is dropped from the record, and its placed half stays
+      // as a single chest, so the next try sets a new pair down elsewhere.
+      if(begun && live(ctx,before)){
+        const tries=(branch.homeChestTries=(branch.homeChestTries??0)+1)
+        if(tries>=3 && await ctx.storage.chestWork?.complete?.(begun)){delete branch.homeChestTries;ctx.log?.(`採掘場: 仕上げられない置きかけのラージチェスト (${begun.x}, ${begun.y}, ${begun.z}) の記録を外し、別の場所に置きます`)}
+      }
       if(live(ctx,before)){ctx.log?.('採掘場: 本拠点のチェストが満杯ですが、新しいラージチェストを置けませんでした');return outcome(results.blocked('MINE_HOME_STORAGE_FULL_OR_UNKNOWN',{kind:'time',ms:30000},{detail:'本拠点のラージチェストが満杯です。'}),'本拠点のラージチェストが満杯のため、置ける場所を探します。')}
     }
     return outcome(out??blocked('MINE_HOME_STORAGE_UNAVAILABLE','地上のラージチェストを確認します。'),'本拠点のラージチェストへ採掘物を収納します。')
