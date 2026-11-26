@@ -97,11 +97,12 @@ test('a walker within 12 m counts unless there is fresh evidence of no route or 
   // Nine below inside solid stone on every line: not near for the work (live 2026-11-26, a zombie under the house).
   f.actors = [mob('zombie', under)]
   assert.equal(f.danger.near(), false, 'a walker levels below behind solid rock does not cut the work short')
-  const beside = { x: f.feet.x + 6, y: f.feet.y, z: f.feet.z }
-  f.actors = [mob('zombie', beside)]
-  assert.equal(f.danger.why()?.code, 'NEAR')
-  f.unreachable = true
-  assert.equal(f.danger.near(), false)
+  // The same zombie with the rock between not received: unreceived is no cover, so it counts until a route says otherwise.
+  const g = scene({ unreceived: (x, y) => y <= ORIGIN.y })
+  g.actors = [mob('zombie', under)]
+  assert.equal(g.danger.why()?.code, 'NEAR')
+  g.unreachable = true
+  assert.equal(g.danger.near(), false)
   f.actors = [mob('creeper', under)]
   assert.equal(f.danger.near(), true, 'a creeper always counts')
   f.actors = [mob('skeleton', LAWN, { positionUpdatedAt: new Date(f.clock - 61000).toISOString() })]

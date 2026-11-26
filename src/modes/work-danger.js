@@ -41,12 +41,12 @@ function createWorkDanger ({ health, where, hostiles, world, nearest = () => Inf
       const p = actor?.position, type = String(actor?.entityType ?? '')
       if (!p) continue
       const distance = Math.hypot(p.x - at.x, p.y - at.y, p.z - at.z), rise = p.y - (at.y - 1.62)
-      // A walker three or more levels above or below behind received solid blocks on every line is not near for work: it
-      // must find its own way round first (live 2026-11-26 18:19-21:33 JST: a zombie 3-6 below the house in the caves cut
-      // every house repair run short, 「敵が近いため中断しました」 every two minutes for three hours). Creepers and archers
-      // keep their own rules.
+      // Any enemy but a creeper whose every line to the Bot ends in received solid blocks is not near for work (the owner's
+      // rule, 2026-11-26 22:27 JST: 「射線切れてるし…無視していい」), and a walker with no route is not either (unreachable).
+      // Live 2026-11-26 18:19-22:14 JST: a zombie 3-6 below and then a skeleton 8 m off in the caves under the house cut
+      // every house repair run short, 「敵が近いため中断しました」 every two minutes for hours.
       let covered = false
-      if (distance < NEAR_M && !/creeper/.test(type) && !ARCHER.test(type) && Math.abs(rise) >= 3) { try { covered = sight(actor, at) === false } catch { covered = false } }
+      if (distance < NEAR_M && !/creeper/.test(type)) { try { covered = sight(actor, at) === false } catch { covered = false } }
       if (distance < NEAR_M && !covered && (/creeper/.test(type) || !unreachable(actor))) return { code: 'NEAR', type, distance, rise }
       if (!ARCHER.test(type) || !(distance < ARCHER_M) || now() - Date.parse(actor.positionUpdatedAt ?? '') > FRESH_MS) continue
       let seen = null
