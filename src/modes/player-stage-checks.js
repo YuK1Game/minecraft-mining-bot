@@ -238,6 +238,16 @@ function stageChecks (stage, rawItems, house, record, options = {}) {
       if (!stage.reached) {
         const ingots = held(items, 'iron_ingot'), rawIron = held(items, 'raw_iron'), sticks = held(items, 'stick')
         rows.push(check('必要素材: 鉄インゴット 3 個（原石 3）・棒 2 本', known && ingots >= 3 && sticks >= 2, known ? `鉄${ingots}/3・原石${rawIron}・棒${sticks}/2` : '受信待ち'))
+        // The pickaxe comes out of the house's iron batch (dragon-home-iron.js): the raw iron for the whole batch is
+        // mined first and smelted at the house in one go, so 3 ores in the bag are not smelted on their own. The
+        // batch's own steps are shown with their counts, so the panel says what the Bot is waiting for.
+        const batch = early?.reserveIron ?? null
+        const mineReq = early?.mine?.branch?.request?.resource === 'raw_iron' ? early.mine.branch.request : null
+        const rawTarget = Number.isSafeInteger(batch?.rawTarget) && batch.rawTarget > 0 ? batch.rawTarget : Number.isSafeInteger(mineReq?.targetHeld) && mineReq.targetHeld > 0 ? mineReq.targetHeld : 0
+        const ingotTarget = Number.isSafeInteger(batch?.target) && batch.target > 0 ? batch.target : 0
+        if (rawTarget > 0) rows.push(check('いまの作業 1: 採掘場で鉄の原石をまとめて集める（集め終えてから精錬）', known && rawIron >= rawTarget, fmtCount(known, rawIron, rawTarget, '個')))
+        if (ingotTarget > 0) rows.push(check(`いまの作業 2: 本拠点のかまどでまとめて精錬（ツルハシ・防具の予備＋携行分）`, known && ingots >= ingotTarget, fmtCount(known, ingots, ingotTarget, '個')))
+        if (rawTarget > 0 || ingotTarget > 0) rows.push(check('いまの作業 3: 鉄のツルハシ・防具を作り、予備を本拠点のチェストへ', false, known ? `ツルハシ ${held(items, 'iron_pickaxe')}・鉄 ${ingots}` : '受信待ち'))
       }
       return rows
     }
