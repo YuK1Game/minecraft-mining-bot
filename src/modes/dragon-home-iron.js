@@ -84,7 +84,8 @@ async function prepareHomeIron (ctx, batch, { held, house, acquire }) {
   const seen = homeTarget(ctx, 'furnace', { spent: spentAll })
   const now = (ctx.now ?? Date.now)()
   if (seen.state === 'spent' && now - (batch.spentAt ?? now) >= 120000) {
-    ctx.goal?.clearFailures?.()
+    const { placements } = require('./house/house-blueprint')
+    for (const step of placements(ctx.shared.playerHouse.origin).filter(step => step.item === 'furnace')) ctx.goal?.forget?.(failure(step.position))
     delete batch.spentAt
   } else if (seen.state === 'spent') batch.spentAt ??= now
   else delete batch.spentAt

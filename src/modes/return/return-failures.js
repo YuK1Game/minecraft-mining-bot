@@ -52,8 +52,10 @@ function createFailureMemory ({ now = Date.now, saved = null, ttlMs = TTL_MS } =
 
   const count = (failure, scope = null) => { const key = failureKey(failure); return entries.find(entry => entry.key === key && entry.scope === scope && now() - entry.at <= ttlMs)?.count ?? 0 }
   const progress = () => { trail = [] }
+  // One way forgiven: its count starts again (a furnace that is tried again after its wait, dragon-home-iron.js).
+  const forget = failure => { const key = failureKey(failure); entries = entries.filter(entry => entry.key !== key); trail = trail.filter(k => k !== key) }
   const serialize = () => ({ entries: entries.map(entry => ({ ...entry })), trail: [...trail] })
-  return { note, count, cycle, progress, prune, serialize, size: () => entries.length }
+  return { note, count, cycle, progress, forget, prune, serialize, size: () => entries.length }
 }
 
 module.exports = { createFailureMemory, failureKey, TTL_MS }

@@ -50,7 +50,7 @@ function createDragonRuntime (ports) {
     getInventory: () => shared.inventoryUncertain ? null : runtime.inventory?.(),
     getGoal: () => ledger.goal(), log: ports.log, now
   })
-  const goal = { step: key => ledger.step(key), mark: (key, value, by) => ledger.mark(key, value, by), fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure), clearFailures: () => ledger.clearFailures?.(),
+  const goal = { step: key => ledger.step(key), mark: (key, value, by) => ledger.mark(key, value, by), fail: (failure, options) => ledger.fail(failure, options), spent: failure => ledger.spent(failure), clearFailures: () => ledger.clearFailures?.(), forget: failure => ledger.forget?.(failure),
     reached: kind => ledger.step(kind + '@' + cell16(raw()?.position)) }
   async function run (record, signal, recoverHealth, live = {}) {
     stepRecord = record
