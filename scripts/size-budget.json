@@ -1,7 +1,7 @@
 {
   "note": "Bytes without carriage returns, lowered after the 2026-11-26 status and persistence extraction. npm run check reports growth beyond these. Lower a value after moving code out; do not raise one to fit new code.",
   "files": {
-    "src/runtime.js": 370715,
+    "src/runtime.js": 342000,
     "src/quarry/quarry-job.js": 248500,
     "src/safety/idle-safety.js": 41445,
     "src/runtime/idle-safety-runtime.js": 76500,

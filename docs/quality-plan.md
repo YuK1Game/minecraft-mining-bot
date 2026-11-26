@@ -51,6 +51,11 @@
 - **世代スコープ付き中断トークンと長距離経路評価の統合**: `shared-scopes.js` のスコープ変更通知に連動する `src/common/lifecycle-signal.js` と `runtime-scheduler.js` の `signal` 対応を導入。長距離移動は `src/travel/travel-cost-policy.js` に危険地帯・射撃モブ集団・ソフト近接ペナルティ・水場/屋根下/夜間コストを集約し、`coarse-route.js` と `long-travel-runtime.js` を一本化した。
 - **旧サバイバル依存の分離と巨大モジュールのスリム化**: 共通スコープを `src/common/world-scope.js`、ダイヤ装備進行を `src/modes/player-diamond-gear.js` へ分離し、`src/modes/` から `src/survival/` への直接 `require` を 0 件にした（`audit-tests.js --strict` で常時検証）。また `idle-safety-runtime.js` の残り3ブロック（`partialEscape` / `clearEscape` / `onEmergencyStop`）と `quarry-job.js` の計画ブロック（`quarry-job-plan.js`）を機械抽出し、`size-budget.json` の上限をそれぞれ **128.9KB → 76.5KB（▲52.4KB）**、**265.8KB → 248.5KB（▲17.3KB）** へ引き下げた。
 - **比較レーンの分類と厳格レーンへの昇格**: `audit-tests.js` に比較専用テストの内訳分類を追加し、高速・100%合格を確認した現役テスト37本（ダッシュボード・長距離移動・広域経路・v2.2露天掘り・クラフト・かまど・水中退避等）を `test:review` 厳格レーンへ昇格させた（厳格レーン合計 308 → 350 ファイル）。
+- **追加改善パッケージ（2026-11-27 追記）**:
+  - **帰還 `verify` の未開放チェスト除外と拠点石炭調達**: `src/modes/return/return-steps.js` の `verify` 段階で `CONTAINER_OPEN_REFUSED` / `CONTAINER_CONTENTS_UNKNOWN` となったチェストを `goal.unopened`（到達不能は `goal.unreached`）へ記録・除外し、別チェストへフォールバックできるよう修正（`test/player-incident-regression.test.js`）。あわせて `src/modes/house/house-supply.js`・`src/runtime/autonomy-runtime.js` に石炭2の採掘（`houseCoalInput` / `planCoal`）を組み込んだ。
+  - **診断 CLI のインシデント傾向集計**: `src/common/diagnose-report.js` に保存済みインシデント全体の種別件数・頻出目標・平均停滞秒数の集計を追加（`npm run diagnose`）。
+  - **現役サブシステムテスト 155 本の厳格レーン昇格**: 比較レーンの現役サブシステム 185 本から高速・100% 合格を確認した 155 本を `test:review` へ昇格（厳格レーン合計 350 → 506 ファイル、現役比較レーン 185 → 30）。
+  - **`src/runtime.js` からの旧サバイバル Depot 配線分離**: `src/runtime.js` の 3114〜3451 行（`observeDepotSky` / `runDepotResource` / `ownedCampBootstrap` / `dispatchDepotIntent` / `depotPrebuild` / `depotMission`）を `src/runtime/legacy-depot-runtime.js` へ機械抽出し、`size-budget.json` の `src/runtime.js` 上限を **370.7KB → 342.0KB（▲28.7KB）** へ引き下げた。
 
 ## 残っていること（優先順）
 
