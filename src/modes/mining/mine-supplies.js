@@ -25,7 +25,9 @@ function createMineSupplies (ctx, actions, storage) {
   async function acquire (name, amount) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     const supplied = await ctx.supplies.acquire(name, amount)
-    return prerequisiteResult(supplied, wait('MINE_SUPPLIES_IN_PROGRESS', `${name} ${have(name)}/${amount}`))
+    // The gathering goes on at the next tick: a wait for a change of supplies held the expedition when the step's own
+    // work (a tree begun, a walk) changed nothing yet (live 2026-11-26 13:52-14:00 JST, 「log 0/2」 for eight minutes).
+    return prerequisiteResult(supplied, blocked('MINE_SUPPLIES_IN_PROGRESS', { kind: 'time', ms: 1000 }, { detail: `${name} ${have(name)}/${amount}` }))
   }
   function nearby (name) {
     const p = ctx.getFeet()
