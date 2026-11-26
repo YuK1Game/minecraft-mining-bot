@@ -336,7 +336,11 @@ function createDragonSupplies (ctx) {
         if (kit === 'home' && carried < keep) return { ...pending(name + ' を手持ち用に補給します。'), missing: { name, count: keep } }
         continue
       }
-      const available = Math.max(0, recovering ? inChest - (keepReserve ? amount : 0) : carried - keep)
+      // The last weapon in the bag never goes into the reserve: the Bot banked its only sword and died to a creeper with
+      // no weapon at all (live 2026-11-26 22:40 JST, 「武器がないため敵から離れます」, the iron sword in the reserve chest).
+      const weapons = rows().filter(row => /_sword$|_axe$/.test(String(row.name)) && !/_pickaxe$/.test(String(row.name))).reduce((sum, row) => sum + row.count, 0)
+      const lastWeapon = !recovering && /_sword$/.test(name) ? Math.max(0, 1 - (weapons - carried)) : 0
+      const available = Math.max(0, recovering ? inChest - (keepReserve ? amount : 0) : carried - Math.max(keep, lastWeapon))
       if (available < 1) {
         const target = recovering ? amount - equipped : wanted + keep
         return { ...pending(name + ' を予備用に補給します。'), missing:{name, count:target} }
