@@ -67,7 +67,15 @@ function chunkTravelThreatsClear ({ state, previous, next, risk, attackExposure,
           if (segmentDistance(actual.position, previous, next) < blast - 1e-4 && nextDist <= prevDist + 1e-4) return deny(`creeper(${prevDist.toFixed(1)}->${nextDist.toFixed(1)}<${blast})`)
         } else {
           const radius = creeperRadius(entry)
-          if (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < radius - 1e-4) return deny(`creeper:${group}`)
+          // A step that never comes nearer the creeper than the Bot already is, and ends no nearer, leads away from it and
+          // is allowed for a creeper three or more levels above or below and over 5 m off: refusing every step left the Bot standing beside a creeper in the cave six
+          // below for fifteen minutes (live 2026-11-26 23:18-23:33 JST, creeper 7.7 m off, 「Movement frame guard
+          // rejected the proposed input [threat]」 on every waypoint). A primed or exploding creeper still refuses all.
+          const prevDist = Math.hypot(actual.position.x - previous.x, actual.position.y - previous.y, actual.position.z - previous.z)
+          const nextDist = Math.hypot(actual.position.x - next.x, actual.position.y - next.y, actual.position.z - next.z)
+          const levels = Math.abs(actual.position.y - previous.y)
+          const away = group === 'threats' && levels >= 3 && prevDist > 5 && actual.actor.primed !== true && actual.actor.exploding !== true && nextDist >= prevDist - 1e-4 && segmentDistance(actual.position, previous, next) >= prevDist - 0.05
+          if (!away && (group === 'threats' || entry.dangerous === true || segmentDistance(actual.position, previous, next) < radius - 1e-4)) return deny(`creeper:${group}`)
         }
       } else if (waterExit !== true) entries.push({ entry, group })
     }
