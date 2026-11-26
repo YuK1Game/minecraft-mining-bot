@@ -2,8 +2,8 @@
 
 // Lifecycle-scoped buckets attached to `host.shared` so state belonging to a
 // connection, a single life, or one Bot mode can be reset together instead of
-// leaking across reconnects, deaths, or mode switches. Existing flat `shared.*`
-// properties continue to work unchanged and can optionally register for cleanup.
+// leaking across reconnects, deaths, or mode switches. Also dispatches scope
+// reset listeners so `lifecycle-signal.js` can abort active waits immediately.
 
 function ensureSharedScopes (shared) {
   if (!shared || typeof shared !== 'object') throw new Error('shared object is required')
@@ -25,7 +25,19 @@ function ensureSharedScopes (shared) {
         session: new Set(),
         life: new Set(),
         mode: new Set()
+      },
+      listeners: {
+        session: new Set(),
+        life: new Set(),
+        mode: new Set()
       }
+    }
+  }
+  if (!shared.scopes.listeners) {
+    shared.scopes.listeners = {
+      session: new Set(),
+      life: new Set(),
+      mode: new Set()
     }
   }
   return shared.scopes
@@ -42,6 +54,22 @@ function clearRegisteredKeys (shared, keys) {
   }
 }
 
+function notifyScopeReset (scopes, scope, detail) {
+  const set = scopes.listeners?.[scope]
+  if (!set || !set.size) return
+  for (const fn of [...set]) {
+    try { fn(detail) } catch { /* Listener errors must never block scope reset. */ }
+  }
+}
+
+function onScopeReset (shared, scope, fn) {
+  const scopes = ensureSharedScopes(shared)
+  if (!scopes.listeners[scope]) throw new Error(`Unknown shared scope: ${scope}`)
+  if (typeof fn !== 'function') throw new Error('Scope reset listener must be a function')
+  scopes.listeners[scope].add(fn)
+  return () => { scopes.listeners[scope].delete(fn) }
+}
+
 function registerScopeKey (shared, scope, key) {
   const scopes = ensureSharedScopes(shared)
   if (!scopes.registered[scope]) throw new Error(`Unknown shared scope: ${scope}`)
@@ -52,6 +80,8 @@ function registerScopeKey (shared, scope, key) {
 function resetSessionScope (shared, sessionId = null) {
   const scopes = ensureSharedScopes(shared)
   if (sessionId !== null && scopes.meta.sessionId === sessionId) return false
+  const previousSession = scopes.meta.sessionId
+  const previousLife = scopes.meta.lifeKey
   clearBucket(scopes.session)
   clearBucket(scopes.life)
   clearRegisteredKeys(shared, scopes.registered.session)
@@ -59,26 +89,32 @@ function resetSessionScope (shared, sessionId = null) {
   scopes.meta.sessionId = sessionId
   scopes.meta.lifeKey = null
   scopes.meta.sessionResets++
+  notifyScopeReset(scopes, 'life', { scope: 'life', previous: previousLife, next: null, via: 'session' })
+  notifyScopeReset(scopes, 'session', { scope: 'session', previous: previousSession, next: sessionId })
   return true
 }
 
 function resetLifeScope (shared, lifeKey = null) {
   const scopes = ensureSharedScopes(shared)
   if (lifeKey !== null && scopes.meta.lifeKey === lifeKey) return false
+  const previous = scopes.meta.lifeKey
   clearBucket(scopes.life)
   clearRegisteredKeys(shared, scopes.registered.life)
   scopes.meta.lifeKey = lifeKey
   scopes.meta.lifeResets++
+  notifyScopeReset(scopes, 'life', { scope: 'life', previous, next: lifeKey })
   return true
 }
 
 function resetModeScope (shared, mode = null) {
   const scopes = ensureSharedScopes(shared)
   if (mode !== null && scopes.meta.mode === mode) return false
+  const previous = scopes.meta.mode
   clearBucket(scopes.mode)
   clearRegisteredKeys(shared, scopes.registered.mode)
   scopes.meta.mode = mode
   scopes.meta.modeResets++
+  notifyScopeReset(scopes, 'mode', { scope: 'mode', previous, next: mode })
   return true
 }
 
@@ -97,6 +133,7 @@ function summarizeScopes (shared) {
 
 module.exports = {
   ensureSharedScopes,
+  onScopeReset,
   registerScopeKey,
   resetSessionScope,
   resetLifeScope,

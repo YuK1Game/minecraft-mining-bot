@@ -238,6 +238,7 @@ async function prepareEscapePort (rt, st) {
           rt.inspectIdleEscape = inspect
           const inspectPacket = () => { try { st.safetyState() } catch (error) { controller.abort(error) } }; st.inspectPacket = inspectPacket
           rt.inspectIdleEscapePacket = inspectPacket
+          await yieldPlanning()
 }
 
 module.exports = { prepareEscapePort }

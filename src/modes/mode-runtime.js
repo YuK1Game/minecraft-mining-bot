@@ -30,7 +30,7 @@ const { createTorchPorts } = require('./player-torch-ports')
 const { createPlayerStorage } = require('./player-storage')
 const { chestBuildHeld } = require('./chest-build-held')
 const { createStoragePorts } = require('./player-storage-ports')
-const { stationWorldScope, supplyScope } = require('../survival/supply-return')
+const { stationWorldScope, supplyScope } = require('../common/world-scope')
 const { nextObjective } = require('./player-goal')
 const { guardDragonOperations } = require('./dragon-ports')
 const { createDragonRuntime } = require('./dragon-runtime')
@@ -55,7 +55,7 @@ const { createHousePorts } = require('./house/house-ports')
 const { chestOf, bedOf, setSpawn } = require('./house/house-spawn')
 const { writeDurableJson } = require('../common/durable-json')
 const { createScheduler } = require('../common/runtime-scheduler')
-const { createWorkDispatcher } = require('./work-dispatcher')
+const { createWorkDispatcher, readSpatialContext } = require('./work-dispatcher')
 const { createIncidentRecorder } = require('./incident-snapshot')
 const { createFieldChestLedger, fieldChestsFile } = require('./player-field-chests')
 
@@ -332,21 +332,35 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
   })
   const crew = [recovery, shelter, flee, cover, scaffold, torch, storage, base, wool, sand, food, water, house]
   const CREW = ['立て直し', '避難', '敵から離れる', '射線から外れる', '足場', '松明', '収納', '拠点への帰還', '羊毛', '砂', '食料', '水から上がる', '家の建築']
+  const spatialNow = () => {
+    let record = null
+    try { record = expedition?.record?.() ?? null } catch { record = null }
+    return readSpatialContext({
+      dimension: runtime.raw()?.dimension ?? 'overworld',
+      feet: feetNow(),
+      position: where(),
+      getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),
+      houseOrigin: shared.playerHouse?.origin ?? null,
+      baseChest: shared.playerBase ?? null,
+      mineBranch: record?.stage === 'early' ? record.early?.mine?.branch ?? null : null,
+      runtime
+    })
+  }
   const dispatcher = createWorkDispatcher([
-    { id: 'recovery', label: '立て直し', task: recovery },
-    { id: 'shelter', label: '避難', task: shelter },
+    { id: 'recovery', label: '立て直し', task: recovery, preconditions: { forbidBranchMine: true } },
+    { id: 'shelter', label: '避難', task: shelter, preconditions: { requireOverworld: true, forbidBranchMine: true } },
     { id: 'flee', label: '敵から離れる', task: flee },
     { id: 'cover', label: '射線から外れる', task: cover },
-    { id: 'scaffold', label: '足場', task: scaffold },
+    { id: 'scaffold', label: '足場', task: scaffold, preconditions: { requireOverworld: true, forbidBranchMine: true } },
     { id: 'torch', label: '松明', task: torch },
     { id: 'storage', label: '収納', task: storage },
-    { id: 'base', label: '拠点への帰還', task: base },
-    { id: 'wool', label: '羊毛', task: wool },
-    { id: 'sand', label: '砂', task: sand },
-    { id: 'food', label: '食料', task: food },
+    { id: 'base', label: '拠点への帰還', task: base, preconditions: { requireOverworld: true, forbidBranchMine: true } },
+    { id: 'wool', label: '羊毛', task: wool, preconditions: { requireOverworld: true, forbidBranchMine: true } },
+    { id: 'sand', label: '砂', task: sand, preconditions: { requireOverworld: true, forbidBranchMine: true } },
+    { id: 'food', label: '食料', task: food, preconditions: { requireOverworld: true, forbidBranchMine: true } },
     { id: 'water', label: '水から上がる', task: water },
-    { id: 'house', label: '家の建築', task: house }
-  ])
+    { id: 'house', label: '家の建築', task: house, preconditions: { requireOverworld: true, forbidBranchMine: true } }
+  ], { getSpatial: spatialNow })
   const incidents = createIncidentRecorder({
     root, shared, getState: () => runtime.raw(), getFeet: feetNow,
     getBlock: (x, y, z) => runtime.host().world.getBlock(x, y, z),

@@ -1,43 +1,25 @@
 'use strict'
 
-// Player mode: out of the water onto the nearest received ledge.
-// The ordinary walk does not plan in water ("Water prediction is experimental
-// and disabled"), and the forage and the planner do not end the run there, so
-// the Bot stays afloat (real Realm 2026-11-17 08:48-08:54 JST: in water at
-// y=64, hunger 7, food 0, a beef drop 3 m away; the forage waited with
-// 「既知の安全な陸上中継を作れないため、別の食料源を待ちます。」 and the planner said
-// 「準備に必要な資材や作業場所を既知の範囲で調べます。」 129 times in five minutes).
-// - While playing, the feet cell or the one below is received water, and the
-//   Bot has moved less than 1 m for 15 s: the autonomy stops, and the Bot
-//   swims onto a ledge within five blocks (received solid floor, two received
-//   empty dry cells above it, at the level of the water surface above the Bot
-//   or one above: movement/water-ledges.js) with the same water exit as the
-//   long travel (movement/water-exit.js), nearest first, up to eight ledges.
-//   Out of the water counts only from the working position.
-// - No ledge within five blocks (open water): the Bot first swims toward the
-//   nearest shore of the received water (movement/water-swim.js) in legs of at
-//   most eight blocks, up to twelve legs; each leg counts only when the working
-//   position moved, and two legs without progress end the try. Then the
-//   ordinary exit. No shore in the received water: said once a minute.
-// - Not while a hostile is within 12 m or another job runs. 30 s between tries.
+// Player mode: out of the water onto the nearest received ledge, reporting
+// structured `return-result` outcomes and bounded failure memory.
 const { normalizeMode } = require('./bot-mode')
 const { ledges, wetColumn } = require('../movement/water-ledges')
 const { way } = require('../movement/water-swim')
+const { createSupplyOutcomeTracker } = require('./supply-task-runner')
 
 const STUCK_MS = 15000, AGAIN_MS = 30000, MOVED_M = 1, TRIES = 8, LEGS = 12, SAY_MS = 60000
-
 const finite = p => !!p && [p.x, p.y, p.z].every(Number.isFinite)
-
-// In water: the own column, or a column the body reaches into (movement/water-ledges.js).
 const wet = (getBlock, feet) => finite(feet) && wetColumn(getBlock, feet) !== null
 
-function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, start, moving, why = () => null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, start, moving, scope = () => null, why = () => null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0, since = null, anchor = null, said = -Infinity
+  const tracker = createSupplyOutcomeTracker({ taskId: 'water', shared, scope, now })
+  const R = tracker.result
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const settle = async () => { for (let i = 0; i < 40 && agent.settled?.() === false && !disposed(); i++) await sleep(200) }
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return } catch { await sleep(2000) } } }
 
-  async function tick () {
+  async function runStep () {
     if (!live() || busy) return null
     const feet = getPosition()
     if (!wet(getBlock, feet)) { since = null; anchor = null; return null }
@@ -45,18 +27,36 @@ function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, sta
     if (now() - since < STUCK_MS || now() < waitUntil || blocked()) return null
     const found = ledges(getBlock, feet)[0] ?? way(getBlock, feet)?.shore
     waitUntil = now() + AGAIN_MS
-    if (!found) { none(); return false }
+    const cellKey = `${Math.floor(feet.x / 4)},${Math.floor(feet.z / 4)}`
+    if (!found) {
+      none()
+      const outcome = R.blocked('WATER_NO_SHORE', { kind: 'terrain_received' }, { detail: '上がれる岸が見つかりません' })
+      tracker.record(outcome, { stage: 'scan', target: cellKey })
+      return outcome
+    }
     busy = true
     try {
       log(`プレイヤーモード: 水の中で止まっているため、岸 (${Math.floor(found.x)}, ${found.y}, ${Math.floor(found.z)}) へ上がります`)
       agent.stop('水から上がります。')
       await settle()
       const out = await exit(() => !live())
-      return out.ok
+      const outcome = out.ok
+        ? R.completed('WATER_EXITED', { evidence: { shore: found } })
+        : out.reason === 'INTERRUPTED'
+          ? R.interrupted('WATER_INTERRUPTED')
+          : R.failed(out.reason === 'NO_LEDGE' ? 'WATER_NO_LEDGE' : 'WATER_EXIT_FAILED', { detail: out.reason ?? '不明' })
+      tracker.record(outcome, { stage: 'exit', target: cellKey })
+      return outcome
     } finally {
       busy = false
       await restart()
     }
+  }
+
+  async function tick () {
+    const outcome = await runStep()
+    if (outcome?.status === 'interrupted') return false
+    return tracker.toTickBoolean(outcome)
   }
 
   function none () {
@@ -65,7 +65,6 @@ function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, sta
     log('プレイヤーモード: 水の中で止まっていますが、受信した水面の先に上がれる岸が見つかりません')
   }
 
-  // Open water: toward the nearest shore of the received water until a ledge is within reach.
   async function swim (aborted) {
     let stalls = 0
     for (let leg = 0; leg < LEGS; leg++) {
@@ -93,7 +92,6 @@ function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, sta
     return { ok: false, reason: 'SWIM_LIMIT' }
   }
 
-  // Swim onto the nearest ledge; the caller has stopped the autonomy.
   async function exit (aborted = () => false) {
     const feet = getPosition()
     if (!wet(getBlock, feet)) return { ok: false, reason: 'NOT_IN_WATER' }
@@ -119,7 +117,13 @@ function createPlayerWater ({ getMode, shared, agent, getPosition, getBlock, sta
     return { ok: false, reason }
   }
 
-  return { tick, exit, needed: () => wet(getBlock, getPosition()), status: () => ({ active: busy, reason: busy ? '水から上がっています。' : null }) }
+  return {
+    tick,
+    runStep,
+    exit,
+    needed: () => wet(getBlock, getPosition()),
+    status: () => ({ active: busy, reason: busy ? '水から上がっています。' : null, lastOutcome: tracker.last() })
+  }
 }
 
 module.exports = { createPlayerWater, wet, ledges }

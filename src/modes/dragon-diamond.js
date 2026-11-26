@@ -1,6 +1,6 @@
 'use strict'
 
-const {nextGearNeed,GEAR}=require('../survival/diamond-gear')
+const {nextGearNeed,GEAR}=require('./player-diamond-gear')
 
 // The same selection drives the owner and the actual crafting step. Unknown worn armour keeps the stage open;
 // it never authorizes another copy of a piece that may already be equipped.

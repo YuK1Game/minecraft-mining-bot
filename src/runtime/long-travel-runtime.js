@@ -552,27 +552,18 @@ function createLongTravelRuntime (rt) {
         // Shooters (witches included) are avoided on every long trip (coordinator 2026-11-14).
         const st0 = rt.working(), fleeing = true
         const shooters = fleeing ? rt.require('./combat/trident-throwers').mark(rt.allActors()).filter(a => a?.hostile === true && a.alive !== false && a.position && rt.require('./safety/learning-health').SHOOTING.test(String(a.entityType ?? a.name ?? '')) && (a.tridentThrower === true || !/drowned/.test(String(a.entityType ?? a.name ?? ''))) && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 48).map(a => a.position) : []
-        // Avoid zones (coordinator 2026-11-14): 20 m around a received shooter,
-        // 32 m around a group of three or more (an outpost), never closer than
-        // the bot already is, so the route bends away before the shooter's range.
-        const avoidCols = new Set()
-        // Remembered danger zones (live 16:22 and 17:18: pillagers near
-        // (540..590, -750) killed the bot twice): 48 m around where a shooter
-        // hit the bot, kept on disk; never closer than the bot already is.
-        // Apply the same expiry (FORGET_MS) and destination exemption as
-        // inZone (live 2026-11-25 11:25-11:37 JST: 6 expired skeleton zones
-        // walled off the starter house in a 70m ring for 12+ minutes).
-        for (const zone of rt.require('./travel/danger-zones').activeZones(travelDangerZones(), destination)) {
-          const r = Math.min(zone.r, Math.hypot(zone.x - feet.x, zone.z - feet.z) - 2)
-          if (r <= 1 || Math.hypot(zone.x - feet.x, zone.z - feet.z) > 320) continue
-          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(zone.x) + dx},${Math.floor(zone.z) + dz}`)
-        }
-        for (const q of shooters) {
-          const group = shooters.filter(o => Math.hypot(o.x - q.x, o.z - q.z) <= 16).length >= 3
-          const r = Math.min(group ? 32 : 20, Math.hypot(q.x - feet.x, q.z - feet.z) - 2)
-          if (r <= 1) continue
-          for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) for (let dz = -Math.ceil(r); dz <= Math.ceil(r); dz++) if (dx * dx + dz * dz <= r * r) avoidCols.add(`${Math.floor(q.x) + dx},${Math.floor(q.z) + dz}`)
-        }
+        // Unified wide-area cost & hazard policy (travel/travel-cost-policy.js):
+        // combines remembered danger zones (with expiry & destination exemption),
+        // live ranged hostiles (20 m single / 32 m group, never closer than feet),
+        // soft proximity penalties, and failed local-walk cells.
+        const buildCostPolicy = badCells => rt.require('./travel/travel-cost-policy').createTravelCostPolicy({
+          dangerZones: travelDangerZones(),
+          shooters,
+          feet,
+          destination,
+          badCells,
+          nightShelter: Boolean(rt.require('./travel/night-stop').dayPhase(travelClock()).shelter)
+        })
         const here = Math.hypot(destination.x - feet.x, destination.z - feet.z)
         const heading = Math.atan2(destination.z - feet.z, destination.x - feet.x)
         // Starting in water (live 2026-11-14: the respawn point is a pool), climb
@@ -595,7 +586,7 @@ function createLongTravelRuntime (rt) {
         // nodes ahead on it that the ordinary local planner can walk to.
         try {
           const houseOverlay = rt.require('./safety/house-protection').createHouseProtection(() => rt.host.shared.playerHouse, { includeYardRing: true })
-          const planRoute = (extra = {}) => { const bad = rt.host.shared.longTravelBadCells ??= new Set(); const blocked = avoidCols.size ? { has: k => bad.has(k) || avoidCols.has(k) } : bad; return rt.require('./travel/coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => houseOverlay(rt.host.world.getBlock(x, y, z), x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked, signal, ...extra }) }
+          const planRoute = (extra = {}) => { const bad = rt.host.shared.longTravelBadCells ??= new Set(); const costPolicy = buildCostPolicy(bad); return rt.require('./travel/coarse-route').planCoarseRouteAsync({ getBlock: (x, y, z) => houseOverlay(rt.host.world.getBlock(x, y, z), x, y, z), start: feet, goal: destination, maxNodes: 200000, maxMs: 6000, allowDig: true, maxDrop: 1, surfaceOnly: true, blocked: costPolicy, costPolicy, signal, ...extra }) }
           let route = await planRoute()
           // Live 16:05: columns marked after failed walks fenced the bot in (the
           // same route without them existed). When they leave no route at all,

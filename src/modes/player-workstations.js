@@ -4,7 +4,7 @@
 // again. Observed stations can be reused, but observation alone grants no right
 // to break them. House fixtures never enter this ledger.
 const { deserialize } = require('node:v8')
-const { supplyScope, stationWorldScope } = require('../survival/supply-return')
+const { supplyScope, stationWorldScope } = require('../common/world-scope')
 const { placements } = require('./house/house-blueprint')
 
 const ITEMS = new Set(['minecraft:crafting_table', 'minecraft:furnace'])

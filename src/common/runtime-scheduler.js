@@ -1,8 +1,8 @@
 'use strict'
 
-// Centralized interval scheduler bound to a runtime lifecycle.
-// Prevents overlapping async ticks, catches errors so timers never crash the
-// process, optionally wraps ticks with work-spans, and clears every timer on dispose.
+// Centralized interval scheduler & bounded condition watcher bound to a runtime lifecycle.
+// Prevents overlapping async ticks, honors optional AbortSignals, catches errors
+// so timers never crash the process, wraps ticks with work-spans, and clears every timer on dispose.
 
 function createScheduler ({
   isDisposed = () => false,
@@ -21,12 +21,13 @@ function createScheduler ({
     unref = true,
     preventOverlap = true,
     requireActive = null,
+    signal = null,
     onError = null,
     errorThrottleMs = 60000
   } = {}) {
     if (typeof fn !== 'function') throw new Error('scheduler callback must be a function')
     if (!Number.isFinite(intervalMs) || intervalMs <= 0) throw new Error('scheduler intervalMs must be positive')
-    if (stopped()) {
+    if (stopped() || signal?.aborted) {
       return { name, intervalMs, stop: () => {}, active: () => false, runs: () => 0, errors: () => 0 }
     }
 
@@ -38,6 +39,7 @@ function createScheduler ({
     let errors = 0
     let lastErrorLogAt = -Infinity
     let timer = null
+    let removeAbort = null
 
     const entry = {
       name: label,
@@ -46,11 +48,18 @@ function createScheduler ({
         if (!active) return
         active = false
         if (timer !== null) { clearIntervalImpl(timer); timer = null }
+        if (removeAbort) { removeAbort(); removeAbort = null }
         entries.delete(entry)
       },
-      active: () => active && !stopped(),
+      active: () => active && !stopped() && !signal?.aborted,
       runs: () => runs,
       errors: () => errors
+    }
+
+    if (signal) {
+      const onAbort = () => entry.stop()
+      signal.addEventListener('abort', onAbort, { once: true })
+      removeAbort = () => signal.removeEventListener('abort', onAbort)
     }
 
     const reportError = error => {
@@ -67,7 +76,7 @@ function createScheduler ({
     }
 
     const tick = () => {
-      if (!active || stopped()) { entry.stop(); return }
+      if (!active || stopped() || signal?.aborted) { entry.stop(); return }
       if (preventOverlap && running) return
       if (typeof requireActive === 'function') {
         let ok = false

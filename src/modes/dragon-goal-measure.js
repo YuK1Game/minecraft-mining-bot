@@ -18,7 +18,7 @@
 // Health, the place and every other item are not looked at.
 const { ingredient, smelted } = require('./dragon-supply-recipes')
 const { home, nether, end, spare, combined, matches } = require('./dragon-supply-kit')
-const { GEAR } = require('../survival/diamond-gear')
+const { GEAR } = require('./player-diamond-gear')
 
 const RAW_FOOD = /^minecraft:(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/
 const SUPPORT = ['log', 'planks', 'stick', 'cobblestone', 'coal', 'charcoal', 'crafting_table', 'furnace', 'chest', 'stone_pickaxe', 'wooden_pickaxe']

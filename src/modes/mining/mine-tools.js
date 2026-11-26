@@ -2,7 +2,7 @@
 
 const { digTool } = require('../dig-tool')
 const { blockRule } = require('../../quarry/quarry-rules')
-const { nextGear } = require('../../survival/diamond-gear')
+const { nextGear } = require('../player-diamond-gear')
 const { pickFor } = require('../dragon-supply-recipes')
 const { count } = require('../dragon-supply-kit')
 const { blocked, interrupted } = require('../return/return-result')

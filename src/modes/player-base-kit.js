@@ -12,7 +12,7 @@
 //   a furnace, two chests, cobblestone 72 (the house), dirt 32, sand 6, wool 3,
 //   iron ingots 8, raw iron 8;
 // - the diamonds the missing diamond gear still takes (diamond-gear.js).
-const { GEAR, WORN } = require('../survival/diamond-gear')
+const { GEAR, WORN } = require('./player-diamond-gear')
 
 const bare = name => String(name ?? '').replace(/^minecraft:/, '')
 const ALL = /^(?:.*_helmet|.*_chestplate|.*_leggings|.*_boots|bow|crossbow|arrow|spectral_arrow|tipped_arrow|shield|totem_of_undying|bucket|.*_bucket|flint_and_steel|shears|ender_pearl|.*_bed|torch|soul_torch)$/

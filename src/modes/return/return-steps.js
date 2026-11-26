@@ -294,7 +294,11 @@ function createReturnSteps ({ goal, ports, flow }) {
       if (aborted()) return stopped('CONTAINER_INTERRUPTED')
       if (seen.status !== 'completed') return { ...seen, evidence: { ...seen.evidence, chest: at, state: { at: area(getFeet(), 4) } } }
       if (seen.evidence?.room > 0) { goalNow.target = at; return completed('CHEST_HAS_ROOM', { evidence: seen.evidence }) }
-      if (seen.evidence?.mayMerge) { goalNow.target = at; return completed('CHEST_CHOSEN', { evidence: seen.evidence }) }
+      if (seen.evidence?.mayMerge && !either(goalNow.mergeTried ?? [], at)) {
+        goalNow.mergeTried = [...(goalNow.mergeTried ?? []), { x: at.x, y: at.y, z: at.z }]
+        goalNow.target = at
+        return completed('CHEST_CHOSEN', { evidence: seen.evidence })
+      }
       say(`チェスト (${at.x}, ${at.y}, ${at.z}) は満杯です（受信した空き 0 枠）`)
       rememberFull(goalNow, at, capacity())
     }

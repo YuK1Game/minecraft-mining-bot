@@ -73,7 +73,7 @@ function checkCancelled ({ signal, cancelled }) {
   if (signal?.aborted || cancelled?.()) throw Object.assign(new Error('広域経路の探索を中断しました。'), { name: 'AbortError', code: 'COARSE_ROUTE_CANCELLED' })
 }
 
-function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false, signal, cancelled }) {
+function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 320, arriveM = 6, window = 12, allowDig = false, maxDrop = 3, blocked = null, costPolicy = null, surfaceOnly = false, maxMs = Infinity, now = Date.now, faceStairs = false, signal, cancelled }) {
   const ensure = () => checkCancelled({ signal, cancelled })
   ensure()
   // Live 2026-11-14 12:13: the route led down into a cave to y-33. With
@@ -140,7 +140,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
         const isOpen = v => classify(v) === 'pass'
         if (solid(floor) && diggable(c1) && (diggable(c2) || isOpen(c2)) && (isOpen(sky) || faceStairs && openFace(x, n.y + 2, z, dx, dz)) && (isOpen(head) || diggable(head))) {
           const cells = [{ x, y: n.y + 1, z, v: c1 }, { x, y: n.y + 2, z, v: c2 }, { x: n.x, y: n.y + 2, z: n.z, v: head }].filter(c => diggable(c.v)).map(c => ({ x: c.x, y: c.y, z: c.z, name: c.v.name }))
-          const g = n.g + 1 + cells.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
+          const g = n.g + (costPolicy ? costPolicy.digStepCost(cells, { x, z }) : 1 + cells.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0))
           const k = key(x, n.y + 1, z)
           if (g < (best.get(k) ?? Infinity)) { best.set(k, g); parent.set(k, key(n.x, n.y, n.z)); digOf.set(k, cells); open.push({ x, y: n.y + 1, z, g, f: g + h(x, z) }) }
         }
@@ -162,7 +162,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
         const dryOk = cellsOk && cells.filter(c => diggable(c.v)).every(c => [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([ox, oz]) => dry(x + ox, c.y, z + oz)))
         if (floorOk && cellsOk && dryOk && (sky(x, n.y, z) || openFace(x, n.y, z, dx, dz))) {
           const dig = cells.filter(c => diggable(c.v)).map(c => ({ x, y: c.y, z, name: c.v.name }))
-          const g = n.g + 1 + dig.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0)
+          const g = n.g + (costPolicy ? costPolicy.digStepCost(dig, { x, z }) : 1 + dig.reduce((t, c) => t + (SOFT.test(c.name) ? 2 : 6), 0))
           const k = key(x, n.y - 1, z)
           if (g < (best.get(k) ?? Infinity)) { best.set(k, g); parent.set(k, key(n.x, n.y, n.z)); digOf.set(k, dig); open.push({ x, y: n.y - 1, z, g, f: g + h(x, z) }) }
         }
@@ -184,7 +184,7 @@ function * coarseSearch ({ getBlock, start, goal, maxNodes = 60000, maxRadius = 
         // Live 2026-11-17 12:13: on a furnace in the own house; one step down
         // within 4 blocks of a covered start is allowed (getting off a block).
         if (covered && dy < 0 && !(startCovered && dy === -1 && Math.hypot(x - sx, z - sz) <= 4)) continue
-        const g = n.g + (dx && dz ? 1.414 : 1) * (s.water ? 10 : 1) /* coordinator 2026-11-14: keep out of water where possible */ * (covered ? 5 : 1) + (dy > 0 ? 0.5 : 0)
+        const g = n.g + (costPolicy ? costPolicy.stepCost({ diagonal: Boolean(dx && dz), water: s.water, covered, dy, x, z }) : (dx && dz ? 1.414 : 1) * (s.water ? 10 : 1) /* coordinator 2026-11-14: keep out of water where possible */ * (covered ? 5 : 1) + (dy > 0 ? 0.5 : 0))
         const k = key(x, s.y, z)
         if (g >= (best.get(k) ?? Infinity)) continue
         best.set(k, g); parent.set(k, key(n.x, n.y, n.z))

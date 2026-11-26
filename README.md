@@ -30,6 +30,8 @@ npm start
 | `npm start` | 接続してコード更新を監視。露天掘りは `/quarry`、旧サバイバルは `/auto` で開始 |
 | `npm run realms` | 参加できる Realm の一覧を取得。ワールドへは入らない |
 | `npm test` / `npm run check` | 自動テスト / 構文確認。ゲームの達成証明とは別 |
+| `npm run diagnose` | 最新の `.local/incidents/` と状態の読み取り専用診断サマリを表示（`-- --offline` / `-- --json` 対応） |
+| `npm run incident:fixture` | 停滞スナップショット（schema 2）から再現フィクスチャ・テスト雛形を生成 |
 
 同じアカウントをゲーム画面と Bot で重ねて使う場合は、先にゲーム側を対象 Realm から退出させてください。
 

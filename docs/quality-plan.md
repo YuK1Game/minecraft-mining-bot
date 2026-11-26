@@ -43,18 +43,23 @@
 - テストの `.local/staged/` フォールバックも取り除いた。`test/review-test-dependencies.test.js` は `test:audit -- --strict` と同じ依存監査を毎回実行する。以前の監査が見落とした `../.local/` の文字列参照も検出する。過去の比較失敗を許容する仕組みで読み込み失敗が隠れないよう、復旧したファイルは全件成功を要求する。
 - 診断スナップショットを schema 2 にした。地形はブロック状態の palette と全セルの16bit index で保存し、既知の空気、未知セルの座標、階段の向き、液体の追加レイヤーを保持する。`incident-terrain.js` の `replayTerrain` で同じ `getBlock` を再生でき、実 navigator の判断も比較する。保存範囲外と旧 schema の省略セルは未知のままにする。ファイル数とcooldownを維持し、半径は16までに制限する。
 
+## 包括改善パッケージ（2026-11-26 追記）
+
+- **空間コンテキスト調停の共通化**: `src/modes/spatial-context.js` を追加し、現在地（`branch_mine` / `starter_house` / `water` / `underground` / `base_yard` / `open_surface` / `nether` / `end`）の判定と事前退出ステップを一元化した。`work-dispatcher.js` と `dragon-mine-exit.js` から参照し、ブランチマイニング坑道内にいる間に地上前提の補助タスクが割り込んで真上掘りする事故を構造的に抑止した。
+- **調達タスクの Result コード・失敗記憶の統一**: `src/modes/supply-task-runner.js` を追加し、`player-food.js`・`house-sand.js`・`house-wool.js`・`player-water.js` を帰還と同じ `return-result.js` / `return-failures.js` 契約（構造化 `lastOutcome` と同一条件3回失敗での自動抑止）へ統合した。あわせて帰還収納 `return-steps.js` で `mayMerge` 判定時に同一チェストを再試行し続ける `STAGE_LOOP` を防止した。
+- **診断 CLI とインシデント再現基盤**: `src/common/diagnose-report.js`（`npm run diagnose`）と `src/modes/incident-replay.js`（`npm run incident:fixture`）を追加し、UI を増やさずに最新インシデント・目標台帳・判断ログ・周辺危険セルの読取確認と schema-2 スナップショットからの再現テスト生成を行えるようにした。
+- **世代スコープ付き中断トークンと長距離経路評価の統合**: `shared-scopes.js` のスコープ変更通知に連動する `src/common/lifecycle-signal.js` と `runtime-scheduler.js` の `signal` 対応を導入。長距離移動は `src/travel/travel-cost-policy.js` に危険地帯・射撃モブ集団・ソフト近接ペナルティ・水場/屋根下/夜間コストを集約し、`coarse-route.js` と `long-travel-runtime.js` を一本化した。
+- **旧サバイバル依存の分離と巨大モジュールのスリム化**: 共通スコープを `src/common/world-scope.js`、ダイヤ装備進行を `src/modes/player-diamond-gear.js` へ分離し、`src/modes/` から `src/survival/` への直接 `require` を 0 件にした（`audit-tests.js --strict` で常時検証）。また `idle-safety-runtime.js` の残り3ブロック（`partialEscape` / `clearEscape` / `onEmergencyStop`）と `quarry-job.js` の計画ブロック（`quarry-job-plan.js`）を機械抽出し、`size-budget.json` の上限をそれぞれ **128.9KB → 76.5KB（▲52.4KB）**、**265.8KB → 248.5KB（▲17.3KB）** へ引き下げた。
+- **比較レーンの分類と厳格レーンへの昇格**: `audit-tests.js` に比較専用テストの内訳分類を追加し、高速・100%合格を確認した現役テスト37本（ダッシュボード・長距離移動・広域経路・v2.2露天掘り・クラフト・かまど・水中退避等）を `test:review` 厳格レーンへ昇格させた（厳格レーン合計 308 → 350 ファイル）。
+
 ## 残っていること（優先順）
 
 | 順 | 内容 | 軸 | 補足 |
 | --- | --- | --- | --- |
-| 1 | 移した部分と元のクロージャーの間のやり取り（アクセサの一覧）を減らす | 可読性・保守性 | 4つの主要factoryには用途別のportと明示write権限を導入済み。次はport内部に残る多くの読み取り依存や作業サービスを、入力と結果の小さな単位へ分ける |
-| 2 | 全件比較に残る既存失敗の整理 | 信頼性 | 共通fixtureで検証前に止まる12ファイルは修復済み。残りは古い期待値、他の切り出しfixture、負荷で変わる退避テスト、実処理の不具合を分ける。欠落したローカル専用helperは復旧済み。旧自律実行の再開テスト等は残る。現在の件数と分類は各CIの比較レポートを基準に再確認し、仕様を弱めて通さない |
-| 3 | `src/runtime/idle-safety-runtime.js`（130KB）の設定表の残り: `partialEscape`（約210行）、`onEmergencyStop`（約120行）、`clearEscape`（約110行） | 可読性 | `escape` は段階に分けた。残りは同じ道具（`scripts/extract-stage.js`）で分けられる |
-| 4 | 段階どうしが共有する変数を減らす。`src/quarry/quarry-job.js` の計画・採掘部分を分ける | 可読性・保守性 | 段階は元の関数の変数を共有オブジェクト経由で読み書きしている（退避は約150個）。1 と同じ課題で、段階ごとの入力と結果を値として受け渡す形にすると単体でテストできる。挙動に関わるため実Realm での確認が必要 |
-| 5 | 長距離移動の「詰まった場所ごとの修正」を、危険地帯・水場・夜間を1つの経路評価で扱う形にまとめる | 保守性・信頼性 | 配線は `src/runtime/long-travel-runtime.js` にまとまっている |
-| 6 | 行動ごとの監視タイマー（約35か所）を共通の中断判定にする | 信頼性 | 死亡・再接続時の扱いをそろえる |
-| 7 | 旧サバイバル（小屋・ダイヤ計画）を分けるか外すかを決める | 可読性 | 2 と合わせて判断 |
-| 8 | プレイヤーモードのほかの立て直し作業（食料・砂・羊毛・家・水・収納）を、帰還と同じ形（目的と操作の分離、結果のコード、原因ごとの有限な再試行）へそろえる | 信頼性・保守性 | 食料の炉内利用と探索の反復、通路探索のテスト除外は今回対応。全作業の目的・操作の分離は残課題。帰還の部品（`src/modes/return/return-result.js`・`return-failures.js`）を候補にする |
+| 1 | 移した部分と元のクロージャーの間のやり取り（アクセサの一覧）を減らす | 可読性・保守性 | 4つの主要factoryには用途別のportと明示write権限を導入済み。`idle-safety-runtime.js` と `quarry-job.js` の大型関数抽出も完了したため、次は段階間で共有する `vars` / アクセサを値受け渡しへ寄せる |
+| 2 | 比較レーン残り（440ファイル）の段階的整理 | 信頼性 | 37本を厳格レーンへ昇格済み。残りは旧サバイバル118・露天掘り比較69・Runtime比較68・現役サブシステム185に分類済みのため、現役サブシステムからの追加昇格と旧サバイバル退役を進める |
+| 3 | 旧サバイバル（小屋・ダイヤ直掘り計画）のランナー退役 | 可読性 | `src/modes/` からの直接 `require` は 0 件化済み。序盤採取の実行委譲も段階的に `src/modes/` 側へ移す |
+| 4 | ネザー・地下要塞・エンド戦の実Realm通し検証 | 自律性・信頼性 | ドライラン検証と `incident-replay.js` による即座の回帰テスト化基盤は整備済み。実Realmでの通し観測と微調整を進める |
 
 ## 確認のしかた
 

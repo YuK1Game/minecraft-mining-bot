@@ -10,10 +10,7 @@ const SUPPORT = new Set(require('../common/standing-ground').STANDING_GROUND)
 const AIR = new Set(['air', 'cave_air', 'void_air', 'short_grass', 'fern', 'leaf_litter', 'torch'])
 const clear = b => b?.known === true && !b.extra?.length && AIR.has(name(b)) && (['air', 'cave_air', 'void_air'].includes(name(b)) || b.boundingBox === 'empty')
 
-function supplyScope (state) {
-  if (typeof state?.profile !== 'string' || !state.profile || state.realm?.id == null || !state.connectionId || !state.startedAt || !['overworld', 'nether', 'end'].includes(state.dimension) || !/^\d+$/.test(String(state.runtimeEntityId ?? '')) || !Number.isSafeInteger(state.lifecycle?.deathId) || state.lifecycle.deathId < 0) return null
-  return JSON.stringify([state.profile, String(state.realm.id), state.dimension, state.connectionId, state.startedAt, String(state.runtimeEntityId), state.lifecycle.deathId])
-}
+const { supplyScope, stationWorldScope } = require('../common/world-scope')
 function tableMaterialShortfall (state) {
   const items = state.inventory?.items ?? []
   const count = pattern => items.reduce((sum, i) => sum + (pattern.test(String(i.name)) && Number.isSafeInteger(i.count) && i.count > 0 ? i.count : 0), 0)
@@ -24,7 +21,6 @@ function currentStationPage (state, page, kind = 'table', now = Date.now()) {
   if (!scope || !Array.isArray(page?.blocks) || page.blocks.length < 1 || page.blocks.length > 343 || page?.scope !== scope || !Number.isFinite(page.readAt) || page.readAt > now || now - page.readAt > 10000 || !integer(page.position) || page.block?.known !== true || !integer(page.block.position) || key(page.position) !== key(page.block.position) || !expected.includes(name(page.block)) || page.block.protected || page.block.protectionSource || page.block.usable === false || page.block.extra?.length || page.source !== 'current_world_read') return null
   return page
 }
-const stationWorldScope = state => typeof state?.profile === 'string' && state.profile && state.realm?.id != null && ['overworld', 'nether', 'end'].includes(state.dimension) ? JSON.stringify([state.profile, String(state.realm.id), state.dimension]) : null
 function updateStationCatalog ({ state, blocks, catalog, now = Date.now() }) {
   const scope = stationWorldScope(state)
   if (!scope || !supplyScope(state) || !Array.isArray(blocks)) return catalog ?? { version: 1, scopes: {} }

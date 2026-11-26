@@ -2,9 +2,9 @@
   "note": "Bytes without carriage returns, lowered after the 2026-11-26 status and persistence extraction. npm run check reports growth beyond these. Lower a value after moving code out; do not raise one to fit new code.",
   "files": {
     "src/runtime.js": 370715,
-    "src/quarry/quarry-job.js": 265807,
+    "src/quarry/quarry-job.js": 248500,
     "src/safety/idle-safety.js": 41445,
-    "src/runtime/idle-safety-runtime.js": 128891,
+    "src/runtime/idle-safety-runtime.js": 76500,
     "src/quarry/storage/quarry-portable-storage.js": 49989,
     "src/survival/runner.js": 62723,
     "src/safety/idle-safety-escape.js": 14792,

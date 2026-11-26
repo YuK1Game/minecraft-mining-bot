@@ -1,42 +1,39 @@
 'use strict'
 
 // Player mode: no food held, hunger falling, and the Bot deep in a tunnel.
-// The plan keeps choosing the forage, but every animal it knows stands on the
-// surface and no land route reaches it from below, so it tunnels on instead
-// (real Realm 2026-11-17 08:16-08:20 JST: food 0, hunger 16 → 14, 31 forage
-// decisions with 0 hits, 50 blocks further down a tunnel). Then:
-// - the autonomy stops, the Bot comes up to open sky (its own tunnel back on
-//   foot, else straight up: the same climb as the recovery), and play goes on
-//   there, where the forage can walk to the animals.
-// - Only while playing, hunger received at 14 or less (or under 18 with health
-//   under 10: no natural healing), no food held and
-//   received solid ground overhead. Not while a hostile is within 12 m or
-//   another job runs. Five minutes between tries.
-// - On open ground, a known food source more than 6 m away that the forage
-//   cannot step to: long travel to it, then play goes on (live 2026-11-17
-//   08:32-08:35 JST: on the surface, hunger 12, every forage waited with
-//   「既知の安全な陸上中継を作れないため、別の食料源を待ちます。」 and the plan tunnelled on).
+// Structured with `supply-task-runner` result codes and bounded failure memory
+// while preserving legacy `tick()` return values.
 const { normalizeMode } = require('./bot-mode')
 const { underCover } = require('./player-surface')
+const { createSupplyOutcomeTracker } = require('./supply-task-runner')
 
 const HUNGRY = 14, REGEN = 18, HURT = 10, AGAIN_MS = 300000, NEAR_M = 6, TRIP_MS = 180000
 const FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit|cod|salmon)$|^minecraft:(?:bread|apple|golden_apple|carrot|baked_potato|potato|beetroot|melon_slice|sweet_berries|glow_berries|cookie|pumpkin_pie|dried_kelp|mushroom_stew|rabbit_stew|beetroot_soup)$/
 const hasFood = inventory => (inventory?.items ?? []).some(item => item?.count > 0 && FOOD.test(item.name ?? ''))
 
-function createPlayerFood ({ getMode, shared, agent, climb, travel = null, prey = () => null, getState, getHunger, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+function createPlayerFood ({ getMode, shared, agent, climb, travel = null, prey = () => null, scope = () => null, inBranchMine = () => false, getState, getHunger, getBlock, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
   let busy = false, waitUntil = 0
+  const tracker = createSupplyOutcomeTracker({ taskId: 'food', shared, scope, now })
+  const R = tracker.result
   const live = () => !disposed() && normalizeMode(getMode()) === 'player' && shared.playerWanted === true
   const restart = async () => { for (let attempt = 0; attempt < 5 && live(); attempt++) { try { await agent.start({ ...agent.objective }); return } catch { await sleep(2000) } } }
 
-  async function tick () {
+  async function runStep () {
     if (!live() || busy || blocked() || now() < waitUntil) return null
+    if (inBranchMine()) {
+      const outcome = R.blocked('INSIDE_BRANCH_MINE', { kind: 'position_changed' }, { detail: '採掘場内のため、はしご退出後に食料を探します' })
+      tracker.record(outcome, { stage: 'surface' })
+      return null
+    }
     const hunger = getHunger(), state = getState()
-    // Hurt with hunger under 18 heals no more, so no food then counts as hungry
-    // too (live 2026-11-17 19:05-19:09 JST: health 2.7, hunger 16, no food, deep
-    // among slimes and creepers; this waited for hunger 14).
     const stuck = Number.isFinite(state?.health) && state.health < HURT && hunger < REGEN
     if (!Number.isFinite(hunger) || (hunger > HUNGRY && !stuck) || state?.inventory?.known !== true || hasFood(state.inventory) || !state.position) return null
     if (!underCover(getBlock, state.position)) return walkToFood(state.position, hunger)
+
+    const cellKey = `${Math.floor(state.position.x / 8)},${Math.floor(state.position.y / 8)},${Math.floor(state.position.z / 8)}`
+    if (tracker.isExhausted({ stage: 'climb', target: cellKey, code: 'FOOD_CLIMB_FAILED' })) {
+      return null
+    }
     busy = true
     waitUntil = now() + AGAIN_MS
     try {
@@ -45,7 +42,11 @@ function createPlayerFood ({ getMode, shared, agent, climb, travel = null, prey 
       let out = null
       try { out = await climb(() => !live()) } catch (error) { out = { ok: false, reason: String(error?.message ?? error).slice(0, 100) } }
       log(`プレイヤーモード: ${out?.ok ? '地上へ出ました。食料を探します' : `地上へ出られません（${out?.reason ?? '不明'}）`}`)
-      return out?.ok === true
+      const outcome = out?.ok === true
+        ? R.completed('FOOD_SURFACED', { detail: '地上へ出ました' })
+        : R.failed('FOOD_CLIMB_FAILED', { detail: out?.reason ?? '不明', retry: { kind: 'position_changed' } })
+      tracker.record(outcome, { stage: 'climb', target: cellKey })
+      return outcome
     } finally {
       busy = false
       await restart()
@@ -56,24 +57,45 @@ function createPlayerFood ({ getMode, shared, agent, climb, travel = null, prey 
     let target = null
     try { target = prey() } catch {}
     if (!travel || !target || ![target.x, target.z].every(Number.isFinite) || Math.hypot(target.x - position.x, target.z - position.z) <= NEAR_M || travel.status()?.busy) return null
+    const destination = { x: Math.floor(target.x), z: Math.floor(target.z) }
+    const targetKey = `${Math.floor(destination.x / 16)},${Math.floor(destination.z / 16)}`
+    if (tracker.isExhausted({ stage: 'travel', target: targetKey, code: 'FOOD_TRAVEL_FAILED' })) return null
     busy = true
     waitUntil = now() + AGAIN_MS
-    const destination = { x: Math.floor(target.x), z: Math.floor(target.z) }
     try {
       log(`プレイヤーモード: 食料がなく満腹度が ${hunger} のため、食料源 (${destination.x}, ${destination.z}) へ長距離移動で近づきます`)
       agent.stop('食料源へ近づきます。')
-      try { await travel.to({ destination }) } catch (error) { log(`プレイヤーモード: 食料源へ移動を始められません ${String(error?.message ?? error).slice(0, 100)}`); return false }
+      try {
+        await travel.to({ destination })
+      } catch (error) {
+        const msg = String(error?.message ?? error).slice(0, 100)
+        log(`プレイヤーモード: 食料源へ移動を始められません ${msg}`)
+        const outcome = R.failed('FOOD_TRAVEL_FAILED', { detail: msg, evidence: { destination } })
+        tracker.record(outcome, { stage: 'travel', target: targetKey })
+        return outcome
+      }
       const until = now() + TRIP_MS
       while (live() && now() < until && travel.status()?.busy) await sleep(1000)
       if (travel.status()?.busy) { try { await travel.cancel() } catch {} }
-      return true
+      const outcome = R.completed('FOOD_APPROACHED', { evidence: { destination } })
+      tracker.record(outcome, { stage: 'travel', target: targetKey })
+      return outcome
     } finally {
       busy = false
       await restart()
     }
   }
 
-  return { tick, status: () => ({ active: busy, reason: busy ? '食料を探しています。' : null }) }
+  async function tick () {
+    const outcome = await runStep()
+    return tracker.toTickBoolean(outcome)
+  }
+
+  return {
+    tick,
+    runStep,
+    status: () => ({ active: busy, reason: busy ? '食料を探しています。' : null, lastOutcome: tracker.last() })
+  }
 }
 
 module.exports = { createPlayerFood, hasFood }

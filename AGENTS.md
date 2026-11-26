@@ -81,7 +81,8 @@ docs/           仕様・計画・運用ルール記録（docs/README.md に一�
 | `npm run test:fast` | 開発中の高速ユニット確認（重いワールド模擬を除いた厳格テスト抜粋・高並列） |
 | `npm run test:review` | 安全回帰・互換テスト厳格レーン（失敗1件でも不合格） |
 | `npm run test:player` | プレイヤーモード厳格レーン（全件実行・合格必須） |
-| `npm run test:audit` | テストレーン分類・`.local/*.cjs` 依存・旧サバイバル参照の棚卸し |
+| `npm run test:audit` | テストレーン分類・`.local/*.cjs` 依存・`src/modes` からの旧サバイバル参照の棚卸し |
+| `npm run diagnose` / `incident:fixture` | 最新の `.local/incidents/`・稼働状態の読取専用サマリ出力／インシデントからの再現テスト雛形生成 |
 | `npm run test:compare -- <SHA>` | 厳格レーン以外の全件を基準コミットと比較（ユーザーPCでは実行しない。CI用） |
 | `npm run benchmark:world` / `benchmark:combat` | 地形参照・戦闘探索の速度計測（接続不要） |
 

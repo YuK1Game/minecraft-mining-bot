@@ -46,6 +46,7 @@ function candidatePreviews (rt, st) {
                 previous = point
               }
               if (!allowed || st.distance(previous, candidate.target) > 0.05 || candidate.constrained && live.waypoints.length !== 1) return null
+              await st.yieldPlanning()
               // Rehearse descents and short multi-threat routes. A geometrical
               // target can be reachable while the settled pose falls short of
               // Guard's required gain or needs an unreceived lower block.
