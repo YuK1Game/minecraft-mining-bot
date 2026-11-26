@@ -8,7 +8,14 @@ async function reachStorage(ctx,branch,layer){
   if(!received(reached))return reached
   const room=branch.plan.storage.find(room=>room.layer===layer),p=room?.access?.from
   if(!p)return blocked('MINE_STORAGE_ACCESS_MISSING','計画済み収納室の入口を確認します。')
-  const floor=at(ctx,{...p,y:p.y-1})
+  let floor=at(ctx,{...p,y:p.y-1})
+  // Far down the trunk the room is beyond the received chunks: walk the corridor towards it and look again, rather than
+  // wait for terrain that arrives only by walking (live 2026-11-26 15:33-15:43 JST, 70 m off: 「収納室の床と通路を受信します」).
+  if(floor?.known!==true){
+    const near=await walkLayer(ctx,branch,layer,{x:p.x+0.5,y:p.y,z:p.z+0.5})
+    if(!received(near) && near?.code!=='MINE_ROUTE_UNKNOWN')return near
+    floor=at(ctx,{...p,y:p.y-1})
+  }
   if(!solid(floor))return blocked('MINE_STORAGE_ACCESS_UNKNOWN','収納室の床と通路を受信します。')
   return walkLayer(ctx,branch,layer,{x:p.x+0.5,y:standY(floor,p.y),z:p.z+0.5})
 }
