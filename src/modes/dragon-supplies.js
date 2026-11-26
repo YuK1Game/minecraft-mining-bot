@@ -304,8 +304,8 @@ function createDragonSupplies (ctx) {
   }
   async function moveStock (pos, name, amount, take) {
     if (cancelled()) return
-    if (take) await box.withdraw(pos, slots => select(slots, name, amount, true), { aborted: cancelled })
-    else await box.deposit(pos, select(rows(), name, amount, false), { aborted: cancelled })
+    if (take) return await box.withdraw(pos, slots => select(slots, name, amount, true), { aborted: cancelled })
+    return await box.deposit(pos, select(rows(), name, amount, false), { aborted: cancelled })
   }
   async function bank (pos, item, amount, take) {
     const name = bare(item), slots = await inspect(pos)
@@ -351,7 +351,17 @@ function createDragonSupplies (ctx) {
           return pending('予備のラージチェストが満杯のため、' + bare(room.evict.name) + ' を取り出して ' + name + ' の場所を空けます（' + taken + ' 個' + (taken ? '' : '・' + (out.detail ?? out.code ?? '取り出せませんでした')) + '）。')
         }
       }
-      await moveStock(pos, name, Math.min(wanted, available), recovering)
+      // A move that moved nothing is said with its reason and counted: three in a row leave that thing for now (live
+      // 2026-11-26 18:45-18:53 JST: 「food の予備装備の移動を確認します」 2,700 times in eight minutes, nothing moved, no reason).
+      const trial = { stage: 'reserve-move', target: name, code: 'RESERVE_MOVE_NONE' }
+      if (ctx.goal?.spent?.(trial)) continue
+      const out = await moveStock(pos, name, Math.min(wanted, available), recovering)
+      const movedNow = out?.progress?.confirmedTransferred ?? 0
+      if (!movedNow && !cancelled()) {
+        const noted = ctx.goal?.fail?.(trial, { paceMs: 10000 })
+        if (noted?.exhausted) ctx.log?.('プレイヤーモード: ' + name + ' を予備チェストへ移せないため、ほかの装備を先に進めます（' + (out?.detail ?? out?.code ?? '理由不明') + '）')
+        return pending(name + ' の予備装備を移せませんでした（' + (out?.detail ?? out?.code ?? '理由不明') + '）。')
+      }
       return pending(name + ' の予備装備の移動を確認します。')
     }
     // Bank any slow-falling bottles available beyond the main kit. With no
