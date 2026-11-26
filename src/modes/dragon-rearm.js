@@ -21,7 +21,14 @@ function rearmWanted (ctx, record, now = Date.now()) {
   const ironWeapon = items.some(item => item.count > 0 && /^minecraft:(?:iron|diamond|netherite)_(?:sword|axe)$/.test(item.name))
   const armour = (worn.worn ?? []).some(item => item?.name)
   if (ironWeapon && armour) return false
-  const inChest = reserveCounts(ctx.shared)
+  // After a restart the reserve's last look is gone; the chest memory (read back from .local/chest-index/) still has it.
+  let inChest = reserveCounts(ctx.shared)
+  if (!inChest && ctx.shared.playerHouse?.origin) {
+    const { chestOf } = require('./house/house-spawn'), at = record.early?.reserveAt ?? chestOf(ctx.shared.playerHouse.origin)
+    ctx.shared.playerChestMemory?.ensure?.()
+    const slots = ctx.shared.playerChestMemory?.seen?.get(`${at.x},${at.y},${at.z}`)
+    if (slots) inChest = Object.fromEntries(GEAR.map(name => [name, slots.filter(slot => slot.name === 'minecraft:' + name).reduce((sum, slot) => sum + slot.count, 0)]))
+  }
   if (!inChest || !GEAR.some(name => (inChest[name] ?? 0) > 0)) return false
   ctx.shared.dragonRearmAt = now
   ctx.log?.('プレイヤーモード: 予備チェストに鉄の装備があり、持っていないため、取り出して装備します')
