@@ -352,6 +352,20 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
       }
       return outcome(blocked('MINE_CAPACITY_ROUTE_CHANGED','採掘場の確認済みラージチェストへ収納先を切り替えました。','now'))
     }
+    // Every large chest of the base is full: one more is set down beside the Bot (player-storage.js `chest`, by the house,
+    // so within the base's reach) and the cargo goes in on the next look (live 2026-11-26 20:23-20:33 JST: 35/36 slots,
+    // 「本拠点のラージチェストへ採掘物を収納します」 MINE_HOME_STORAGE_FULL_OR_UNKNOWN for ten minutes).
+    if(out?.code==='MINE_HOME_STORAGE_FULL_OR_UNKNOWN' && typeof ctx.storage?.chest==='function' && live(ctx,before)){
+      // A large chest begun earlier and left with one half (player-chest-pairs.json) is finished first: it is only
+      // found from within a few cells, so the Bot steps beside it (live 20:40 JST: (9885,64,10141) received,
+      // (9885,64,10142) reserved, 6 m from the Bot, and every new chest refused while it stood unfinished).
+      const begun=ctx.storage.chestWork?.unfinished?.()?.[0]?.cells?.[0]
+      const far=begun && ctx.getFeet?.() ? Math.hypot(begun.x+0.5-ctx.getFeet().x,begun.z+0.5-ctx.getFeet().z) : 0
+      if(begun && far>3 && ctx.shared?.playerHouse?.origin)await require('../dragon-early-home').approachHome(ctx,begun)
+      const made=await ctx.storage.chest()
+      if(made && live(ctx,before))return outcome(blocked('MINE_HOME_CHEST_ADDED','本拠点に新しいラージチェストを置きました。採掘物を収納します。','time'),'本拠点に新しいラージチェストを置いて採掘物を収納します。')
+      if(live(ctx,before)){ctx.log?.('採掘場: 本拠点のチェストが満杯ですが、新しいラージチェストを置けませんでした');return outcome(results.blocked('MINE_HOME_STORAGE_FULL_OR_UNKNOWN',{kind:'time',ms:30000},{detail:'本拠点のラージチェストが満杯です。'}),'本拠点のラージチェストが満杯のため、置ける場所を探します。')}
+    }
     return outcome(out??blocked('MINE_HOME_STORAGE_UNAVAILABLE','地上のラージチェストを確認します。'),'本拠点のラージチェストへ採掘物を収納します。')
   }
   const entered=await entry(ctx,branch)
