@@ -377,26 +377,31 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     stepPorts: signal => {
       const owner = lifeKey()
       const cancelled = () => signal.aborted || !active() || lifeKey() !== owner || shared.loadingScreenEnded === false
+      // Inside the branch mine the way out is its own shaft (mine-controller.js `beforeSurfaceSupply`), never the
+      // climb or the stair that digs through the rock above: live 2026-11-26 04:31-04:34 JST at (9744, 15, 10238)
+      // a trip to a table on the surface began 「地下（y=16）にいるため、長距離移動の前に地上へ出ます」, the climb
+      // broke into the cave over the branches and the Bot died there among zombies and skeletons. Both the trip and
+      // the expedition's own climb (`ctx.climbUp`, used by the walk home: 17:52 JST from the storage room) ask here.
+      const shaftFirst = async () => {
+        const mine = require('./mining/mine-controller'), { insideMine, mineLocation } = require('./mining/mine-location'), branch = ctx.memory?.early?.mine?.branch
+        if (!branch || !insideMine(ctx, branch)) {
+          const at = branch ? mineLocation(ctx, branch) : null
+          if (at && at.feet.y < (branch.plan?.shaft?.topY ?? Infinity) - 2) log(`採掘場: 縦坑の外として地上へ出ます（足元 ${Math.floor(at.feet.x)}, ${Math.floor(at.feet.y)}, ${Math.floor(at.feet.z)}）`)
+          return true
+        }
+        await mine.beforeSurfaceSupply(ctx)
+        return !insideMine(ctx, branch)
+      }
       const travel = (input, options = {}) => {
         if (cancelled() || runtime.raw().dimension !== 'overworld') throw Error('地上の長距離移動は現世でのみ開始できます。')
         // The step keeps its trip until it ends (dragon-trip.js); nothing else of the expedition starts between two legs.
         const aborted = () => cancelled() || options.aborted?.() === true
-        // Inside the branch mine the way out is its own shaft (mine-controller.js `beforeSurfaceSupply`), never the
-        // climb or the stair that digs through the rock above: live 2026-11-26 04:31-04:34 JST at (9744, 15, 10238)
-        // a trip to a table on the surface began 「地下（y=16）にいるため、長距離移動の前に地上へ出ます」, the climb
-        // broke into the cave over the branches and the Bot died there among zombies and skeletons.
-        const shaftFirst = async () => {
-          const mine = require('./mining/mine-controller'), branch = ctx.memory?.early?.mine?.branch
-          if (!branch || !require('./mining/mine-location').insideMine(ctx, branch)) return true
-          await mine.beforeSurfaceSupply(ctx)
-          return !require('./mining/mine-location').insideMine(ctx, branch)
-        }
         return expeditionTrip({ start: async () => { if (!await shaftFirst()) return null; await tripRise(input?.destination ?? input ?? null, () => climbUp(cancelled)); return travelTo(input, { aborted }) }, status: () => quarry.travelStatus(), cancel: () => quarry.cancelTravel(), cancelled: aborted, until: options.until, resting: () => !!shared.travelNight?.cover, log, goal: expedition?.goal ?? null, destination: input?.destination ?? input ?? null, getFeet: () => feetNow() })
       }
       const actions = guardDragonOperations(operations, cancelled)
       const hands = buildHands(cancelled, actions)
       const ctx = { operations: actions, runtime, shared, root, log, getBlock, where, feetNow, getFeet: feetNow,
-        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: () => tripRise(null, () => climbUp(cancelled)), rise: () => climbUp(cancelled), storage, cancelled, signal }
+        hands, walk: hands.walk, drop: (slot, count) => cancelled() ? null : storagePorts.drop(slot, count), cells: () => { const at = where(); return at ? walkableCells(at, (x, y, z) => runtime.host().world.getBlock(x, y, z)) : null }, travelTo: travel, climbUp: async () => (await shaftFirst()) ? tripRise(null, () => climbUp(cancelled)) : { rose: false, code: 'MINE_SHAFT_EXIT' }, rise: () => climbUp(cancelled), storage, cancelled, signal }
       ctx.minePorts = createMinePorts(ctx)
       return ctx
     }
