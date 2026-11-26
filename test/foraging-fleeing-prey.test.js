@@ -14,13 +14,13 @@ const { createForaging } = require('../src/survival/foraging')
 
 const WALK = 0.215, SPRINT = 0.28, PANIC = 0.16, PANIC_MS = 3000, TICK = 50
 
-function field ({ turnAt = null } = {}) {
+function field ({ turnAt = null, knock = false, health = 8 } = {}) {
   let time = 1000, sinceTick = 0
   const state = { phase: 'spawned', runtimeEntityId: '1', dimension: 'overworld', connectionId: 'c', startedAt: 's', gameMode: 'survival', health: 20, position: { x: 0.5, y: 66.62, z: 0.5 }, rawSelectedSlot: 0, inventory: { known: true, items: [] } }
   state.rawServerPosition = { ...state.position }
   state.rawServerPositionUpdatedAt = time
   const sheep = { runtimeId: '2', uniqueId: '-2', kind: 'mob', entityType: 'minecraft:sheep', dimension: 'overworld', positionKnown: true, alive: true, hostile: false, position: { x: 3.5, y: 65, z: 0.5 } }
-  const s = { time: () => time, starts: 0, stops: 0, sprints: 0, hits: 0, health: 8, panicUntil: 0, flee: null, velocity: { x: 0, z: 0 }, killedAt: null }
+  const s = { time: () => time, starts: 0, stops: 0, sprints: 0, hits: 0, health, panicUntil: 0, flee: null, velocity: { x: 0, z: 0 }, killedAt: null, thrown: { x: 0, z: 0 } }
   let move = null
   const world = { getBlock: (x, y, z) => ({ known: true, name: y < 65 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y < 65 ? 'block' : 'empty', extra: [] }) }
   function tick () {
@@ -30,6 +30,12 @@ function field ({ turnAt = null } = {}) {
       s.velocity = { x: s.flee.x * PANIC, z: s.flee.z * PANIC }
       sheep.position = { ...sheep.position, x: sheep.position.x + s.velocity.x, z: sheep.position.z + s.velocity.z }
     } else s.velocity = { x: 0, z: 0 }
+    // The throw of a hit (knock): 0.4 blocks a tick away from the Bot, ground friction 0.546 a tick.
+    if (Math.hypot(s.thrown.x, s.thrown.z) > 0.005) {
+      sheep.position = { ...sheep.position, x: sheep.position.x + s.thrown.x, z: sheep.position.z + s.thrown.z }
+      s.velocity = { x: s.velocity.x + s.thrown.x, z: s.velocity.z + s.thrown.z }
+      s.thrown = { x: s.thrown.x * 0.546, z: s.thrown.z * 0.546 }
+    } else s.thrown = { x: 0, z: 0 }
     if (move) {
       const speed = move.sprint ? SPRINT : WALK
       const dx = move.target.x - state.position.x, dz = move.target.z - state.position.z, d = Math.hypot(dx, dz)
@@ -55,6 +61,7 @@ function field ({ turnAt = null } = {}) {
       if (s.health <= 0) { sheep.alive = false; s.killedAt = time; state.inventory.items = [{ slot: 2, name: 'minecraft:mutton', count: 1 }]; return { phase: 'observed', targetRuntimeId: id, reaction: 'death_animation' } }
       const dx = sheep.position.x - state.position.x, dz = sheep.position.z - state.position.z, d = Math.hypot(dx, dz) || 1
       s.flee = { x: dx / d, z: dz / d }; s.panicUntil = time + PANIC_MS
+      if (knock) s.thrown = { x: s.flee.x * 0.4, z: s.flee.z * 0.4 }
       return { phase: 'observed', targetRuntimeId: id, reaction: 'hurt_animation' }
     },
     cancel: () => {}
@@ -89,4 +96,18 @@ test('a sheep that turns while running is caught again from its new track', asyn
   const took = await huntDown(s)
   assert.notEqual(took, null, 'the sheep was killed')
   assert.ok(took <= 6000, `killed in ${took} ms`)
+})
+
+// User 2026-11-26 12:45 JST: 「食料のため友好モブを殴る時、相手のノックバックも加味して距離を詰めて」. Each hit throws the
+// sheep about 0.9 m on (0.4 blocks a tick, friction 0.546) before it runs. Before, the Bot stood out the 0.5 s between hits
+// beside a sheep at 2.3 m that the throw and the flight then took out of reach, and a walk stopped at 2.6 m as it was
+// thrown, and a throw led on for a second called the walk off its track: four hits on a 16-health sheep took 3.25 s and
+// 7 walks here (main ad0405d). Now the Bot keeps closing in through the throw: 2.45 s, 4 walks.
+test('a sheep thrown back by every hit is followed through the throw, not waited for beside its old place', async () => {
+  const s = field({ knock: true, health: 16 })
+  const took = await huntDown(s)
+  assert.notEqual(took, null, 'the sheep was killed')
+  assert.equal(s.hits, 4)
+  assert.ok(took <= 2900, `killed in ${took} ms`)
+  assert.ok(s.starts <= 5, `${s.starts} walks`)
 })

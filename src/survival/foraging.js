@@ -5,7 +5,7 @@ const { performance } = require('node:perf_hooks')
 const { isSupportedFood } = require('../actions/food')
 const { evaluateThreats } = require('../combat/threats')
 const { resourceMinHealth } = require('../safety/learning-health')
-const { velocityOf, leadPoint, offTrack } = require('./prey-lead')
+const { velocityOf, leadPoint, offTrack, knockFrom, knocked, runOff, swingAt, strikeHolds } = require('./prey-lead')
 
 const PREY = new Set(['minecraft:cow', 'minecraft:pig', 'minecraft:sheep'])
 const AIR = new Set(['air', 'cave_air', 'void_air'])
@@ -421,17 +421,23 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
           const preview = await call(run, () => combat.previewHunt(String(idOf(target))))
           if (preview?.ready && spatial(observation.state.position, target.position) <= 2.8) {
             if (status.hits >= maxHits) { status.reason = 'このbatchの攻撃上限に達しました。'; break }
-            if (preview.cooldownRemainingMs > 0) { await pause(run, Math.min(1000, preview.cooldownRemainingMs)); continue }
-            status.hits++; entry.hits++
-            report('hunting', { target: status.target, collected: false })
-            const result = await call(run, () => combat.hunt(String(idOf(target))))
-            if (result?.phase !== 'observed') { cooldown(target, 30000, 'hunt_unconfirmed'); status.reason = '狩りのサーバー反応が未確認のため別の食料源へ戻ります。'; break }
-            if (run.pin?.kind === 'prey' && String(result.targetRuntimeId) === run.pin.runtimeId && ['death_animation', 'target_removed'].includes(result.reaction)) run.pin.terminalObserved = true
-            // No extra rest after a confirmed hit: the next swing waits only
-            // for the attack interval (user 2026-11-17 02:59 JST: 「ニワトリを
-            // 攻撃したあと、何秒か待ってから攻撃を再開している」).
-            await pause(run, 50)
-            continue
+            // Between two hits the Bot stands only beside an animal its throw and flight leave in reach of the next
+            // swing; otherwise it closes in now, by the walk below (prey-lead.js).
+            const waiting = preview.cooldownRemainingMs > 0, t = clock()
+            if (waiting && strikeHolds({ from: observation.state.position, position: target.position, velocity: velocityOf(entities, target), knock: entry.knock, now: t, at: t + preview.cooldownRemainingMs })) { await pause(run, Math.min(1000, preview.cooldownRemainingMs)); continue }
+            if (!waiting) {
+              status.hits++; entry.hits++
+              report('hunting', { target: status.target, collected: false })
+              const result = await call(run, () => combat.hunt(String(idOf(target))))
+              if (result?.phase !== 'observed') { cooldown(target, 30000, 'hunt_unconfirmed'); status.reason = '狩りのサーバー反応が未確認のため別の食料源へ戻ります。'; break }
+              entry.hitAt = clock(); entry.knock = knockFrom(observation.state.position, target.position, entry.hitAt)
+              if (run.pin?.kind === 'prey' && String(result.targetRuntimeId) === run.pin.runtimeId && ['death_animation', 'target_removed'].includes(result.reaction)) run.pin.terminalObserved = true
+              // No extra rest after a confirmed hit: the next swing waits only
+              // for the attack interval (user 2026-11-17 02:59 JST: 「ニワトリを
+              // 攻撃したあと、何秒か待ってから攻撃を再開している」).
+              await pause(run, 50)
+              continue
+            }
           }
         } else {
           const foot = observation.state.position.y - 1.62
@@ -450,7 +456,9 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
         try {
           // A fleeing animal is run to where it will be, not where it was received (prey-lead.js).
           const prey = selected.kind === 'prey'
-          const aim = prey ? leadPoint(latest.state.position, current.position, velocityOf(entities, current)) : current.position
+          // A just-hit animal is aimed at where its throw is taking it (prey-lead.js).
+          const throwOf = entity => memory(entity).knock ?? null
+          const aim = prey ? (() => { const t = clock(), knock = throwOf(current); return leadPoint(latest.state.position, knocked(current.position, knock, t), runOff(velocityOf(entities, current), knock, t)) })() : current.position
           const proposed = candidates(latest.state, aim, selected.kind, run.attempted)
           status.candidateCount += proposed.length
           // Prey (sheep, cows...) moves while the Bot walks: the walk stops as
@@ -460,7 +468,10 @@ function createForaging ({ getState, world, entities, movement, getMovement, com
           const chase = !prey ? null : observed => {
             const now = observed.actors.find(entity => String(idOf(entity)) === String(idOf(target)))
             if (!now?.position) return false
-            return spatial(observed.state.position, now.position) <= 2.6 || offTrack(aim, leadPoint(observed.state.position, now.position, velocityOf(entities, now)))
+            // In reach is "still in reach at the next swing": a stop on an animal being thrown off left it at 3 m+.
+            const t = clock(), velocity = velocityOf(entities, now), knock = throwOf(now)
+            if (spatial(observed.state.position, now.position) <= 2.6 && strikeHolds({ from: observed.state.position, position: now.position, velocity, knock, now: t, at: swingAt(memory(now).hitAt, t, true) })) return true
+            return offTrack(aim, leadPoint(observed.state.position, knocked(now.position, knock, t), runOff(velocity, knock, t)))
           }
           for (const candidate of proposed) {
             if (await moveTo(run, candidate.position, chase, { sprint: prey })) { moved = true; break }

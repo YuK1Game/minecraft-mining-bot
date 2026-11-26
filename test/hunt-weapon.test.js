@@ -22,3 +22,9 @@ test('a refused switch still hits with what is held', async () => {
   await huntArmed({ hunt: async id => { calls.push(`hunt ${id}`) }, equip: async () => { throw new Error('busy') }, crafting: { snapshot: () => ({ inventory: items }), rawItem }, getState: () => ({ rawServerSelectedSlot: 3 }) }, '42')
   assert.deepEqual(calls, ['hunt 42'])
 })
+
+test('the received state (host getServerState: `selectedSlot` only) still switches to the sword (live 2026-11-26 12:45 JST)', async () => {
+  const calls = []
+  await huntArmed({ hunt: async id => { calls.push(`hunt ${id}`); return { phase: 'observed' } }, equip: async slot => { calls.push(`equip ${slot}`); return { phase: 'completed' } }, crafting: { inventorySnapshot: () => ({ inventory: items }), rawItem }, getState: () => ({ selectedSlot: 3 }) }, '42')
+  assert.deepEqual(calls, ['equip 7', 'hunt 42'])
+})
