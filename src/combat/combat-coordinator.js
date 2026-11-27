@@ -543,11 +543,12 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
         if (lease.meleeReadyAfterApproach) { lease.meleeReadyAfterApproach = false; continue }
         await sleep(pollMs); continue
       }
-      const remaining = Math.floor(lease.deadline - clock()); const minimum = g.mode === 'ranged' ? 1200 : 100
+      const effectiveMode = useEmergency ? 'melee' : g.mode
+      const remaining = Math.floor(lease.deadline - clock()); const minimum = effectiveMode === 'ranged' ? 1200 : 100
       if (remaining < minimum) return { outcome: stop('DURATION_LIMIT', 'No bounded controller slice remains') }
-      lease.controllerCalls++; lease.lastMode = g.mode; lease.switchTo = null
-      const hitLimit = g.mode === 'melee' ? profiles.meleeHitLimit(lease.target.entityType) : null
-      if (hitLimit != null && lease.meleeHits >= hitLimit) return { outcome: stop('PROFILE_HIT_LIMIT', `The ${lease.target.entityType} profile allows only ${hitLimit} melee hit per claim; disengage`) }
+      lease.controllerCalls++; lease.lastMode = effectiveMode; lease.switchTo = null
+      const hitLimit = effectiveMode === 'melee' ? profiles.meleeHitLimit(lease.target.entityType) : null
+      if (hitLimit != null && lease.meleeHits >= hitLimit) return { outcome: await withCreeperRetreat(lease, stop('PROFILE_HIT_LIMIT', `The ${lease.target.entityType} profile allows only ${hitLimit} melee hit per claim; disengage`)) }
       // melee_kite: one hit per slice, then a short step back out of reach.
       // Only when a trade is risky (HP below HP_RETREAT, or 2+ hostiles within
       // 6m); otherwise keep pressing with consecutive crits.
@@ -556,13 +557,13 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       // (crowdedLowHp) so Safety disengages and health recovers first.
       const lowHp = !totemGuarded(g.state) && g.state.health / (Number.isFinite(g.state.maxHealth) && g.state.maxHealth > 0 ? g.state.maxHealth : 20) < profiles.HP_RETREAT
       const risky = !lowHp && closeHostiles(g.state) >= 2
-      const kite = risky && g.mode === 'melee' && retreat && profiles.profileOf(lease.target.entityType)?.routine === 'melee_kite'
+      const kite = risky && effectiveMode === 'melee' && retreat && profiles.profileOf(lease.target.entityType)?.routine === 'melee_kite'
       const sliceHits = hitLimit ?? (kite ? 1 : null)
-      const result = await watched(lease, `engaging_${g.mode}`, signal => controller.engage(lease.target.runtimeId, { signal, durationMs: Math.min(controllerSliceMs, remaining), ...(sliceHits != null ? { maxHits: sliceHits } : {}), ...(g.mode === 'melee' || useEmergency ? { critical: false } : {}), ...(useEmergency ? emergencyReach : {}) /* spam plain hits (Bedrock has no attack cooldown); a jump crit made every hit wait ~1s for its descent */ }), controller)
-      if (g.mode === 'melee') lease.meleeHits = (lease.meleeHits ?? 0) + Number(result.value?.hitsRequested ?? 0)
-      if (g.mode === 'melee' && Number(result.value?.hitsRequested ?? 0) > swings) contact.swung() // a swing no poll saw: the burst ended within one
+      const result = await watched(lease, `engaging_${effectiveMode}`, signal => controller.engage(lease.target.runtimeId, { signal, durationMs: Math.min(controllerSliceMs, remaining), ...(sliceHits != null ? { maxHits: sliceHits } : {}), ...(effectiveMode === 'melee' ? { critical: false } : {}), ...(useEmergency ? emergencyReach : {}) /* spam plain hits (Bedrock has no attack cooldown); a jump crit made every hit wait ~1s for its descent */ }), controller)
+      if (effectiveMode === 'melee') lease.meleeHits = (lease.meleeHits ?? 0) + Number(result.value?.hitsRequested ?? 0)
+      if (effectiveMode === 'melee' && Number(result.value?.hitsRequested ?? 0) > swings) contact.swung() // a swing no poll saw: the burst ended within one
       if (Number(result.value?.hitsRequested ?? 0) > 0) { lease.closeHolds = 0; lease.closeHolding = false }
-      combatLog(lease, `戦闘スライス: mode=${g.mode} distance=${g.distance.toFixed(1)}m code=${result.value?.code ?? (result.outcome?.code ?? (result.error ? 'error' : '?'))} hits=${result.value?.hitsRequested ?? 0} shots=${result.value?.shotsConfirmed ?? 0}/${result.value?.shotsRequested ?? 0}${result.error ? ' error=' + String(result.error.message ?? result.error).slice(0, 80) : ''}`)
+      combatLog(lease, `戦闘スライス: mode=${effectiveMode} distance=${g.distance.toFixed(1)}m code=${result.value?.code ?? (result.outcome?.code ?? (result.error ? 'error' : '?'))} hits=${result.value?.hitsRequested ?? 0} shots=${result.value?.shotsConfirmed ?? 0}/${result.value?.shotsRequested ?? 0}${result.error ? ' error=' + String(result.error.message ?? result.error).slice(0, 80) : ''}`)
       if (kite && !result.outcome && !result.error && Number(result.value?.hitsRequested ?? 0) > 0 && !terminalResult(lease, result.value)) {
         const after = guard(lease)
         if (after.outcome) return { outcome: after.outcome }
@@ -593,7 +594,7 @@ function createCombatCoordinator ({ getState, entities, melee, ranged, acquire, 
       // an exhausted retry ends with its real code (e.g. INPUT_UNCONFIRMED).
       let retried = false
       if (result.value?.code === 'SHOOTER_MOVED' && (lease.shooterMoved = (lease.shooterMoved ?? 0) + 1) <= SHOOTER_MOVED_RETRIES) retried = true
-      else if (['OUT_OF_REACH', 'RANGE', 'LOS_BLOCKED', 'SHOOTER_MOVED'].includes(result.value?.code) || result.value?.outcome === 'out_of_reach') lease.forceApproach = true
+      else if (!useEmergency && (['OUT_OF_REACH', 'RANGE', 'LOS_BLOCKED', 'SHOOTER_MOVED'].includes(result.value?.code) || result.value?.outcome === 'out_of_reach')) lease.forceApproach = true
       else if (result.value?.code === 'CONTAINER_OPEN' && (lease.containerCloses = (lease.containerCloses ?? 0) + 1) <= 3) retried = true // the controller closed a leftover inventory screen
       else if (result.value?.code === 'WEAPON_CHANGED' && (lease.weaponChanges = (lease.weaponChanges ?? 0) + 1) <= 3) retried = true // bow→sword handover; the next melee slice equips the strongest weapon
       else if (result.value?.code === 'DRAW_REJECTED' && (lease.drawRejects = (lease.drawRejects ?? 0) + 1) <= 3) retried = true // server ended the draw (stale selection); the next draw re-selects the bow
