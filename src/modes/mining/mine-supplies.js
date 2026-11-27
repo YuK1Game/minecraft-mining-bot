@@ -49,6 +49,7 @@ function createMineSupplies (ctx, actions, storage) {
     if (!feet) return { result: wait('MINE_POSITION_UNKNOWN') }
     const centre = { x: Math.floor(feet.x), y: Math.floor(feet.y + 0.001), z: Math.floor(feet.z) }
     const reserved = p => reservedShaftCell(branch?.plan, p)
+    const INTERACTIVE = /(?:crafting_table|furnace|chest|shulker_box|barrel|bed|door|trapdoor|fence_gate|button|lever|anvil|enchanting_table|brewing_stand|hopper|dropper|dispenser|smithing_table|cartography_table|grindstone|loom|stonecutter|bell|beacon|note_block|jukebox)$/
     const targets = [], ground = []
     for (let x = centre.x - 3; x <= centre.x + 3; x++) for (let z = centre.z - 3; z <= centre.z + 3; z++) {
       for (let y = centre.y - 2; y <= centre.y + 2; y++) {
@@ -56,7 +57,7 @@ function createMineSupplies (ctx, actions, storage) {
         const block = actions.block(floor)
         if (!solid(block) || !air(actions.block(position)) || !air(actions.block({ x, y: y + 1, z }))) continue
         ground.push({ ...block, position: floor })
-        if (!reserved(position) && Math.hypot(x + 0.5 - feet.x, z + 0.5 - feet.z) >= 1.1) targets.push(position)
+        if (!INTERACTIVE.test(String(block?.name ?? '')) && !reserved(position) && Math.hypot(x + 0.5 - feet.x, z + 0.5 - feet.z) >= 1.1) targets.push(position)
       }
     }
     const distance = p => Math.hypot(p.x + 0.5 - feet.x, p.y - feet.y, p.z + 0.5 - feet.z)

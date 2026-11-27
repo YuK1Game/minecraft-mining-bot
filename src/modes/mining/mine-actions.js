@@ -9,7 +9,7 @@ const { sameWorld, mineWorldScope } = require('./mine-state')
 const { digTool, toolNeeded } = require('../dig-tool')
 const { supportIntent, recordSupportReceipt } = require('./mine-support-receipt')
 const { mineLadderResult } = require('./mine-ladder-result')
-const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone_slab', 'minecraft:ladder', ...FILL_BLOCKS])
+const RETRYABLE_MATERIALS = new Set(['minecraft:torch', 'minecraft:cobblestone_slab', 'minecraft:ladder', 'minecraft:crafting_table', 'minecraft:furnace', ...FILL_BLOCKS])
 const NORMAL = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
 
 function placements (block, request) {
@@ -83,7 +83,8 @@ function createMineActions (ctx) {
     // death at 05:57: place:9862,52,10152 crafting_table, 150 m away, MINE_ACTION_UNCONFIRMED for ten minutes).
     const left = state.pendingAction
     const feetNow = ctx.getFeet?.(), away = !!feetNow && cell(left?.position) && Math.hypot(left.position.x + 0.5 - feetNow.x, left.position.z + 0.5 - feetNow.z) > 16
-    if (left?.kind === 'place' && (left.scope !== scope || away) && /^minecraft:(?:crafting_table|furnace)$/.test(left.name ?? '')) {
+    const staleRetry = left?.retryAfterAudit === true && (ctx.now ?? Date.now)() - (Number.isFinite(left.at) ? left.at : 0) > 30000
+    if (left?.kind === 'place' && (left.scope !== scope || away || staleRetry) && /^minecraft:(?:crafting_table|furnace)$/.test(left.name ?? '')) {
       if (!await clear(left.key)) return wait('MINE_CHECKPOINT_FAILED', 'owner_released')
       if (!same(scope)) return interrupted('MINE_SCOPE_CHANGED')
       ctx.log?.(`採掘場: 前の生存回か離れた場所の ${String(left.name).replace('minecraft:', '')} 設置待ち (${key(left.position)}) は採掘場の構造ではないため、記録を外して作業を続けます`)
