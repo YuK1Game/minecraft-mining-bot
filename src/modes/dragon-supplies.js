@@ -306,7 +306,15 @@ function createDragonSupplies (ctx) {
         }
       }
     } else if (pickFor[name] && !hasWorkingPick(rows(), pickFor[name])) {
-      await acquire(pickFor[name] + '_pickaxe', 1)
+      // Stone pickaxes are made three at a time while the parts are carried: one lasts about five minutes of corridor
+      // and each was a climb to a table on the surface (live 2026-11-28 21:24-21:37 JST, a trip every five minutes).
+      const pick = pickFor[name] + '_pickaxe', extra = pickFor[name] === 'stone' ? 3 : 1
+      for (let made = 0; made < extra && !cancelled(); made++) {
+        if (made > 0 && (held('cobblestone') < 3 || held('stick') < 2 && held('planks') < 2)) break
+        const before = held(pick)
+        await acquire(pick, before + 1)
+        if (held(pick) <= before) break
+      }
     } else if (pickFor[name] && digger()) {
       // Rock on the way to ore is dug with a stone pickaxe (dig-tool.js); the better one is kept for what needs it.
       // A look that brought it no nearer (no log, no stick made, no table put down) is a failed try; after three
