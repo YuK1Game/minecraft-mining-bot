@@ -238,7 +238,7 @@ function createDragonSupplies (ctx) {
       if (!log) await acquire('log', 1)
       else await bench.craftPlanks(log.name, 1, occupied(getInventory()) === 36 ? Math.min(log.count, 16) : 1)
     } else if (material) {
-      const batch = mining.enabled(ctx) ? Math.max(1, Math.min(8, target - held(name))) : 1
+      const batch = mining.enabled(ctx) ? Math.max(1, Math.min(name === 'iron_ingot' ? 24 : 8, target - held(name))) : 1
       const plank = rows().find(i => matches('planks', i))
       const fuel = held('coal') ? 'minecraft:coal' : held('charcoal') ? 'minecraft:charcoal' : plank?.name
       // Read a nearby furnace before gathering: it may already hold the result,
@@ -290,7 +290,12 @@ function createDragonSupplies (ctx) {
         if (atHome && missing[0] === 'iron_ingot') return { ...pending('必要な鉄をまとめて見積もり直します。'), replanIron: true }
         if (name === 'magma_cream' && missing[0] === 'slime_ball' && runtime.raw().dimension === 'nether') await collect(ctx, name)
         else {
-          const input = await acquire(missing[0], missing[1] * times)
+          // Iron for the whole carried iron kit is asked for at once, not three or four ingots per piece: each piece
+          // was its own trip down, a smelt and a craft (live 2026-11-28, the diamond stage asked iron_pickaxe ← 3,
+          // then iron_leggings ← 4, iron_helmet ← 5, iron_boots ← 2, shield ← 1, and never reached the lower layer).
+          const kitIron = missing[0] === 'iron_ingot' && mining.enabled(ctx) && name !== 'iron_pickaxe' && home.some(([item]) => item === name)
+            ? home.reduce((sum, [item, amount]) => sum + (ingredient[item]?.iron_ingot ?? 0) * homeCarryNeed(item, amount, rows(), worn()), 0) : 0
+          const input = await acquire(missing[0], Math.max(missing[1] * times, Math.min(24, kitIron)))
           if (!input.done && input.result) return input
         }
       } else if (small.has(name)) await bench.craftSmall(full(name), 1)
