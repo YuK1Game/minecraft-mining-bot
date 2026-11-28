@@ -9,6 +9,7 @@ const { resourceMinHealth } = require('../safety/learning-health')
 const FOODS = new Set(['apple', 'bread', 'carrot', 'potato', 'baked_potato', 'beetroot', 'melon_slice', 'sweet_berries', 'glow_berries', 'dried_kelp', 'cookie', 'pumpkin_pie', 'golden_carrot', 'golden_apple', 'enchanted_golden_apple', 'beef', 'cooked_beef', 'porkchop', 'cooked_porkchop', 'mutton', 'cooked_mutton', 'rabbit', 'cooked_rabbit', 'cod', 'cooked_cod', 'salmon', 'cooked_salmon', 'cooked_chicken'].map(name => `minecraft:${name}`))
 const ALWAYS = new Set(['minecraft:golden_apple', 'minecraft:enchanted_golden_apple'])
 const copy = value => structuredClone(value)
+const RESETTLE_MS = 10000
 const fullName = { container_id: 'inventory', dynamic_container_id: null }
 const inventoryWindow = value => value === 0 || value === 'inventory'
 const inventoryScope = packet => inventoryWindow(packet.window_id) && (packet.container == null || ['inventory', 'hotbar', 'hotbar_and_inventory', 12, 28, 29].includes(packet.container.container_id) && packet.container.dynamic_container_id == null)
@@ -72,7 +73,7 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
   if (!Number.isFinite(timeoutMs) || timeoutMs < 2000 || timeoutMs > 30000) throw new Error('食事操作の待ち時間が不正です。')
   let operation = null
   let hunger = null
-  let inventoryUncertain = false
+  let inventoryUncertain = false, uncertainAt = 0
   let lastResult = null
   let lastReceiptTrace = null
   // Food the caller keeps for another use (raw meat for the furnace, modes/raw-meat-keep.js): not eaten by any path.
@@ -178,6 +179,11 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     if (typeof state.profile !== 'string' || !state.profile || typeof state.connectionId !== 'string' || !state.connectionId || state.runtimeEntityId == null || !String(state.runtimeEntityId) || state.dimension == null || !Number.isSafeInteger(state.lifecycle?.deathId) || state.lifecycle.deathId < 0) throw failure('食事には確定した接続・自分の識別・ライフが必要です。', 'SESSION_UNKNOWN')
     if (state.gameMode !== 'survival' && state.gameMode !== 0) throw failure('食事操作はサバイバル専用です。', 'UNSUPPORTED_GAME_MODE')
     const observed = crafting.snapshot()
+    // A meal whose result never arrived is settled by the received inventory: the server writes a consumed item to
+    // the slot (inventory_slot, kept in the crafting view), and with no write in RESETTLE_MS nothing was consumed. The
+    // server sends no whole inventory on its own, so waiting for one kept every later meal refused while the hunger
+    // stayed at 17 and the health did not regenerate (live 2026-11-29 00:45-00:50 JST, 「食料の実消費をサーバーで確認できませんでした」).
+    if (inventoryUncertain && !operation && now() - uncertainAt >= RESETTLE_MS) inventoryUncertain = false
     if (state.inventory?.known !== true || state.inventory.uncertain || observed.authority !== true || observed.inventoryKnown !== true || inventoryUncertain) throw failure('サーバーで確定した持ち物が必要です。', 'INVENTORY_UNKNOWN')
     if (observed.pendingRequestId != null || isBusy()) throw failure('ほかの作業を止めてから食事してください。', 'BUSY')
     const selected = state.rawServerSelectedSlot ?? state.rawSelectedSlot
@@ -221,7 +227,7 @@ function createFood ({ client, getState, crafting, getInput, equip, allocateLega
     // Do not promote this to a confirmed food-consumption result.
     const current = attempt.plan && crafting.rawItem(attempt.plan.selected)
     if (attempt.plan?.raw.count === 1 && empty(current) && attempt.wireEpoch > 0 && attempt.fullInventoryWireEpoch === attempt.wireEpoch && !attempt.completionQueued) return
-    attempt.uncertaintyNotified = true; inventoryUncertain = true
+    attempt.uncertaintyNotified = true; inventoryUncertain = true; uncertainAt = now()
     receiptEvent(attempt, 'inventory_uncertain', { reason: String(reason).slice(0, 200) })
     try { onUncertain({ requestId: attempt.id, reason: String(reason), receiptTrace: copy(attempt.receiptTrace) }) } catch { /* Preserve cleanup when observers fail. */ }
   }
