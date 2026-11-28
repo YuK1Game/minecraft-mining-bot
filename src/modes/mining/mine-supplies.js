@@ -254,6 +254,14 @@ function createMineSupplies (ctx, actions, storage) {
     const fromHome = await storage.takeHome?.({ ladder: needs.ladder, cobblestone_slab: needs.cobblestone_slab, stick: 7 * ladderBatches(needs.ladder, have('ladder')) })
     if (fromHome) return (fromHome.progress?.confirmedTransferred ?? 0) > 0 && fromHome.status === 'completed'
       ? wait('MINE_HOME_SUPPLIES_RECEIVED') : fromHome
+    // A refill up to 32 is not a reason to leave for wood while eight or more torches are carried and no wood is: the
+    // coal for the cook waited on 4 planks, the planks on a tree, and the trees around were cut out (live 2026-11-29
+    // 00:10-00:22 JST: 12 torches held, 「planks 0/4」 and three 48 m trips). The refill is asked again with wood in hand.
+    const woodHeld = have('log') > 0 || have('planks') >= 2
+    if (branch.refillTorches && have('torch') >= 8 && !woodHeld) {
+      delete branch.refillTorches
+      needs.torch = 8
+    }
     if (have('torch') < needs.torch) {
       branch.refillTorches = true
       return torches(needs.torch)
