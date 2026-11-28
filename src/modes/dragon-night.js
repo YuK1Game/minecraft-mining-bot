@@ -29,7 +29,11 @@ const dawn = reason => ({ phase: 'waiting', reason, wait: { code: 'DAWN' } })
 async function nightHome (ctx, { clock, approach = approachHome, now = ctx.now ?? Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const house = ctx.shared.playerHouse
   const night = () => { const phase = dayPhase(clock()); return phase.known && phase.shelter }
-  if (!night() || !house?.origin || houseDuty(house)) return null
+  // A house being repaired still has its bed: the night is slept there, not spent outside on the repair (live
+  // 2026-11-28: the repair ran on most nights, the night was never slept, and phantoms with the night's skeletons and
+  // zombies killed the Bot by the house twelve times, 03:39-03:47 and 12:45-12:48 JST among them). Only a house never
+  // built yet has no night here; the bed's own block is checked below.
+  if (!night() || !house?.origin || houseDuty(house) === 'build') return null
   const bed = bedOf(house.origin)
   if (!bed) return null
   const returning = await require('./mining/mine-controller').beforeSurfaceSupply(ctx)
