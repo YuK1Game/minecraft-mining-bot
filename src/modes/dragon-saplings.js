@@ -65,6 +65,22 @@ function survey (getBlock, origin, rested = new Map(), now = Date.now(), feet = 
   return { spots: near.filter(at => !crowded(at)), saplings }
 }
 
+// A chest by the house whose last read held what `test` matches, not tried in the last five minutes.
+function chestWith (shared, origin, test, state, now) {
+  const memory = shared.playerChestMemory
+  if (!memory) return null
+  try { memory.ensure?.() } catch { /* the next look reads it */ }
+  const centre = centreOf(origin)
+  for (const [key, slots] of memory.seen ?? []) {
+    const [x, y, z] = String(key).split(',').map(Number)
+    if (![x, y, z].every(Number.isFinite) || Math.hypot(x - centre.x, z - centre.z) > FAR_M || Math.abs(y - origin.y) > 6) continue
+    if ((state.rested.get('chest:' + key) ?? 0) > now) continue
+    const stack = (Array.isArray(slots) ? slots : []).find(slot => slot?.count > 0 && test.test(slot.name ?? ''))
+    if (stack) return { key, pos: { x, y, z }, name: stack.name, count: (slots ?? []).filter(slot => slot?.name === stack.name).reduce((sum, slot) => sum + slot.count, 0) }
+  }
+  return null
+}
+
 async function heldSlot (ctx, test) {
   const items = () => ctx.runtime.inventory()?.items ?? []
   let item = items().find(stack => stack.count > 0 && test.test(stack.name ?? '') && stack.slot <= 8) ?? items().find(stack => stack.count > 0 && test.test(stack.name ?? ''))
@@ -86,6 +102,18 @@ async function plantSaplings (ctx, { now = Date.now } = {}) {
   if (Math.hypot(feet.x - centre.x, feet.z - centre.z) > FAR_M || Math.abs(feet.y - origin.y) > 6) return null
   const items = inventory.items ?? []
   const sapling = count(items, SAPLING), bones = count(items, /^minecraft:bone$/), meal = count(items, /^minecraft:bone_meal$/)
+  // Saplings and bones banked in the house's chests are taken out here, by the house: 29 saplings and 5 bones sat in
+  // chests while the Bot walked 48 m at a time for a log (live 2026-11-29 00:10-00:33 JST).
+  const fetch = !sapling ? SAPLING : !bones && !meal ? /^minecraft:bone$/ : null
+  const stored = fetch && typeof ctx.supplies?.withdraw === 'function' ? chestWith(shared, origin, fetch, state, now()) : null
+  if (stored) {
+    state.rested.set('chest:' + stored.key, now() + 5 * 60000)
+    // `withdraw` takes up to a held total.
+    const want = count(items, new RegExp('^' + stored.name + '$')) + Math.min(16, stored.count)
+    const taken = await ctx.supplies.withdraw(stored.pos, stored.name.replace('minecraft:', ''), want)
+    state.nextAt = 0
+    return { phase: 'working', reason: `家のチェストから ${stored.name.replace('minecraft:', '')} を取り出します（${taken?.reason ?? ''}）。` }
+  }
   if (!sapling && !bones && !meal) return null
   const { spots, saplings } = survey(ctx.getBlock, origin, state.rested, now(), feet)
   const dist = at => Math.hypot(at.x + 0.5 - feet.x, at.y + 1 - feet.y, at.z + 0.5 - feet.z)
