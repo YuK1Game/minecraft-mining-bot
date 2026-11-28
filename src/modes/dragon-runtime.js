@@ -129,6 +129,11 @@ function createDragonRuntime (ports) {
       const way = supplies.weapon()
       if (way && (way.code === 'NOT_MADE' || !ports.threatened())) { judge(...says.weapon()); return supplies.arm(way) }
     }
+    // Saplings and bone meal by the house, so its wood grows back; before the recovery, which ran for hours while the saplings stayed in the bag (dragon-saplings.js).
+    if (dim === 'overworld' && ctx.shared.mineArmedEntry === true && !ports.threatened()) {
+      const planting = await require('./dragon-saplings').plantSaplings(ctx)
+      if (planting) return planting
+    }
     if (record.recovery || record.lootRecovery) {
       judge(...says.recover(record))
       const recovery = await recoverDragon(ctx, record)
@@ -157,11 +162,6 @@ function createDragonRuntime (ports) {
     if (dim === 'overworld' && (shared.playerTree || shared.playerScaffoldDebt) && !ports.threatened()) {
       const logs = shared.playerTree?.logs?.length, felling = await finishTree(ctx)
       if (felling) { judge(...says.tree(logs)); return felling }
-    }
-    // Saplings and bone meal by the house, so its wood grows back (dragon-saplings.js).
-    if (dim === 'overworld' && ctx.shared.mineArmedEntry === true && !ports.threatened()) {
-      const planting = await require('./dragon-saplings').plantSaplings(ctx)
-      if (planting) return planting
     }
     const currentGoal = ledger.goal()
     if (currentGoal?.hold) {
