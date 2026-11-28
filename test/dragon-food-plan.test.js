@@ -127,3 +127,25 @@ test('an expanded search still stops as soon as an available food source is rece
   state.seen = true
   assert.equal(options[0].until(), true)
 })
+
+test('INVENTORY_FULL during food provisioning deposits at home first, then falls back to discarding junk (live 2026-11-27 18:29 JST)', async () => {
+  const { ctx } = search()
+  const calls = []
+  ctx.operations.foraging.preview = () => ({ ready: false, code: 'INVENTORY_FULL', errors: ['食料を回収する空きスロットがありません。'] })
+  ctx.minePorts = { storage: { depositHome: async opts => { calls.push(['depositHome', opts]); return { status: 'completed', code: 'MINE_CAPACITY_FREED' } } } }
+  const first = await provisionFood(ctx, 1)
+  assert.equal(first.done, false)
+  assert.match(first.reason, /空き枠を確保/)
+  assert.deepEqual(calls, [['depositHome', { freeSlots: 2, drain: false }]])
+
+  const dropped = []
+  const items = Array.from({ length: 35 }, (_, slot) => ({ slot, name: 'minecraft:iron_pickaxe', count: 1 }))
+  items.push({ slot: 35, name: 'minecraft:leaf_litter', count: 10 })
+  ctx.runtime.inventory = () => ({ known: true, items })
+  ctx.minePorts = { storage: { depositHome: async () => ({ status: 'blocked', code: 'MINE_HOME_STORAGE_FULL_OR_UNKNOWN' }) } }
+  ctx.drop = async (slot, count) => { dropped.push({ slot, count }); items.splice(items.findIndex(i => i.slot === slot), 1); return { phase: 'completed' } }
+  const second = await provisionFood(ctx, 1)
+  assert.equal(second.done, false)
+  assert.match(second.reason, /不要品を整理/)
+  assert.deepEqual(dropped, [{ slot: 35, count: 10 }])
+})

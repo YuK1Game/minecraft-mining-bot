@@ -6,6 +6,7 @@ const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { streamLog } = require('./lib/log-stream')
 const { sanitizeStatus, sanitizeCachedStatus } = require('./lib/dashboard-state')
+const { readChestIndex } = require('./lib/dashboard-chests')
 
 const HOST = '127.0.0.1'
 const PORT = 3001
@@ -184,7 +185,7 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
       return
     }
     if (method === 'POST') { request.resume?.(); send(405, { error: 'この経路は読み取り専用です。' }, undefined, { Allow: 'GET, HEAD' }); return }
-    if (['/control.js', '/control.css', '/mode.js', '/mode.css', '/debug.js', '/debug.css'].includes(url.pathname)) {
+    if (['/control.js', '/control.css', '/mode.js', '/mode.css', '/debug.js', '/debug.css', '/chests.js', '/chests.css'].includes(url.pathname)) {
       try { send(200, await readAsset(path.resolve(workspaceRoot, 'dashboard', url.pathname.slice(1)), 128 * 1024), url.pathname.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/css; charset=utf-8') } catch { send(404, { error: 'Not found' }) }
     } else if (url.pathname.startsWith('/assets/minecraft/')) {
       if (request.url.split('?')[0] !== url.pathname) { send(404, { error: 'Not found' }); return }
@@ -201,6 +202,7 @@ function createDashboard ({ controls = null, workspaceRoot = path.resolve(__dirn
         send(200, data, manifest ? 'application/json; charset=utf-8' : 'image/png', manifest ? {} : { 'Cache-Control': 'private, max-age=86400' })
       } catch { send(404, { error: 'Texture unavailable' }) }
     } else if (url.pathname === '/api/status') { lastViewAt = Date.now(); send(200, snapshot()) }
+    else if (url.pathname === '/api/chests') { lastViewAt = Date.now(); send(200, await readChestIndex({ workspaceRoot })) }
     else if (url.pathname === '/api/logs/stream' && method === 'GET') streamLogs(request, response)
     else if (url.pathname === '/logs' || url.pathname === '/logs/') {
       send(302, '', 'text/plain; charset=utf-8', { Location: '/#logs' })

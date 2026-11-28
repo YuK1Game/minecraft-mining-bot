@@ -33,8 +33,12 @@ function isDryAccessPlant (block) {
   return block?.known === true && ACCESS_PLANTS.has(block.name) && block.boundingBox === 'empty' && block.protected !== true && !block.protectionSource && block.natural !== false && !block.extra?.length
 }
 
-function safeAccessPlant (block, getBlock) {
-  return isDryAccessPlant(block) && [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].every(([x, y, z]) => {
+function isTreeAccessLeaf (block) {
+  return block?.known === true && /^minecraft:[a-z0-9_]+_leaves$/.test(block.name ?? '') && block.protected !== true && !block.protectionSource && !block.extra?.length
+}
+
+function safeAccessPlant (block, getBlock, { allowLeaves = false } = {}) {
+  return (isDryAccessPlant(block) || allowLeaves && isTreeAccessLeaf(block)) && [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].every(([x, y, z]) => {
     const neighbour = getBlock({ x: block.position.x + x, y: block.position.y + y, z: block.position.z + z })
     return neighbour?.known === true && !HAZARD.test(neighbour.name ?? '') && !neighbour.extra?.some(layer => HAZARD.test(layer.name ?? ''))
   })
@@ -42,7 +46,7 @@ function safeAccessPlant (block, getBlock) {
 
 // This is an obstruction proof for a separate clearing action. It never makes
 // vegetation transparent to the wood miner or reports that the tree is ready.
-function treeRayPlants (from, target, getBlock) {
+function treeRayPlants (from, target, getBlock, { allowLeaves = false } = {}) {
   const cells = new Map()
   const cell = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, Math.floor(from[axis])]))
   const direction = Object.fromEntries(['x', 'y', 'z'].map(axis => [axis, target[axis] + 0.5 - from[axis]]))
@@ -54,7 +58,7 @@ function treeRayPlants (from, target, getBlock) {
     const block = getBlock(point)
     if (block?.known !== true || block.extra?.length || block.protected === true || block.protectionSource) return false
     if (AIR.has(block.name)) return true
-    if (!safeAccessPlant(block, getBlock)) return false
+    if (!safeAccessPlant(block, getBlock, { allowLeaves })) return false
     cells.set(key(point), block)
     return cells.size <= ACCESS_LIMIT
   }
@@ -212,4 +216,4 @@ function planStationAccess ({ state, observedState = state, target, blocks = [],
   return invalid('no_known_station_stance')
 }
 
-module.exports = { useCurrentAccess, treeAccessScope, isDryAccessPlant, safeAccessPlant, stationVisibleFace, placementTopVisible, ACCESS_LIMIT, ...require('../common/work-spans').wrapAll('action-access', { planTreeAccess, planStationAccess, planPlacementAccess }) }
+module.exports = { useCurrentAccess, treeAccessScope, isDryAccessPlant, safeAccessPlant, treeRayPlants, stationVisibleFace, placementTopVisible, ACCESS_LIMIT, ...require('../common/work-spans').wrapAll('action-access', { planTreeAccess, planStationAccess, planPlacementAccess }) }

@@ -25,6 +25,8 @@ const { stands } = require('./house/house-steps')
 const { chestShut, lidFree } = require('./chest-lid')
 const { knownSlots } = require('./base-chests')
 const { roomFirst } = require('./player-chest-index')
+const { placementSupportOk } = require('../quarry/storage/storage-site-terrain')
+const { placementTopVisible } = require('../actions/action-access')
 
 const CHEST = 'minecraft:chest'
 const TABLE = 'minecraft:crafting_table'
@@ -66,7 +68,8 @@ function chestCell (getBlock, feet, cell) {
   if (cell.x === fx && cell.z === fz) return false
   if (Math.abs(cell.y - fy) > 1 || Math.hypot(cell.x + 0.5 - feet.x, cell.z + 0.5 - feet.z) > 3.5) return false
   const here = getBlock(cell.x, cell.y, cell.z), below = getBlock(cell.x, cell.y - 1, cell.z)
-  return here?.known === true && AIR.test(here.name ?? '') && !here.extra?.length && below?.known === true && below.boundingBox === 'block' && !/chest|crafting_table|furnace|leaves|sand$|gravel$/.test(below.name ?? '') && lidFree(getBlock, cell)
+  if (!(here?.known === true && AIR.test(here.name ?? '') && !here.extra?.length && placementSupportOk(below) && !/chest|crafting_table|furnace|leaves|sand$|gravel$/.test(below.name ?? '') && lidFree(getBlock, cell))) return false
+  return !!placementTopVisible({ state: { position: { x: feet.x, y: feet.y + 1.62, z: feet.z } }, target: cell, getBlock: p => getBlock(p.x, p.y, p.z) })
 }
 
 // Two cells side by side for a new large chest, or one beside a single chest.
@@ -100,6 +103,29 @@ function chestCells (getBlock, feet, single = null, skip = new Set()) {
     }
   }
   return []
+}
+
+// When the current spot has no visible flat pair (e.g. inside a full 7x7 starter
+// house, live 2026-11-27 17:33-17:49 JST), return nearby received walkable stands
+// within 10 blocks from which a new large chest pair is visible and placeable.
+function findChestStands (getBlock, origin, skip = new Set()) {
+  if (!origin) return []
+  const ox = Math.floor(origin.x), oy = Math.floor(origin.y + 0.05), oz = Math.floor(origin.z)
+  const candidates = []
+  for (let dx = -10; dx <= 10; dx++) for (let dz = -10; dz <= 10; dz++) {
+    const dist = Math.hypot(dx, dz)
+    if (dist < 2 || dist > 10.5) continue
+    for (let dy = -2; dy <= 2; dy++) {
+      const x = ox + dx, y = oy + dy, z = oz + dz
+      const floor = getBlock(x, y - 1, z), body = getBlock(x, y, z), head = getBlock(x, y + 1, z)
+      if (!placementSupportOk(floor) || !AIR.test(body?.name ?? '') || body?.known !== true || body?.extra?.length ||
+        !AIR.test(head?.name ?? '') || head?.known !== true || head?.extra?.length) continue
+      const stand = { x: x + 0.5, y, z: z + 0.5 }
+      if (chestCells(getBlock, stand, null, skip).length === 2) candidates.push({ stand, dist: Math.hypot(dx, dy * 1.5, dz) })
+    }
+  }
+  candidates.sort((a, b) => a.dist - b.dist)
+  return candidates.slice(0, 8).map(c => c.stand)
 }
 
 function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig = null, why = () => null, walk = null, cells = () => null, getBlock, getFeet, getInventory, worldScope = () => null, file = null, write, fieldChests = null, blocked = () => false, disposed = () => false, log = () => {}, now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
@@ -229,7 +255,7 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
         if (!await pairs.complete(candidate.position) || stopped()) return null
         if (evidence.room !== 0) return candidate.position
       } else if (!candidate.pair && evidence?.slotCount === 27) { if (!single || pairs.pending(candidate.position)) single = candidate }
-      else unconfirmed = true
+      else if (evidence != null || pairs.pending(candidate.position)) unconfirmed = true
     }
     // Leave an unconfirmed pair for the next inspection. Adding a third box
     // or making another pair would consume wood without resolving this one.
@@ -263,6 +289,15 @@ function createPlayerStorage ({ getMode, shared, agent, hands, mine = null, dig 
     }
     const skip = new Set(avoid.map(key))
     let pair = reserved ?? chestCells(getBlock, feet, null, skip)
+    if (pair.length !== 2 && !reserved && walk && !stopped()) {
+      for (const stand of findChestStands(getBlock, getFeet() ?? feet, skip)) {
+        if (stopped()) return null
+        if (await walk(stand) && !stopped()) {
+          pair = chestCells(getBlock, getFeet() ?? feet, null, skip)
+          if (pair.length === 2) break
+        }
+      }
+    }
     if (pair.length !== 2) { say('ラージチェストを置ける平らな場所がありません'); return null }
     // Hold both before starting. A half left by interruption is found above
     // and needs only the missing chest when this work resumes.

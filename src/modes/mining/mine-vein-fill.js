@@ -1,6 +1,13 @@
 'use strict'
 
 const { solid } = require('./mine-observed')
+const { wet } = require('./mine-common')
+
+// A vein cell that is already occupied by a received full non-fluid block (including gravel/sand that was never
+// mined or fell into the pocket) cannot be filled with cobblestone and does not leave an open pocket.
+// Live 2026-11-28 16:15-16:19 JST: (9969,17,9997) was minecraft:gravel rejected by inspectDig; solid() excluded
+// gravel so restoreVein called fillCell and looped on MINE_FILL_OCCUPIED for 240s.
+const veinCellClosed = b => b?.known === true && b.boundingBox === 'block' && !wet(b) && !b.extra?.length
 
 // How a vein pocket is closed. The pocket was dug from a corridor stand, one cell deeper at a time, so its far
 // cells are out of view from that corridor. It is closed from its far end inward, and every fill is clicked
@@ -46,4 +53,4 @@ function createVeinFillStand (ctx, lighting, actions) {
   }
 }
 
-module.exports = { veinFillOrder, createVeinFillStand }
+module.exports = { veinFillOrder, createVeinFillStand, veinCellClosed }

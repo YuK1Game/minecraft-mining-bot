@@ -26,9 +26,9 @@ test('no food, hungry, under a roof: the autonomy stops, the Bot climbs out, pla
   assert.equal(await f.food.tick(), null, 'five minutes between tries')
 })
 
-test('nothing with food held, hunger above 14, or open sky', async () => {
+test('nothing with food held, hunger 18+, or open sky', async () => {
   assert.equal(await job({ items: [['bread', 1]] }).food.tick(), null)
-  assert.equal(await job({ hunger: 15 }).food.tick(), null)
+  assert.equal(await job({ hunger: 18 }).food.tick(), null)
   assert.equal(await job({ getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }) }).food.tick(), null)
 })
 
@@ -53,10 +53,10 @@ test('on open ground, a food source the forage cannot step to: long travel to it
   assert.match(lines.join('\n'), /食料源 \(-27, 18\) へ長距離移動/)
 })
 
-test('hurt with hunger under 18 and no food also goes up for food: no natural healing (live 2026-11-17 19:05-19:09 JST)', async () => {
-  const f = job({ hunger: 16, health: 2.7 })
+test('hunger under 18 and no food goes up for food so natural healing stays active', async () => {
+  const f = job({ hunger: 17, health: 2.7 })
   assert.equal(await f.food.tick(), true)
   assert.deepEqual(f.calls, ['stop', 'climb', 'start'])
-  assert.equal(await job({ hunger: 16, health: 12 }).food.tick(), null)
+  assert.equal(await job({ hunger: 17, health: 20 }).food.tick(), true)
   assert.equal(await job({ hunger: 18, health: 2.7 }).food.tick(), null)
 })

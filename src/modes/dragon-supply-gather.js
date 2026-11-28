@@ -6,13 +6,14 @@ const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-ear
 const { roam, ROAM_M } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
-const { treeAt, beginTree } = require('./dragon-tree')
+const { treeAt, beginTree, clearTreeAccess } = require('./dragon-tree')
 const { inside, leaveHouse } = require('./house/house-exit')
 const { openDoor } = require('./house/house-door')
 const { enclosedHome, indoors } = require('./house/house-outdoors')
 const { createBuildWalk } = require('./player-build-walk')
 const { inYard } = require('../safety/house-protection')
 const { sightPassable } = require('../actions/interaction-sight')
+const { isDryAccessPlant } = require('../actions/action-access')
 const { uncoverStone, walkStoneStand, canCollectBrokenStone, pickUpStone } = require('./dragon-stone-cover')
 
 const SOURCES = {
@@ -26,6 +27,12 @@ const MOBS = { string: 'spider', feather: 'chicken', phantom_membrane: 'phantom'
 const WOOD_SEARCH_STEPS = 7
 const SIDES = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
 const exposedStone = (ctx, p) => SIDES.some(([x, y, z]) => sightPassable(ctx.getBlock(p.x + x, p.y + y, p.z + z)))
+// A log buried on all six sides by solid ground cannot be seen or cleared,
+// while leaves/vines blocking a log can be cleared with tree_access (user spec 2026-11-27).
+const exposedLog = (ctx, p) => SIDES.some(([x, y, z]) => {
+  const b = ctx.getBlock(p.x + x, p.y + y, p.z + z)
+  return sightPassable(b) || isDryAccessPlant(b) || (b?.known === true && /^minecraft:[a-z0-9_]+_leaves$/.test(b.name ?? '') && !b.protected && !b.protectionSource && !b.extra?.length)
+})
 
 function findCells (ctx, test, radius = 12, height = 5) {
   const feet = ctx.getFeet()
@@ -45,7 +52,7 @@ function inView (ctx, name) {
   const rested = cellRest(ctx.shared, ctx.runtime?.raw?.().dimension, { now: ctx.now })
   const taken = unavailable(ctx)
   return findCells(ctx, (b, p) => re.test(bare(b.name)) && !rested.resting(p) && !taken(b, p) &&
-    (name !== 'cobblestone' || exposedStone(ctx, p)))
+    (name !== 'cobblestone' || exposedStone(ctx, p)) && (name !== 'log' || exposedLog(ctx, p)))
 }
 
 // `avoid`: cells no hop of the walk ends in (the inside of the house, for wood: house/house-outdoors.js).
@@ -204,12 +211,12 @@ async function collect (ctx, name) {
     const far = cell => { const feet = ctx.getFeet(); return feet ? Math.hypot(cell.x + 0.5 - feet.x, cell.y - feet.y, cell.z + 0.5 - feet.z) : Infinity }
     const skip = unavailable(ctx)
     const cells = findCells(ctx, (b, p) => re.test(bare(b.name)) && !skip(b, p) &&
-      !rested.resting(p) && (name !== 'cobblestone' || exposedStone(ctx, p)))
+      !rested.resting(p) && (name !== 'cobblestone' || exposedStone(ctx, p)) && (name !== 'log' || exposedLog(ctx, p)))
     for (const seen of cells.slice(0, 6)) {
       // A log is taken as the first of its tree (dragon-tree.js): the lowest one standing, walked to at the trunk's
       // foot (the nearest stand at the height of a log in the crown is on the leaves).
       const trunk = name === 'log' && ctx.runtime.raw().dimension === 'overworld' ? treeAt(ctx.getBlock, seen, skip) : null
-      const cell = trunk?.find(p => !rested.resting(p)) ?? seen
+      const cell = trunk?.find(p => !rested.resting(p) && exposedLog(ctx, p)) ?? seen
       const block = ctx.getBlock(cell.x, cell.y, cell.z)
       // End portal frames are not candidates. Obsidian already in a lit frame
       // is never part of the collection route.
@@ -243,11 +250,17 @@ async function collect (ctx, name) {
       }
       if (ctx.cancelled()) return
       if (!ctx.hands.canMine(target)) {
-        if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }
-        // Tunneling may have equipped another pick. Restore the proper tool
-        // before checking the ore's live face and tool requirement again.
-        if (picked) await hold()
-        if (!ctx.hands.canMine(target)) { left(); continue }
+        if (name === 'log') {
+          await clearTreeAccess(ctx, target)
+          if (ctx.cancelled()) return
+        }
+        if (!ctx.hands.canMine(target)) {
+          if (!oreSearch || !await approachOre(ctx, target) || ctx.cancelled()) { left(); continue }
+          // Tunneling may have equipped another pick. Restore the proper tool
+          // before checking the ore's live face and tool requirement again.
+          if (picked) await hold()
+          if (!ctx.hands.canMine(target)) { left(); continue }
+        }
       }
       // With its first log mined the tree is the work until it is down (dragon-tree.js).
       const mined = await ctx.hands.mine(target)

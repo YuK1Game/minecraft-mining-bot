@@ -104,7 +104,7 @@ test('who has the player, and the ordinary work\'s next action with what it is a
 
 // The expedition with its bed confirmed (the goal: the kit at home). The early step is the test's.
 async function expedition (t, step) {
-  const food = { preview: () => ({ ready: true }), eat: async () => {}, snapshot: () => ({ hunger: 16 }) }
+  const food = { preview: () => ({ ready: true }), eat: async () => {}, snapshot: () => ({ hunger: 18 }) }
   return createWorld(t, { step, ports: () => ({ operations: { food } }) })
 }
 
@@ -123,7 +123,7 @@ test('a wait for health is said with the health that began it, before the wait i
   await w.pass(40000, { tickMs: 2000 })
   const judged = () => w.said(JUDGED)
   assert.equal(judged().length, 2, w.lines.join('\n'))
-  assert.equal(judged()[1], '判断: 遠征［early.home_reserve#1］ 体力の回復を先にします｜理由: 体力 11.4（12 以下で始め、18 で終わり）・満腹度 16')
+  assert.equal(judged()[1], '判断: 遠征［early.home_reserve#1］ 体力の回復を先にします｜理由: 体力 11.4（12 以下で始め、18 で終わり）・満腹度 18')
   assert.ok(w.lines.indexOf(judged()[1]) < w.lines.findIndex(line => /体力18以上への回復を待ちます/.test(line)), 'the decision stands before what the step answered')
   assert.equal(w.calls > 0 && w.said(/回復を待ちます/).length, 1)
   w.raw.health = 18.5
@@ -135,16 +135,16 @@ test('a wait for health is said with the health that began it, before the wait i
   assert.deepEqual(judged().slice(3).map(line => line.replace(/（\d+ 分/, '（N 分')), Array(2).fill('判断（N 分続いています）: 遠征［early.home_reserve#1］ 本拠点のラージチェストに再出発用の装備を揃えます｜理由: 予備チェストを開けて、足りない装備を調べる'), w.lines.join('\n'))
 })
 
-// Real Realm 2026-11-24 08:16 JST: hunger 6, no food, health 19.5, and the expedition went on with the mine's supplies.
-test('hunger of 6 with nothing to eat is said and comes before the goal\'s work; at 7 the work goes on', async t => {
-  let hunger = 7, work = 0
+// Keep hunger at or above 18 (natural health regeneration threshold).
+test('hunger below 18 with nothing to eat is said and comes before the goal\'s work; at 18 the work goes on', async t => {
+  let hunger = 18, work = 0
   const food = { preview: () => ({ ready: false, code: 'FOOD_NOT_IN_INVENTORY' }), eat: async () => {}, snapshot: () => ({ hunger }) }
   const w = await createWorld(t, { step: async () => { work += 1; return { done: false, reason: 'iron_helmet を準備しています（0/2）。' } }, ports: () => ({ operations: { food } }) })
   await w.pass(20000, { tickMs: 2000 })
   assert.ok(work > 0 && w.said(/食料を先に用意します/).length === 0, w.lines.join('\n'))
-  hunger = 6
+  hunger = 17
   const before = work
   await w.pass(20000, { tickMs: 2000 })
-  assert.equal(w.said(JUDGED).filter(line => /食料を先に用意します｜理由: 満腹度 6（6 以下）で、食べられる物がない/.test(line)).length, 1, w.lines.join('\n'))
+  assert.equal(w.said(JUDGED).filter(line => /食料を先に用意します｜理由: 満腹度 17（18 未満）で、食べられる物がない/.test(line)).length, 1, w.lines.join('\n'))
   assert.equal(work, before, 'the goal\'s work waits for the food')
 })

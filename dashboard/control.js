@@ -490,7 +490,7 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) void poll() })
   // The mode switch (露天掘り｜プレイヤー) lives in mode.js and uses this small surface.
   window.botControl = { act, note: message, session: () => current?.live?.session ?? null, idle: () => !busy && !!token }
-  for (const [tag, attributes] of [['link', { rel: 'stylesheet', href: '/mode.css' }], ['script', { src: '/mode.js' }], ['link', { rel: 'stylesheet', href: '/debug.css' }], ['script', { src: '/debug.js' }]]) document.head.append(Object.assign(document.createElement(tag), attributes))
+  for (const [tag, attributes] of [['link', { rel: 'stylesheet', href: '/mode.css' }], ['script', { src: '/mode.js' }], ['link', { rel: 'stylesheet', href: '/debug.css' }], ['script', { src: '/debug.js' }], ['link', { rel: 'stylesheet', href: '/chests.css' }], ['script', { src: '/chests.js' }]]) document.head.append(Object.assign(document.createElement(tag), attributes))
   // The control panel stays open: its heading is not a toggle.
   const panel = document.getElementById('control')
   panel.querySelector('summary').addEventListener('click', event => event.preventDefault())

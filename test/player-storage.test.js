@@ -234,3 +234,79 @@ test('a half of a full large chest and a full single chest beside it are skipped
   assert.ok(at && !cells.some(c => c.x === at.x && c.z === at.z), JSON.stringify(at))
   assert.equal(f.calls.filter(call => call[0] === 'place' && call[2] === mc('chest')).length, 2)
 })
+
+test('chestCells rejects non-ground supports such as beds and slabs (live 2026-11-27 17:18 JST)', () => {
+  const { chestCells } = require('../src/modes/player-storage')
+  const feet = { x: 9880.5, y: 65, z: 10140.5 }
+  const blockAt = support => (x, y, z) => {
+    if (y === 65 && x === 9878 && (z === 10140 || z === 10139)) return { known: true, name: support, boundingBox: 'block', extra: [] }
+    if (y === 65) return { known: true, name: 'minecraft:cobblestone', boundingBox: 'block', extra: [] }
+    if (y >= 66) return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+    return { known: true, name: 'minecraft:cobblestone', boundingBox: 'block', extra: [] }
+  }
+  const onBed = chestCells(blockAt('minecraft:bed'), feet)
+  assert.ok(!onBed.some(p => p.x === 9878 && p.y === 66 && (p.z === 10140 || p.z === 10139)))
+  const onSlab = chestCells(blockAt('minecraft:oak_slab'), feet)
+  assert.ok(!onSlab.some(p => p.x === 9878 && p.y === 66 && (p.z === 10140 || p.z === 10139)))
+})
+
+test('chestCells skips cells hidden behind a wall (live 2026-11-27 17:45 JST)', () => {
+  const { chestCells } = require('../src/modes/player-storage')
+  const feet = { x: 9881.5, y: 65, z: 10143.5 }
+  const blockAt = (x, y, z) => {
+    if (y <= 64) return { known: true, name: 'minecraft:cobblestone', boundingBox: 'block', extra: [] }
+    // Solid south wall at z=10144 hides (9881, 65, 10145).
+    if (z === 10144 && (y === 65 || y === 66)) return { known: true, name: 'minecraft:oak_planks', boundingBox: 'block', extra: [] }
+    return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+  }
+  const pair = chestCells(blockAt, feet)
+  assert.ok(!pair.some(p => p.z === 10145), JSON.stringify(pair))
+})
+
+test('when no flat pair exists beside the Bot, storage walks to a nearby flat stand to place a new large chest (live 2026-11-27 17:33 JST)', async () => {
+  let pos = { x: 0.5, y: 64, z: 0.5 }
+  const placed = []
+  const world = new Map()
+  const keyOf = p => `${p.x},${p.y},${p.z}`
+  const getBlock = (x, y, z) => {
+    const hit = world.get(keyOf({ x, y, z }))
+    if (hit) return hit
+    if (y >= 64) {
+      // Cramped room within 4 blocks of origin: only the Bot's own cell is open, everything else is beds/walls.
+      if (y === 64 && Math.abs(x) <= 4 && Math.abs(z) <= 4 && !(x === 0 && z === 0)) {
+        return { known: true, name: 'minecraft:bed', boundingBox: 'block', extra: [] }
+      }
+      return { known: true, name: 'minecraft:air', boundingBox: 'empty', extra: [] }
+    }
+    return { known: true, name: 'minecraft:cobblestone', boundingBox: 'block', extra: [] }
+  }
+  const walks = []
+  const storage = createPlayerStorage({
+    getMode: () => 'player',
+    shared: { playerWanted: true },
+    agent: { objective: {}, start: async () => {} },
+    hands: {
+      tableNear: () => true,
+      craft: async () => true,
+      place: async (p, name) => {
+        placed.push({ p, name })
+        const dx = p.x + 0.5 - pos.x, dz = p.z + 0.5 - pos.z
+        const facing = Math.abs(dx) > Math.abs(dz) ? (dx > 0 ? 4 : 5) : (dz > 0 ? 2 : 3)
+        world.set(keyOf(p), { known: true, name, boundingBox: 'block', properties: { facing_direction: facing }, extra: [] })
+        return true
+      },
+      inspect: async () => ({ status: 'completed', evidence: { slotCount: 54, room: 54 } }),
+      room: () => null,
+      store: async () => 1
+    },
+    walk: async to => { walks.push(to); pos = { ...to }; return true },
+    getBlock,
+    getFeet: () => pos,
+    getInventory: () => inv([['chest', 2, 0]]),
+    worldScope: () => 'scope'
+  })
+  const at = await storage.chest()
+  assert.ok(at, 'placed a new large chest after walking to an open stand')
+  assert.ok(walks.length >= 1, 'walked away from the cramped spot')
+  assert.equal(placed.filter(c => c.name === mc('chest')).length, 2)
+})

@@ -75,7 +75,7 @@ test('one received facing is enough to reject a pair along the incompatible axis
 test('no chest is placed in a cell under a whole block', () => {
   // x = 2 leaves both lids free and both clicks facing the same way;
   // x = 1 would put the second click on the excluded 45-degree boundary.
-  const tunnel = (x, y, z) => y <= 63 ? solid('stone') : y >= 66 ? solid('stone') : y === 65 && x !== 2 && !(x === 0 && z === 0) ? solid('stone') : air
+  const tunnel = (x, y, z) => y <= 63 ? solid('stone') : y >= 66 ? solid('stone') : y === 65 && x !== 2 && !(x >= 0 && x <= 1 && z === 0) ? solid('stone') : air
   const pair = chestCells(tunnel, { x: 0.5, y: 64, z: 0.5 })
   assert.equal(pair.length, 2)
   assert.ok(pair.every(cell => cell.x === 2), JSON.stringify(pair))

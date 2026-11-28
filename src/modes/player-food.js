@@ -7,7 +7,7 @@ const { normalizeMode } = require('./bot-mode')
 const { underCover } = require('./player-surface')
 const { createSupplyOutcomeTracker } = require('./supply-task-runner')
 
-const HUNGRY = 14, REGEN = 18, HURT = 10, AGAIN_MS = 300000, NEAR_M = 6, TRIP_MS = 180000
+const HUNGRY = 17, REGEN = 18, HURT = 10, AGAIN_MS = 300000, NEAR_M = 6, TRIP_MS = 180000
 const FOOD = /^minecraft:(?:cooked_)?(?:beef|porkchop|mutton|chicken|rabbit|cod|salmon)$|^minecraft:(?:bread|apple|golden_apple|carrot|baked_potato|potato|beetroot|melon_slice|sweet_berries|glow_berries|cookie|pumpkin_pie|dried_kelp|mushroom_stew|rabbit_stew|beetroot_soup)$/
 const hasFood = inventory => (inventory?.items ?? []).some(item => item?.count > 0 && FOOD.test(item.name ?? ''))
 

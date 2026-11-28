@@ -59,7 +59,7 @@ async function heal ({ ctx, record, dim, shared, runtime, threatened, supplies, 
       record.nether.returning = 'supplies'
       return nether(ctx)
     }
-    if (record.recovery) return recover(ctx, record)
+    if (record.recovery && (!record.recovery.gather || record.recovery.gather.name === 'food')) return recover(ctx, record)
     if (dim === 'overworld' && shared.playerHouse?.origin) return supplies.acquire('food', 1)
   }
   return { phase: 'recovering', reason: WAIT }
@@ -72,12 +72,16 @@ async function heal ({ ctx, record, dim, shared, runtime, threatened, supplies, 
 // Once a food trip begins, keep gathering cooked provisions up to FOOD_TRIP (real Realm 2026-11-25
 // 10:14-10:31 JST: acquiring only 1 food let the Bot eat 1 raw/cooked meat, jump hunger 6 -> 8/10 with
 // 0 food left, climb 54 blocks back down to the Y=16 branch mine, dig 3 steps, and repeat every 5 min).
-const HUNGRY = 6
+// Keep hunger at or above REGEN (18) so natural health regeneration stays active
+// (user spec 2026-11-28). When hunger drops below 18 (<= 17), eat held food
+// immediately or start a food trip up to FOOD_TRIP cooked provisions.
+const HUNGRY = REGEN - 1
 const FOOD_TRIP = 6
 // What that asks for now: 'eat' (a meal can be taken), 'food' (the way to food), or null (not hungry, or not here).
 function hungry ({ ctx, record, dim, shared, runtime, threatened }) {
   const food = ctx.operations.food, hunger = food?.snapshot?.()?.hunger
-  if (dim !== 'overworld' || record.stage !== 'early' || record.recovery || !shared?.playerHouse?.origin) {
+  const recoveryCheckingChest = !!record.recovery && (!record.recovery.gather || record.recovery.gather.name === 'food')
+  if (dim !== 'overworld' || record.stage !== 'early' || recoveryCheckingChest || !shared?.playerHouse?.origin) {
     if (shared) delete shared.dragonFoodTrip
     return null
   }

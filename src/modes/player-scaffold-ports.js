@@ -169,10 +169,25 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
   // With no usable pickaxe left: plain rock by hand (slow, no drop).
   const byHand = cell => ({ x: cell.x, y: cell.y, z: cell.z, accessPreparation: 'hand_dig', ...(cell.climbShaft === true ? { climbShaft: true } : {}) })
   const canDig = cell => { try { return operations.mining.preview([byHand(cell)])?.ready === true } catch { return false } }
+  async function waitMined (cell) {
+    let sawActive = operations.mining?.status?.()?.phase === 'mining'
+    const ended = () => {
+      const m = operations.mining?.status?.()
+      if (!m) return false
+      if (m.phase === 'mining') { sawActive = true; return false }
+      if (m.phase === 'failed' || m.phase === 'stopped' || (sawActive && m.phase === 'idle')) {
+        if (m.reason) why = `MINE_${String(m.phase).toUpperCase()}:${String(m.reason).slice(0, 90)}`
+        return true
+      }
+      return false
+    }
+    await until(() => air(cell) || ended(), 35000)
+    return air(cell)
+  }
   async function dig (cell) {
     if (air(cell)) return true
     if (!await begin(() => operations.mining.start([byHand(cell)]))) return false
-    return until(() => air(cell), 35000)
+    return waitMined(cell)
   }
   // Why the mining preview refuses a cell, for the log.
   const reason = cell => { try { const preview = operations.mining.preview([cell]); return preview?.ready === true ? null : String(preview?.errors?.[0] ?? preview?.error ?? '').slice(0, 160) || null } catch (error) { return String(error?.message ?? error).slice(0, 160) } }
@@ -180,14 +195,14 @@ function createScaffoldPorts ({ operations, getBlock, getFeet, getInventory, get
     if (air(cell)) return true
     await ready(cell)
     if (!await begin(() => operations.mining.start([cell]))) return false
-    return until(() => air(cell), 35000)
+    return waitMined(cell)
   }
   // The pillar block under the feet: received air there, then the feet one lower.
   async function descend (cell) {
     const name = block(cell.x, cell.y, cell.z)?.name
     await ready(cell)
     if (!await begin(() => operations.mining.start([{ ...cell, accessPreparation: 'pillar_descent', expectedName: name }]))) return false
-    if (!await until(() => air(cell), 35000)) return false
+    if (!await waitMined(cell)) return false
     return until(() => { const at = getFeet(); return !!at && at.y <= cell.y + 0.05 }, 5000)
   }
   async function pillar (column, feetY, { any = false } = {}) {

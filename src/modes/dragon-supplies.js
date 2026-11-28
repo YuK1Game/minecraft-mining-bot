@@ -19,7 +19,7 @@ const { openAbove } = require('./player-surface')
 const { weaponWanted } = require('./carry-weapon')
 const { noteReserve } = require('./dragon-reserve-seen')
 const mining = require('./mining/mine-controller')
-const { reservedShaftCell } = require('./mining/mine-location')
+const { reservedShaftCell, insideMine } = require('./mining/mine-location')
 const { mineWorldScope, sameWorld } = require('./mining/mine-state')
 const { occupied } = require('./mining/mine-carry')
 const homeIron = require('./dragon-home-iron')
@@ -128,8 +128,12 @@ function createDragonSupplies (ctx) {
   // view nothing is fetched and the digging goes on with what is carried. A way that failed three times is left.
   // The way open now to a stone tool of the Bot's own making: `made` with its parts carried, `wood` where a log is
   // a short walk, null where neither is or the way failed three times.
-  const sky = () => { const feet = ctx.getFeet(); return !!feet && openAbove(getBlock, Math.floor(feet.x), Math.floor(feet.y + 0.001), Math.floor(feet.z)) }
-  const wayTo = (want, made, wood) => want === 'make' ? (ctx.goal?.spent?.(made) === true ? null : made) : ctx.goal?.spent?.(wood) === true ? null : inView(ctx, 'log').length > 0 || sky() ? wood : null
+  const sky = () => {
+    if (insideMine(ctx, ctx.memory?.early?.mine?.branch)) return false
+    const feet = ctx.getFeet()
+    return !!feet && openAbove(getBlock, Math.floor(feet.x), Math.floor(feet.y + 0.001), Math.floor(feet.z))
+  }
+  const wayTo = (want, made, wood) => want === 'make' ? (ctx.goal?.spent?.(made) === true ? null : made) : ctx.goal?.spent?.(wood) === true || insideMine(ctx, ctx.memory?.early?.mine?.branch) ? null : inView(ctx, 'log').length > 0 || sky() ? wood : null
   function digger () {
     const want = diggerWanted(rows(), held)
     return want && (held('crafting_table') || bench.tableNear()) ? wayTo(want, DIGGER, WOOD) : null
@@ -182,9 +186,17 @@ function createDragonSupplies (ctx) {
 
   // Each thing asked for is said to the decision journal with what is held of it (decision-journal.js `need`):
   // things asked for inside one another are one line there.
+  const activeAcquire = new Map()
   async function acquire (requested, target = 1, options = {}) {
-    const leave = ctx.judge?.need?.(bare(requested), getInventory() ? held(bare(requested)) : '?', target)
-    try { return await gain(requested, target, options) } finally { leave?.() }
+    const key = bare(requested)
+    const leave = ctx.judge?.need?.(key, getInventory() ? held(key) : '?', target)
+    activeAcquire.set(key, (activeAcquire.get(key) ?? 0) + 1)
+    try { return await gain(requested, target, options) } finally {
+      const left = (activeAcquire.get(key) ?? 1) - 1
+      if (left > 0) activeAcquire.set(key, left)
+      else activeAcquire.delete(key)
+      leave?.()
+    }
   }
   async function gain (requested, target = 1, { atHome = false } = {}) {
     const name = bare(requested)
@@ -192,8 +204,12 @@ function createDragonSupplies (ctx) {
     // Unarmed, the begun mine section waits: going back down to finish it is how the sword was never made (live
     // 2026-11-26 05:14-05:52 JST: each 「石の剣を作ります」 asked for planks, this walked the Bot 140 m back to the
     // mine entrance for its section, and the sword step ended there; 4 logs, sticks and 74 cobblestone carried).
-    if(name!=='food' && !mining.MINERALS.has(name) && (ctx.memory?.early?.mine?.branch?.vein || !/^(?:stone_sword|crafting_table|planks|stick)$/.test(name) || !require('./player-flee').unarmed(getInventory()))){
+    // Keep the entire stone_sword dependency chain (including cobblestone/wooden_pickaxe when bare after respawn)
+    // out of finishMineWork so MINE_UNARMED can never recurse infinitely (live 2026-11-27 21:41 JST).
+    const makingSword = (activeAcquire.get('stone_sword') ?? 0) > 0
+    if(name!=='food' && !mining.MINERALS.has(name) && (ctx.memory?.early?.mine?.branch?.vein || (!makingSword && !/^(?:stone_sword|cobblestone|wooden_pickaxe|crafting_table|planks|stick|log)$/.test(name)) || !require('./player-flee').unarmed(getInventory()))){
       const finishing=await mining.finishMineWork(ctx)
+      if(finishing?.result?.code==='MINE_UNARMED' && !cancelled() && !makingSword)return acquire('stone_sword',1)
       if(finishing)return finishing
     }
     const plannedMining = mining.enabled(ctx) && runtime.raw().dimension === 'overworld' && mining.MINERALS.has(name)
@@ -201,7 +217,20 @@ function createDragonSupplies (ctx) {
       if (plannedMining && ctx.memory?.early?.mine?.branch?.request?.resource === name) return mining.requestMine(ctx, { resource: name, targetHeld: target })
       return done(name + ' を持ち物で確認しました。')
     }
-    if (name === 'food') return await mining.beforeSurfaceSupply(ctx) ?? provisionFood(ctx, target)
+    if (name === 'food') {
+      // Cooking raw meat with coal mines coal inside the planned branch mine.
+      // Do not force leaving the mine via beforeSurfaceSupply while coal is
+      // needed for cooking (live 2026-11-28 18:55-19:00 JST: shaft bounce loop).
+      const items = rows()
+      const rawMeat = items.find(i => /^minecraft:(?:beef|porkchop|chicken|rabbit|mutton|salmon|cod)$/.test(i.name ?? '') && i.count > 0)
+      const wheatCount = items.filter(i => i.name === 'minecraft:wheat').reduce((n, i) => n + i.count, 0)
+      const inMine = mining.enabled(ctx) && insideMine(ctx, ctx.memory?.early?.mine?.branch)
+      if (inMine && rawMeat && wheatCount < 3 &&
+          require('./cook-fuel').fuelWanted(items, Math.min(3, rawMeat.count, Math.max(1, target - held('food'))), ctx)?.name === 'coal') {
+        return acquire('coal', 1)
+      }
+      return await mining.beforeSurfaceSupply(ctx) ?? provisionFood(ctx, target)
+    }
     const recipe = ingredient[name], material = smelted[name]
     if (name === 'water_bucket') await fill(name)
     else if (name === 'planks') {
@@ -218,7 +247,9 @@ function createDragonSupplies (ctx) {
       // minute without walking back to the same empty furnace every two seconds.
       // This is a next-step hint only; using the furnace always reads it anew.
       const gather = ctx.shared.dragonSmeltGather, at = (ctx.now ?? Date.now)(), dimension = runtime.raw()?.dimension
-      const fetching = gather?.name === name && gather.dimension === dimension && at >= gather.at && at - gather.at < 60000 && (gather.need.input > 0 && held(material) < (gather.inputGoal ?? 1) || gather.need.fuel && !fuel)
+      const inMine = mining.enabled(ctx) && insideMine(ctx, ctx.memory?.early?.mine?.branch)
+      const sameGather = gather?.name === name && gather.dimension === dimension && at >= gather.at && (gather.need.input > 0 && held(material) < (gather.inputGoal ?? 1) || gather.need.fuel && !fuel)
+      const fetching = sameGather && (inMine || at - gather.at < 60000)
       const furnace = fetching ? null : await station('furnace', { existingOnly: !held(material) || !fuel })
       let need = fetching ? gather.need : null
       if (furnace && !cancelled()) {
@@ -229,19 +260,28 @@ function createDragonSupplies (ctx) {
         if (house.why()) trouble = 'かまど: ' + house.why()
         if (!need) return pending(trouble ?? 'かまどの受信を確認します。')
         ctx.shared.dragonSmeltGather = { name, dimension, at: (ctx.now ?? Date.now)(), need, inputGoal: held(material) + need.input }
+      } else if (!fetching && sameGather) {
+        // Away from any furnace when the 60s re-check expires: keep the furnace-measured
+        // inputGoal instead of resetting to `batch` (which invalidated mine stockKey and
+        // bounced between wood search and the shaft every 60s: live 2026-11-28 19:21-19:25 JST).
+        need = gather.need
       }
-      const inputGoal = fetching ? gather.inputGoal ?? 1 : need ? held(material) + need.input : batch
+      const inputGoal = (fetching || (!furnace && sameGather)) ? gather.inputGoal ?? 1 : need ? held(material) + need.input : batch
       if ((!need || need.input > 0) && held(material) < inputGoal) {
         // With no reusable furnace nearby, the batch is still a demand for
         // raw material. Keep that demand while the mine is underground;
         // seeing its first ore must not cause a new trip to look for a furnace.
         if(mining.enabled(ctx) && !fetching)ctx.shared.dragonSmeltGather={name,dimension,at: (ctx.now ?? Date.now)(),need:need??{input:inputGoal-held(material),fuel:!fuel},inputGoal}
-        await acquire(material, inputGoal)
+        const input = await acquire(material, inputGoal)
+        if (!input.done && input.result) return input
       }
       else if ((!need || need.fuel) && !fuel) {
-        // Fuel: coal ore already in view (underground) before a walk to the trees.
-        const coalNear = inView(ctx, 'coal').length > 0
-        await acquire(coalNear ? 'coal' : 'planks', coalNear ? 1 : 2)
+        // Fuel: while already inside the planned branch mine, keep mining coal
+        // underground instead of climbing out to gather planks (which bounced
+        // back to coal as soon as surface coal ore entered view: live 2026-11-28 13:49-13:55 JST).
+        const coalNear = inMine || inView(ctx, 'coal').length > 0
+        const fuelResult = await acquire(coalNear ? 'coal' : 'planks', coalNear ? 1 : 2)
+        if (!fuelResult.done && fuelResult.result) return fuelResult
       }
     } else if (recipe) {
       const times = atHome ? target - held(name) : 1
@@ -272,7 +312,14 @@ function createDragonSupplies (ctx) {
       // A look that brought it no nearer (no log, no stick made, no table put down) is a failed try; after three
       // it is left, and the digging goes on.
       await own('stone_pickaxe', digger(), WOOD, DIGGER_SAYS)
-    } else if (plannedMining) return mining.requestMine(ctx, { resource: name, targetHeld: target })
+    } else if (plannedMining) {
+      const out = await mining.requestMine(ctx, { resource: name, targetHeld: target })
+      // If local carry-weapon gave up (no nearby tree) while armed-entry refuses
+      // the mine, acquire a stone_sword through normal supply roaming so the Bot
+      // does not deadlock on MINE_UNARMED (live 2026-11-27 20:06-20:30 JST).
+      if (out?.result?.code === 'MINE_UNARMED' && !cancelled() && !makingSword) return acquire('stone_sword', 1)
+      return out
+    }
     else if (SOURCES[name] || MOBS[name]) {
       const returning = await mining.beforeSurfaceSupply(ctx)
       if (returning) return returning

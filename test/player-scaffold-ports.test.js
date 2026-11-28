@@ -120,3 +120,34 @@ test('off the grid mid-stair, a refused step-down still lets the ordinary landin
   assert.equal(await ports.walk({ x: 3.5, y: 64, z: 0.5 }), true)
   assert.equal(settled, 1)
 })
+
+test('mine returns promptly when mining fails or stops instead of waiting 35s', async () => {
+  let clock = 0
+  let miningStatus = { phase: 'idle', reason: null }
+  const operations = {
+    movement: { start: () => {} },
+    mining: {
+      preview: () => ({ ready: true }),
+      start: () => { miningStatus = { phase: 'mining', reason: null } },
+      status: () => miningStatus
+    }
+  }
+  const ports = createScaffoldPorts({
+    operations,
+    getBlock: (x, y, z) => x === 1 && y === 65 && z === 0
+      ? { known: true, name: 'minecraft:oak_log', boundingBox: 'block' }
+      : { known: true, name: y <= 63 ? 'minecraft:stone' : 'minecraft:air', boundingBox: y <= 63 ? 'block' : 'empty' },
+    getFeet: () => ({ x: 0.5, y: 64, z: 0.5 }),
+    getInventory: () => ({ known: true, items: [] }),
+    getMotion: () => ({ phase: 'idle' }),
+    pillarStep: async () => ({}),
+    sleep: async ms => {
+      clock += ms
+      if (clock >= 200) miningStatus = { phase: 'failed', reason: '採掘対象への視線が遮られました。' }
+    },
+    now: () => clock
+  })
+  assert.equal(await ports.mine({ x: 1, y: 65, z: 0 }), false)
+  assert.ok(clock < 1000, `expected early return on failed mining, elapsed=${clock}ms`)
+  assert.equal(ports.why(), 'MINE_FAILED:採掘対象への視線が遮られました。')
+})

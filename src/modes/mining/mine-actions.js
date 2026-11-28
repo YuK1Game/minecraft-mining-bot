@@ -127,13 +127,18 @@ function createMineActions (ctx) {
       // The count may stay short for good when the material was used for other work after the unanswered send (live
       // 2026-11-26 08:37-08:42 JST: cobblestone 70 -> 30 by crafting, place:9739,16,10216 held every dig). After a minute
       // the server's own audit of the cell, received as air, is the evidence; before that the count still guards.
+      // Live 2026-11-27 15:56-15:59 JST: a placement timeout sets shared.inventoryUncertain=true, making inventory()
+      // return null. Let minePlacementAudit run its fresh inventory resync first instead of rejecting on null before
+      // the audit, then enforce the received inventory count after the audit completes.
       const old = (ctx.now ?? Date.now)() - (Number.isFinite(pending.at) ? pending.at : 0) > 60000
+      const invBefore = inventory()
       if (pending.retryAfterAudit || !Number.isSafeInteger(before) || before <= 0 ||
-        (!old && (held(inventory(), name) ?? 0) < before) || !air(block(position))) return false
+        (!old && invBefore && (held(invBefore, name) ?? 0) < before) || !air(block(position))) return false
       const audit = await ctx.runtime.minePlacementAudit?.(position, { signal: ctx.signal })
+      const invAfter = inventory()
       if (audit?.target?.serverConfirmed !== true || !same(scope) || state.pendingAction !== pending || !air(block(position)) ||
-        (!old && (held(inventory(), name) ?? 0) < before)) return false
-      evidence = { kind: 'current_target_air', count: held(inventory(), name), ...audit }
+        (!old && (!invAfter || (held(invAfter, name) ?? 0) < before))) return false
+      evidence = { kind: 'current_target_air', count: held(invAfter, name), ...audit }
     }
 
     const previous = state.lastReconciledPlacement
@@ -239,7 +244,8 @@ function createMineActions (ctx) {
     let placed = false
     try { placed = await house.place(name, plan) } catch (error) { ctx.log?.('採掘場: ' + String(error.code ?? error.message).slice(0, 120)) }
     if (!same(start.scope)) return interrupted('MINE_SCOPE_CHANGED')
-    if (placed && matches(position, name, plan) && held(inventory(), name) <= before - 1 && inventory()) {
+    const countDropped = held(inventory(), name) <= before - 1
+    if (placed && matches(position, name, plan) && inventory() && (countDropped || !supportFill)) {
       // Commit this received support together with clearing the placement
       // intent. A later executor checkpoint failure/reload cannot lose the
       // proof and mistake our temporary floor for somebody else's block.

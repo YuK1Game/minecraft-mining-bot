@@ -363,7 +363,7 @@ function createReturnSteps ({ goal, ports, flow }) {
     if (out.code === 'CONTAINER_FULL') {
       rememberFull(goalNow, at, capacity())
       goalNow.target = null
-      return { ...(moved > 0 ? partial : completed)('CONTAINER_FULL', { progress: out.progress, remaining: out.remaining, evidence: out.evidence }), next: 'container' }
+      return { ...(moved > 0 ? partial : completed)('CONTAINER_FULL', { progress: out.progress, remaining: out.remaining, evidence: { ...out.evidence, chest: at } }), next: 'container' }
     }
     // Pushed away or the line to the chest closed since the approach: another place to stand.
     const moveOn = ['CONTAINER_NOT_IN_REACH', 'CONTAINER_NOT_VISIBLE'].includes(out.code) ? { next: 'approach' } : {}

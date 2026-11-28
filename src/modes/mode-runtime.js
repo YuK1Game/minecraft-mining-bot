@@ -58,6 +58,7 @@ const { createScheduler } = require('../common/runtime-scheduler')
 const { createWorkDispatcher, readSpatialContext } = require('./work-dispatcher')
 const { createIncidentRecorder } = require('./incident-snapshot')
 const { createFieldChestLedger, fieldChestsFile } = require('./player-field-chests')
+const { createStandstillWatch } = require('./standstill-watch')
 
 function attachModeOperations (operations, runtime, { root = path.resolve(__dirname, '..', '..') } = {}) {
   const shared = runtime.host().shared, file = modeFile(root), log = text => runtime.host().log(text)
@@ -481,6 +482,41 @@ function attachModeOperations (operations, runtime, { root = path.resolve(__dirn
     startPlayer: () => player.start(),
     stopPlayer: reason => player.stop(reason)
   }
+  const standstill = createStandstillWatch({
+    active: () => control.get() === 'player' && shared.playerWanted === true && runtime.raw()?.phase === 'spawned',
+    getFeet: () => { const p = where(); return p ? { x: p.x, y: p.y - 1.62, z: p.z } : null },
+    inspect: () => {
+      const ps = player.status()
+      const mining = (() => { try { return operations.mining?.status?.() } catch { return null } })()
+      const motion = (() => { try { return runtime.motion?.() } catch { return null } })()
+      const travel = (() => { try { return quarry.travelStatus?.() } catch { return null } })()
+      const combat = (() => { try { return operations.combat?.status?.() } catch { return null } })()
+      const furnace = (() => { try { return operations.furnace?.snapshot?.() } catch { return null } })()
+      const crafting = (() => { try { return operations.crafting?.snapshot?.() } catch { return null } })()
+      const chest = (() => { try { return operations.chest?.snapshot?.() } catch { return null } })()
+      const target = mining?.activeTarget ? `${mining.activeTarget.x},${mining.activeTarget.y},${mining.activeTarget.z}` : null
+      return {
+        playerReason: ps?.reason,
+        playerDecision: ps?.decision,
+        combatActive: combat?.phase === 'fighting' || combat?.active === true,
+        fleeActive: flee.status().active === true,
+        coverActive: cover.status().active === true,
+        miningPhase: mining?.phase ?? null,
+        miningTarget: target,
+        motionPhase: motion?.phase ?? null,
+        travelBusy: travel?.busy === true,
+        travelPhase: travel?.phase ?? null,
+        foodActive: food.status().active === true || eating(),
+        craftActive: crafting?.pendingRequestId != null || crafting?.openContainer != null,
+        chestActive: chest?.busy === true || chest?.window != null,
+        furnaceActive: furnace?.busy === true || furnace?.waitingOutput === true || furnace?.window != null,
+        inventoryUncertain: shared.inventoryUncertain === true,
+        nearDanger: danger() ? (dangerOf.text?.() ?? '敵接近') : null
+      }
+    },
+    log
+  })
+  scheduler.every('standstill-watch', 1000, () => { standstill.tick() }, { preventOverlap: false })
   return operations.mode
 }
 

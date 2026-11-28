@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test'), assert = require('node:assert/strict')
 const { observationWorld } = require('./helpers/branch-mine-observation-world')
-const { nextMine, originAt } = require('../src/modes/mining/mine-sites')
+const { nextMine, originAt, ensureMineLayer } = require('../src/modes/mining/mine-sites')
 const { createMineGeometry } = require('../src/modes/mining/mine-geometry')
 const { mineWorldScope } = require('../src/modes/mining/mine-state')
 const { observeCandidate, observationStand, MAX_MOVES } = require('../src/modes/mining/mine-observation')
@@ -189,4 +189,50 @@ test('a retired mine continues from an exhausted nearby search to a received out
   assert.deepEqual(mine.sites.map(site => site.plan.id), [previous.id])
   assert.equal(mine.search, undefined)
   assert.equal(f.walks.length, 0, 'received terrain can be planned from a distance')
+})
+
+test('ensureMineLayer travels back to the mine entrance when lower-layer cells at a distant mine are unreceived (live 2026-11-27 13:56 JST)', async () => {
+  const f = observationWorld()
+  const plan = createMineGeometry({
+    scope: mineWorldScope(f.current), anchor: { x: 100, z: 100 }, direction: 'east',
+    surfaceY: 64, upperY: 48, width: 16, length: 16
+  })
+  const branch = { version: 1, plan, progress: { upper: { cursor: 0 } }, request: null, failures: {} }
+  f.ctx.memory.early.mine.branch = branch
+  const traveled = []
+  let arrived = null
+  const origFeet = f.ctx.getFeet
+  f.ctx.getFeet = () => arrived ?? origFeet()
+  f.ctx.minePorts.confirmPosition = async target => ({ status: 'completed', code: 'MINE_POSITION_CONFIRMED', serverConfirmed: true, evidence: { target } })
+  f.ctx.travelTo = async ({ destination }) => {
+    traveled.push(destination)
+    arrived = { x: plan.shaft.approach.x, y: plan.shaft.approach.y, z: plan.shaft.approach.z }
+    f.put({ x: Math.floor(plan.shaft.approach.x), y: plan.shaft.approach.y - 1, z: Math.floor(plan.shaft.approach.z) }, 'grass_block')
+    f.put({ x: Math.floor(plan.shaft.approach.x), y: plan.shaft.approach.y, z: Math.floor(plan.shaft.approach.z) }, 'air')
+    f.put({ x: Math.floor(plan.shaft.approach.x), y: plan.shaft.approach.y + 1, z: Math.floor(plan.shaft.approach.z) }, 'air')
+  }
+  const out = await ensureMineLayer(f.ctx, branch, { resource: 'diamond', targetHeld: 3 })
+  assert.equal(traveled.length, 1, `traveled to distant mine entrance: ${JSON.stringify(out)}`)
+  assert.equal(traveled[0].x, Math.floor(plan.shaft.approach.x))
+  assert.equal(traveled[0].z, Math.floor(plan.shaft.approach.z))
+  assert.equal(out.code, 'MINE_OBSERVATION_RECEIVED', JSON.stringify(out))
+  assert.equal(branch.extensionSearch, undefined, 'extensionSearch cleared after returning to the mine')
+})
+
+test('observeMineRuntime batches up to MAX_SECTIONS_PER_OBSERVE (24) sections per pass while keeping server bounds', async () => {
+  const { MAX_SECTIONS_PER_OBSERVE } = require('../src/modes/mining/mine-runtime-observe')
+  assert.equal(MAX_SECTIONS_PER_OBSERVE, 24)
+  const f = observationWorld()
+  const cells = []
+  for (let cx = 2; cx <= 5; cx++) {
+    for (let cz = -1; cz <= 1; cz++) {
+      f.announce(cx, cz)
+      for (let sy = 0; sy <= 2; sy++) cells.push({ x: cx * 16 + 8, y: sy * 16 + 8, z: cz * 16 + 8 })
+    }
+  }
+  // 4 x 3 x 3 = 36 unknown sections -> batched cleanly within MAX_SECTIONS_PER_OBSERVE calls
+  const out = await observeMineRuntime(f.rt, { cells })
+  assert.equal(out.code, 'MINE_TERRAIN_REQUESTED')
+  assert.ok(out.evidence.requested > 8, `requested=${out.evidence.requested}`)
+  assert.ok(out.evidence.packets > 0 && out.evidence.packets <= MAX_SECTIONS_PER_OBSERVE * 3, `packets=${out.evidence.packets}`)
 })

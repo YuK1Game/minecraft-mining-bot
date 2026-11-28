@@ -14,6 +14,7 @@ function publicAuth (data, now = Date.now()) {
   return { code: data.user_code, url: 'https://www.microsoft.com/link', expiresAt: now + seconds * 1000 }
 }
 function connectionFailure (error) {
+  if (error?.code === 'BOT_ALREADY_RUNNING' && typeof error.message === 'string' && error.message.trim()) return error.message
   if (error?.code === 'REALM_JOIN_UNAVAILABLE' && error.statusCode === 503) return 'Realmsの参加先取得が一時的に利用できません（HTTP 503）。再試行の上限に達しました。時間をおいて一覧取得からやり直してください。'
   if (error?.code === 'REALM_JOIN_FAILED' && Number.isInteger(error.statusCode) && error.statusCode >= 400 && error.statusCode <= 599) return `Realmsの参加先取得に失敗しました（HTTP ${error.statusCode}）。`
   return 'Botの接続処理に失敗しました。ターミナルのエラーを確認してください。'

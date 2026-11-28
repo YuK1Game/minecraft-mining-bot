@@ -5,6 +5,7 @@ const {walkCell}=require('./mine-excavate')
 const {reachLayer,walkLayer,leaveMine}=require('./mine-route')
 const {reachStorage}=require('./mine-stock')
 const {insideMine}=require('./mine-location')
+const {veinCellClosed}=require('./mine-vein-fill')
 
 function veinLayer(branch){
   const vein=branch.vein,layer=branch.plan.layers.find(p=>p.id===(vein.layer??branch.request?.layer))
@@ -38,7 +39,7 @@ async function prepareVeinReturn(ctx,branch){
   if(!live(ctx,before))return stopped()
   const vein=branch.vein,layer=veinLayer(branch)
   if(!layer)return blocked('MINE_VEIN_LAYER_INVALID','未完の鉱脈と採掘層の記録を照合します。','owner_released')
-  const needed=vein.opened.filter(p=>!solid(at(ctx,p))).length
+  const needed=vein.opened.filter(p=>!veinCellClosed(at(ctx,p))).length
   if(count(ctx,'cobblestone')<needed){
     vein.closing=true
     const out=await pocketExit(ctx,branch,layer)

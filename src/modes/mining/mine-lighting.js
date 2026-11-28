@@ -133,7 +133,8 @@ function createMineLighting (ctx, actions) {
     }
     for (const p of columns.values()) {
       const at = { ...p, y: p.y + 1 }
-      if (!classifyMineCell(plan, at).allowedDig) result.set(key(at), at)
+      const isLadderShaft = plan.shaft?.ladder && at.x === plan.shaft.ladder.x && at.z === plan.shaft.ladder.z && at.y >= plan.shaft.bottomY && at.y <= plan.shaft.topY
+      if (!classifyMineCell(plan, at).allowedDig && !isLadderShaft) result.set(key(at), at)
     }
     return [...result.values()]
   }

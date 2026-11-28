@@ -183,17 +183,16 @@ function createHouseBuild ({ getMode, shared, agent, ports, hands, build = null,
     return true
   }
 
+  // A standing door is opened rather than broken/removed when interior work remains
+  // (user rule 2026-11-27 15:04 JST: 「ドアは開いて入ります」).
   async function openDoorway (origin, todo = null) {
     const door = placements(origin).find(step => step.id === DOOR)
     const left = remaining(getBlock, origin)
     if (!door || left.some(step => step.id === DOOR) || !(todo ?? left).some(step => !step.ground && workable(step))) return false
     const at = door.position
     if (!matches('oak_door', getBlock(at.x, at.y, at.z))) return false
-    if (!await near(at)) { say('拠点の家: 入口のドアへ近づけません（中の作業が残っています）'); return false }
-    ports.reset?.()
-    const ok = await ports.mine(at, { accessPreparation: 'house_door', expectedName: getBlock(at.x, at.y, at.z)?.name })
-    say(ok ? '拠点の家: 中の作業が残っているため、入口のドアを外しました（最後に付け直します）' : `拠点の家: 入口のドアを外せません（${ports.why() ?? '不明'}）`)
-    return ok
+    if (!await openEntrance()) say('拠点の家: 入口のドアを開けられません（中の作業が残っています）')
+    return false
   }
 
   async function enterForChests (origin, aborted) {

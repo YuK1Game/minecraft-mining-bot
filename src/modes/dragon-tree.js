@@ -32,11 +32,60 @@ const { cellRest } = require('./supply-cell-rest')
 const { standable } = require('./house/house-steps')
 const { createBuildWalk } = require('./player-build-walk')
 const { indoors } = require('./house/house-outdoors')
+const { safeAccessPlant, treeRayPlants, ACCESS_LIMIT } = require('../actions/action-access')
 
 const MAX = 128, TALL = 24, WIDE = 12, FAR_M = 48, REACH_UP = 6, TRIES_A_STEP = 3
 const LOG = /^(?:minecraft:)?(?!stripped_)[a-z_]+_(?:log|stem)$/
 const WORKING = { phase: 'working', reason: '伐り始めた木を最後まで伐っています。' }
 const key = p => `${p.x},${p.y},${p.z}`
+const ACCESS_SIDES = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, -1, 0], [0, 1, 0]]
+
+// Clears dry natural vines/leaf-litter blocking sight to a log (live 2026-11-27 11:55-12:00 JST:
+// swamp/forest oak trunks wrapped on all four sides by vines caused 25+ consecutive sight skips).
+async function clearTreeAccess (ctx, target) {
+  if (!ctx?.hands?.canMine || !ctx.hands.mine || ctx.cancelled?.()) return false
+  if (ctx.hands.canMine(target)) return true
+  const read = p => {
+    const block = ctx.getBlock(p.x, p.y, p.z)
+    return block ? { ...block, position: block.position ?? { x: p.x, y: p.y, z: p.z } } : block
+  }
+  const tried = new Set()
+  for (let count = 0; count < ACCESS_LIMIT; count++) {
+    if (ctx.cancelled?.()) return false
+    if (ctx.hands.canMine(target)) return true
+    const feet = ctx.getFeet?.()
+    if (!feet) return false
+    const eye = { x: feet.x, y: feet.y + 1.62, z: feet.z }
+    const candidates = []
+    const seen = new Set()
+    const add = plant => {
+      if (!plant?.position) return
+      const id = key(plant.position)
+      if (tried.has(id) || seen.has(id)) return
+      seen.add(id)
+      candidates.push(plant)
+    }
+    const ray = treeRayPlants(eye, target, read, { allowLeaves: true }) ?? []
+    for (const plant of ray) add(plant)
+    const adjacent = ACCESS_SIDES
+      .map(([dx, dy, dz]) => read({ x: target.x + dx, y: target.y + dy, z: target.z + dz }))
+      .filter(block => safeAccessPlant(block, read, { allowLeaves: true }))
+      .sort((a, b) =>
+        Math.hypot(a.position.x + 0.5 - eye.x, a.position.y + 0.5 - eye.y, a.position.z + 0.5 - eye.z) -
+        Math.hypot(b.position.x + 0.5 - eye.x, b.position.y + 0.5 - eye.y, b.position.z + 0.5 - eye.z)
+      )
+    for (const plant of adjacent) add(plant)
+    let chosen = null
+    for (const plant of candidates) {
+      const plantTarget = { x: plant.position.x, y: plant.position.y, z: plant.position.z, accessPreparation: 'tree_access', expectedName: plant.name }
+      if (ctx.hands.canMine(plantTarget)) { chosen = plantTarget; break }
+    }
+    if (!chosen) break
+    tried.add(key(chosen))
+    if (!await ctx.hands.mine(chosen)) break
+  }
+  return !ctx.cancelled?.() && ctx.hands.canMine(target)
+}
 
 // The logs joined to this one (the 26 cells around each, the same kind). `skip(block, cell)`: logs that are not to
 // be cut (protected ones). null: not a log, or not one tree.
@@ -141,9 +190,10 @@ async function finishTree (ctx, { now = Date.now, sleep = ms => new Promise(reso
   const can = cell => !ctx.cancelled() && ctx.hands.canMine(cell)
   for (const cell of open.slice(0, TRIES_A_STEP)) {
     const before = far(cell)
-    // From here; from under it where the trunk stood; from beside the trunk's foot; from the trunk's column entered lower.
+    // From here; from under it where the trunk stood; from beside the trunk's foot; clearing vines; from the trunk's column entered lower.
     if (!can(cell)) { const stand = under(ctx.getBlock, cell); if (stand) await ctx.hands.walk(stand) }
     if (!can(cell) && !ctx.cancelled()) await ctx.hands.approach({ x: cell.x + 0.5, y: foot.y, z: cell.z + 0.5 }, 2.7, { avoid: indoors(ctx) })
+    if (!can(cell) && !ctx.cancelled()) await clearTreeAccess(ctx, cell)
     if (!can(cell) && !ctx.cancelled()) await burrow(ctx, tree, cell)
     if (ctx.cancelled()) return WORKING
     if (can(cell) && await ctx.hands.mine(cell)) {
@@ -164,4 +214,4 @@ async function finishTree (ctx, { now = Date.now, sleep = ms => new Promise(reso
   return still.length ? leave(`届かない原木が ${still.length} 個残りました。この木はここまでにします`) : leave(`木を1本伐り終えました（原木 ${tree.logs.length} 個）`)
 }
 
-module.exports = { treeAt, beginTree, finishTree, MAX }
+module.exports = { treeAt, beginTree, finishTree, clearTreeAccess, MAX }

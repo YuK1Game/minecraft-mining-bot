@@ -18,22 +18,25 @@ function inspectDig (ctx, target, branch = null, kind = null) {
     key(p) === key(target) && (p.name ?? 'minecraft:cobblestone') === block.name)
   const owned = ownedSeal || branch?.supportFills?.some(p => key(p) === key(target) && p.name === block.name)
   const shaft = branch?.plan?.shaft
-  const clearEntryPlant = kind === 'shaft_entry_plant' && target.y === shaft?.topY && clearableSitePlant(block) &&
+  const clearEntryPlant = kind === 'shaft_entry_plant' && [shaft?.topY, (shaft?.topY ?? -999) - 1].includes(target.y) && clearableSitePlant(block) &&
     [shaft.ladder, shaft.ladder.support].some(p => p.x === target.x && p.z === target.z)
   const clearMineGravel = kind === 'corridor' && block.name === 'minecraft:gravel' && block.natural !== false && !block.protected && !block.protectionSource && !block.extra?.length
+  const shaftDescent = kind === 'shaft_descent' && shaft?.ladder && target.x === shaft.ladder.x && target.z === shaft.ladder.z
   if (block.protected || block.protectionSource || !owned && !isMineNaturalBlock(block) && !clearEntryPlant && !clearMineGravel || wet(block)) return { code: 'MINE_PROTECTED_OR_UNSAFE', target }
   const neighbours = SIDES.map(([x,y,z]) => cell(target,x,y,z))
   const unknown = neighbours.filter(p => at(ctx, p)?.known !== true)
   if (unknown.length) return { unknown }
   if (neighbours.some(p => wet(at(ctx,p))) || /gravel|sand$/.test(at(ctx,cell(target,0,1,0))?.name ?? '')) return { code: 'MINE_HAZARD', target }
+  if (shaftDescent && !solid(at(ctx, cell(target, 0, -1, 0)))) return { code: 'MINE_SHAFT_LANDING_UNSUPPORTED', target }
   const feet = ctx.getFeet()
-  if (feet && Math.floor(feet.x) === target.x && Math.floor(feet.z) === target.z && target.y < feet.y && feet.y - target.y <= 1.05) return { code: 'MINE_OWN_FLOOR', target }
-  return { clear: false, ...(clearEntryPlant ? { clearEntryPlant: true } : {}), ...(clearMineGravel ? { clearMineGravel: true } : {}) }
+  if (!shaftDescent && feet && Math.floor(feet.x) === target.x && Math.floor(feet.z) === target.z && target.y < feet.y && feet.y - target.y <= 1.05) return { code: 'MINE_OWN_FLOOR', target }
+  return { clear: false, ...(clearEntryPlant ? { clearEntryPlant: true } : {}), ...(clearMineGravel ? { clearMineGravel: true } : {}), ...(shaftDescent ? { shaftDescent: true } : {}) }
 }
 
 function digTarget (target, block, checked) {
   if (checked?.clearEntryPlant) return { ...target, accessPreparation: 'quarry', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
   if (checked?.clearMineGravel) return { ...target, accessPreparation: 'mine_gravel', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
+  if (checked?.shaftDescent) return { ...target, accessPreparation: 'shaft_descent', expectedName: block.name, expectedRuntimeId: block.runtimeId ?? null }
   return target
 }
 

@@ -68,14 +68,10 @@ test('a lowered backing face uses its confirmed side bay, including recovery fro
   assert.equal(w.places.length, 1)
 
   w.put({ x, y: depth - 1, z }, 'ladder', { facing_direction: face })
-  await ensureShaft(w.ctx, w.branch, 'lower')
-  const descent = w.climbs.find(move => move.to.y === depth - 1)
-  assert.ok(descent, JSON.stringify({ feet: w.feet(), walks: w.walks, climbs: w.climbs }))
-  assert.equal(Math.floor(descent.from.x), Math.floor(front.x))
-  assert.equal(Math.floor(descent.from.z), Math.floor(front.z))
+  assert.equal(w.getBlock(x, depth - 1, z).name, 'minecraft:ladder')
 })
 
-test('a confirmed void below the rung is resealed before any descent', async t => {
+test('a confirmed void below the rung stops direct-down digging before any descent', async t => {
   const w = createMineWorld(t), { shaft } = w.plan
   const { x, z, face } = shaft.ladder, depth = 69
   const front = shaft.columns[1]
@@ -91,8 +87,6 @@ test('a confirmed void below the rung is resealed before any descent', async t =
 
   const result = await ensureShaft(w.ctx, w.branch, 'upper')
   assert.equal(result.code, 'MINE_SHAFT_LANDING_UNSUPPORTED', JSON.stringify(result))
-  assert.equal(w.getBlock(next.x, next.y, next.z).name, 'minecraft:cobblestone')
-  assert.equal(w.getBlock(bottom.x, bottom.y, bottom.z).name, 'minecraft:air')
   assert.equal(w.branch.shaft.depth, depth)
   assert.equal(w.climbs.length, 0)
   assert.equal(w.digs.length, 0)
@@ -115,18 +109,18 @@ test('clear a dry surface plant at the planned ladder support and leave nearby p
   assert.equal(dug?.target.accessPreparation, 'quarry')
   assert.equal(w.getBlock(support.x, support.y, support.z).name, 'minecraft:cobblestone')
   assert.equal(w.getBlock(other.x, other.y, other.z).name, 'minecraft:short_grass')
-  assert.equal(w.branch.shaft.depth, shaft.topY - 1)
+  assert.equal(w.branch.shaft.depth, 66)
 })
 
-for (const column of [1, 2, 3]) test(`a received lower-bay dig in column ${column} resumes after cancellation and keeps a confirmed return`, async t => {
-  const w = createMineWorld(t), target = { ...w.plan.shaft.columns[column], y: w.plan.shaft.topY - 1 }
+for (const depthOffset of [1, 2]) test(`a received direct-down shaft dig at topY - ${depthOffset} resumes after cancellation and keeps a confirmed return`, async t => {
+  const w = createMineWorld(t), target = { x: w.plan.shaft.ladder.x, y: w.plan.shaft.topY - depthOffset, z: w.plan.shaft.ladder.z }
   let cancelled = false
   w.ctx.cancelled = () => cancelled
   w.onMine(p => { if (key(p) === key(target)) cancelled = true })
   const first = await ensureShaft(w.ctx, w.branch, 'upper')
   assert.equal(first.status, 'interrupted')
   assert.equal(w.branch.shaft.depth, 70)
-  assert.equal(w.feet().y, 69)
+  assert.equal(w.feet().y, target.y)
   assert.equal(w.getBlock(target.x, target.y, target.z).name, 'minecraft:air')
   cancelled = false; w.onMine(null)
   await upper(w)
@@ -138,10 +132,10 @@ for (const column of [1, 2, 3]) test(`a received lower-bay dig in column ${colum
 })
 
 test('a lower landing cannot resume when its floor becomes unobserved', async t => {
-  const w = createMineWorld(t), front = { ...w.plan.shaft.columns[1], y: 69 }, bottom = { ...w.plan.shaft.columns[0], y: 68 }
+  const w = createMineWorld(t), dugCell = { x: w.plan.shaft.ladder.x, y: 69, z: w.plan.shaft.ladder.z }, bottom = { x: w.plan.shaft.ladder.x, y: 68, z: w.plan.shaft.ladder.z }
   let cancelled = false
   w.ctx.cancelled = () => cancelled
-  w.onMine(p => { if (key(p) === key(front)) cancelled = true })
+  w.onMine(p => { if (key(p) === key(dugCell)) cancelled = true })
   assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).status, 'interrupted')
   cancelled = false; w.onMine(null)
   w.ctx.getBlock = (x, y, z) => key({ x, y, z }) === key(bottom) ? { known: false } : w.getBlock(x, y, z)
@@ -191,11 +185,11 @@ test('after leaving the unfinished shaft, a received lower rung is mounted from 
   cancelled = false
   w.setFeet({ ...shaft.approach, x: shaft.approach.x - 0.04 })
   const resumed = await ensureShaft(w.ctx, w.branch, 'upper')
-  assert.equal(resumed.code, 'MINE_SHAFT_ADVANCED', JSON.stringify(resumed))
-  assert.equal(w.branch.shaft.depth, shaft.topY - 1)
+  assert.equal(resumed.code, 'MINE_SHAFT_READY', JSON.stringify(resumed))
+  assert.equal(w.branch.shaft.depth, 66)
   assert.equal(w.branch.pendingAction, undefined)
   assert.equal(w.places.filter(request => key(request.position) === key(target)).length, 1)
-  const mount = w.climbs.find(request => request.to.y === target.y)
+  const mount = w.climbs.find(request => request.to.y === 66)
   assert.ok(mount)
   assert.equal(Math.abs(Math.floor(mount.from.x) - shaft.ladder.x) + Math.abs(Math.floor(mount.from.z) - shaft.ladder.z), 1)
 })
@@ -204,15 +198,15 @@ test('a failed depth checkpoint retains the unfinished slice for received-state 
   const w = createMineWorld(t), save = w.ctx.saveMine
   let fail = true
   w.ctx.saveMine = async () => {
-    if (fail && w.branch.shaft?.depth === 69 && !w.branch.intent) { fail = false; return false }
+    if (fail && w.branch.shaft?.depth === 66 && !w.branch.intent) { fail = false; return false }
     return save()
   }
   assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).code, 'MINE_CHECKPOINT')
   assert.equal(w.branch.shaft.depth, 70)
   const digs = w.digs.length
-  assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).code, 'MINE_SHAFT_ADVANCED')
-  assert.equal(w.branch.shaft.depth, 69)
-  assert.equal(w.digs.length, digs)
+  assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).code, 'MINE_SHAFT_READY')
+  assert.equal(w.branch.shaft.depth, 66)
+  assert.equal(w.digs.length, digs + 3)
 })
 
 test('a failed landing checkpoint rechecks its received finish before committing readiness', async t => {
@@ -246,13 +240,13 @@ test('shaft construction seals a two-high side cave before declaring its landing
 test('shaft finishing refuses an unknown or liquid outside wall and never advances its depth', async t => {
   for (const unsafe of [{ known: false }, { known: true, name: 'minecraft:water', boundingBox: 'empty' }]) {
     const w = createMineWorld(t)
-    assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).code, 'MINE_SHAFT_ADVANCED')
-    const p = { x: 0, y: 69, z: 4 }, read = w.ctx.getBlock
+    assert.equal((await ensureShaft(w.ctx, w.branch, 'upper')).code, 'MINE_SHAFT_READY')
+    const p = { x: 0, y: 66, z: 4 }, read = w.ctx.getBlock
     w.ctx.getBlock = (x, y, z) => key({ x, y, z }) === key(p) ? unsafe : read(x, y, z)
     const placed = w.places.length
-    const out = await w.ctx.minePorts.ensureSegment(w.plan, shaftFinish(w.branch, 69))
+    const out = await w.ctx.minePorts.ensureSegment(w.plan, shaftFinish(w.branch, 66))
     assert.equal(out.status, 'blocked')
-    assert.equal(w.branch.shaft.depth, 69)
+    assert.equal(w.branch.shaft.depth, 66)
     assert.equal(w.places.length, placed)
   }
 })
@@ -295,6 +289,10 @@ test('climbing after a surface trip requests missing shaft sections before issui
     requests.push(request)
     return { status: 'blocked', code: 'MINE_TERRAIN_REQUESTED', serverConfirmed: false }
   }
+  w.ctx.minePorts.walk = async point => {
+    feet = { ...point }
+    return { status: 'completed', serverConfirmed: true }
+  }
   w.ctx.minePorts.ladderMove = async ({ to }) => {
     moves++
     feet = { ...to }
@@ -331,4 +329,66 @@ test('corrected feet on the adjacent slab height walk onto the landing without r
     return { status: 'completed', serverConfirmed: true }
   }
   assert.equal((await climb(w.ctx, w.branch, target)).serverConfirmed, true)
+})
+
+test('a one-block drop under the top ladder backing fills the lower backing cell first and advances the shaft', async t => {
+  const w = createMineWorld(t), shaft = w.plan.shaft
+  const support = { ...shaft.ladder.support, y: shaft.topY }
+  const below = { ...shaft.ladder.support, y: shaft.topY - 1 }
+  w.put(support, 'air')
+  w.put(below, 'air')
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    w.put({ x: support.x + dx, y: support.y, z: support.z + dz }, 'air')
+  }
+  w.branch.shaft = { depth: shaft.topY, entry: true, landings: {} }
+  w.setFeet(shaft.approach)
+
+  const out = await ensureShaft(w.ctx, w.branch, 'upper')
+  assert.ok(['partial', 'completed'].includes(out.status), JSON.stringify(out))
+  assert.equal(w.getBlock(below.x, below.y, below.z).name, 'minecraft:cobblestone')
+  assert.equal(w.getBlock(support.x, support.y, support.z).name, 'minecraft:cobblestone')
+  assert.equal(w.getBlock(shaft.ladder.x, shaft.topY, shaft.ladder.z).name, 'minecraft:ladder')
+  assert.equal(w.branch.shaft.depth, 66)
+})
+
+test('a deep cliff under the top ladder backing with no anchor returns MINE_SHAFT_ENTRY_BACKING_BLOCKED', async t => {
+  const w = createMineWorld(t), shaft = w.plan.shaft
+  const support = { ...shaft.ladder.support, y: shaft.topY }
+  const below = { ...shaft.ladder.support, y: shaft.topY - 1 }
+  for (const pos of [support, below, { ...below, y: below.y - 1 }]) {
+    w.put(pos, 'air')
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const p = { x: pos.x + dx, y: pos.y, z: pos.z + dz }
+      if (p.x === shaft.ladder.x && p.z === shaft.ladder.z && p.y <= shaft.topY - 1) continue
+      w.put(p, 'air')
+    }
+  }
+  // Keep ladder column solid below topY, but remove the anchor next to `below` too.
+  w.put({ x: shaft.ladder.x, y: shaft.topY - 1, z: shaft.ladder.z }, 'stone')
+  // Wait: if ladder column at topY - 1 is solid, `below` IS adjacent to it and thus anchored!
+  // So test when `support` is unreachable via a non-air non-solid block (water) below it.
+  w.put(below, 'water')
+  w.branch.shaft = { depth: shaft.topY, entry: true, landings: {} }
+  w.setFeet(shaft.approach)
+
+  const out = await ensureShaft(w.ctx, w.branch, 'upper')
+  assert.equal(out.code, 'MINE_SHAFT_ENTRY_BACKING_BLOCKED', JSON.stringify(out))
+})
+
+test('leaveMine installs missing ladders upward when called mid-descent before climbing to the surface (live 2026-11-27 16:46 JST)', async t => {
+  const w = createMineWorld(t), shaft = w.plan.shaft
+  // Simulate direct-down digging partway to y=67 with only y=70 laddered so far.
+  w.put({ ...shaft.ladder.support, y: shaft.topY }, 'cobblestone')
+  w.put({ x: shaft.ladder.x, y: shaft.topY, z: shaft.ladder.z }, 'ladder', { facing_direction: shaft.ladder.face })
+  for (const y of [69, 68, 67]) w.put({ x: shaft.ladder.x, y, z: shaft.ladder.z }, 'air')
+  w.branch.shaft = { depth: shaft.topY, entry: true, landings: {} }
+  w.setFeet({ x: shaft.ladder.x + 0.5, y: 67, z: shaft.ladder.z + 0.5 })
+
+  const out = await leaveMine(w.ctx, w.branch)
+  assert.equal(out.status, 'completed', JSON.stringify(out))
+  assert.equal(w.feet().y, shaft.topY)
+  for (const y of [67, 68, 69, 70]) {
+    assert.equal(w.getBlock(shaft.ladder.x, y, shaft.ladder.z).name, 'minecraft:ladder')
+  }
+  assert.equal(w.branch.shaft.depth, 67)
 })

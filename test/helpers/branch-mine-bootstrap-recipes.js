@@ -51,7 +51,8 @@ function attachBootstrapRecipes (w) {
         }
         const take = request.actions.find(a => a.type_id === 'take')
         assert.equal(take.count, recipe.output[0].count * auto.times_crafted)
-        changed.set(take.destination.slot, { slot: take.destination.slot, count: take.count, item_stack_id: ++serial })
+        const destBefore = take.destination.stack_id ? crafting.rawItem(take.destination.slot).count : 0
+        changed.set(take.destination.slot, { slot: take.destination.slot, count: destBefore + take.count, item_stack_id: ++serial })
         send('item_stack_response', { responses: [{ request_id: request.request_id, status: 'ok', containers: [{ slot_type: { container_id: 'hotbar_and_inventory' }, slots: [...changed.values()] }] }] })
         publish(); made.push({ name: names[recipe.output[0].network_id - 1], count: take.count, feet: w.feet() })
       } else {

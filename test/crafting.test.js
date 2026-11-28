@@ -641,3 +641,34 @@ test('a bed: the white recipe takes held white wool named with its variant (live
   assert.equal(plan.ready, true, JSON.stringify(plan))
   assert.equal(plan.recipeNetworkId, 951)
 })
+
+test('crafted stackable output merges into an existing compatible stack instead of fragmenting slots', async () => {
+  const f = fixture()
+  f.slots[0] = item(17, 2, 71)
+  f.slots[3] = item(29, 4, 88)
+  f.crafting.applyPacket('inventory_content', { window_id: 'inventory', input: f.slots })
+  assert.equal(f.crafting.preview('oak_planks').destination, 3)
+  f.crafting.applyPacket('container_open', { window_id: 'inventory', window_type: 'inventory' })
+  const task = f.crafting.craft('oak_planks')
+  const req = f.packets.at(-1).params.requests[0]
+  const take = req.actions.find(a => a.type_id === 'take')
+  assert.equal(take.destination.slot, 3)
+  assert.equal(take.destination.stack_id, 88)
+  assert.equal(take.count, 4)
+  f.crafting.applyPacket('item_stack_response', { responses: [{ request_id: req.request_id, status: 'ok', containers: [
+    { slot_type: { container_id: 'hotbar_and_inventory' }, slots: [{ slot: 0, count: 1, item_stack_id: 71 }, { slot: 3, count: 8, item_stack_id: 109 }] }
+  ] }] })
+  assert.equal((await task).phase, 'completed')
+  assert.equal(f.crafting.rawItem(3).count, 8)
+  assert.equal(f.crafting.rawItem(3).stack_id, 109)
+  assert.equal(f.crafting.rawItem(1).count, 0)
+
+  // Non-stackable output (wooden_pickaxe, stackSize 1) still chooses an empty slot.
+  const f2 = fixture()
+  f2.slots[0] = item(29, 3, 72)
+  f2.slots[1] = item(41, 2, 73)
+  f2.slots[2] = item(57, 1, 74)
+  f2.crafting.applyPacket('inventory_content', { window_id: 'inventory', input: f2.slots })
+  f2.crafting.applyPacket('container_open', { window_id: 'first', window_type: 'workbench', coordinates: { x: 1, y: 64, z: 1 } })
+  assert.equal(f2.crafting.preview('wooden_pickaxe').destination, 3)
+})

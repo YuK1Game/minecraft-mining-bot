@@ -102,7 +102,7 @@ test('no stick, plank or log under the open sky: a log is taken, its tree cut do
   assert.equal(w.said(WOOD).length, 1, log)
   assert.equal(w.said(MADE).length, 1, log)
   assert.deepEqual(w.dig.crafted.filter(output => !/_planks$/.test(output)), [full('stick'), full('stone_sword')], log)
-  assert.ok(w.dig.minedNames.every(name => !/leaves|leaf_litter/.test(name)), w.dig.minedNames.join(' '))
+  assert.ok(w.dig.minedNames.filter(name => !/_log$/.test(name)).every(name => /_leaves$/.test(name)), w.dig.minedNames.join(' '))
   // The tree that log came from is not left half cut (dragon-tree.js).
   assert.equal(w.said(/木を1本伐り終えました/).length, 1, log)
   assert.equal(w.shared.playerTree, undefined)

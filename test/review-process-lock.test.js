@@ -56,3 +56,63 @@ test('process-lock: recovers stale or corrupt lock files left by dead processes'
   assert.equal(recovered.pid, 63002)
   recovered.release()
 })
+
+test('process-lock: recovers stale lock when Windows/OS reuses PID for a newer or non-bot process', t => {
+  const root = tempRoot(t)
+  const file = lockFilePath(root, 'bot')
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.writeFileSync(file, JSON.stringify({
+    pid: 10580,
+    profile: 'bot',
+    startedAt: '2026-11-26T18:24:32.057Z',
+    hostname: 'STORM-PC'
+  }))
+
+  // PID 10580 is alive, but belongs to a newer `npm run dashboard` process.
+  const acquired = acquireProcessLock({
+    root,
+    profile: 'bot',
+    pid: 70001,
+    isAlive: pid => pid === 10580,
+    inspectProcess: () => ({
+      exists: true,
+      startedAtMs: Date.parse('2026-11-27T02:00:14.000Z'),
+      commandLine: 'node.exe npm-cli.js run dashboard'
+    })
+  })
+  assert.equal(acquired.pid, 70001)
+  acquired.release()
+
+  // When the alive PID matches a real Bot process started around lock time, still block.
+  fs.writeFileSync(file, JSON.stringify({
+    pid: 10580,
+    profile: 'bot',
+    startedAt: '2026-11-27T02:00:00.000Z'
+  }))
+  assert.throws(
+    () => acquireProcessLock({
+      root,
+      profile: 'bot',
+      pid: 70002,
+      isAlive: pid => pid === 10580,
+      inspectProcess: () => ({
+        exists: true,
+        startedAtMs: Date.parse('2026-11-27T01:59:58.000Z'),
+        commandLine: 'node --env-file-if-exists=.env src\\main.js --auto'
+      })
+    }),
+    error => error.code === 'BOT_ALREADY_RUNNING' && error.pid === 10580
+  )
+
+  // When process inspection is unavailable (null), fail closed and keep blocking.
+  assert.throws(
+    () => acquireProcessLock({
+      root,
+      profile: 'bot',
+      pid: 70003,
+      isAlive: pid => pid === 10580,
+      inspectProcess: () => null
+    }),
+    error => error.code === 'BOT_ALREADY_RUNNING' && error.pid === 10580
+  )
+})

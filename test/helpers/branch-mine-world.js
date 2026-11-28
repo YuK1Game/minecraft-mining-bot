@@ -48,9 +48,11 @@ function createMineWorld(t){
       walks.push({...target})
     }},
     mining:{preview:([p])=>({ready:visible(p)}),start:([p])=>{
-      const f=feet();if(Math.floor(f.x)===p.x && Math.floor(f.z)===p.z && p.y<f.y && f.y-p.y<=1.05)throw Error('own floor')
+      const f=feet(), isDescent=p.accessPreparation==='shaft_descent'
+      if(!isDescent && Math.floor(f.x)===p.x && Math.floor(f.z)===p.z && p.y<f.y && f.y-p.y<=1.05)throw Error('own floor')
       if(!visible(p) && !/torch$/.test(getBlock(p.x,p.y,p.z).name??''))throw Error('unreachable face')
       const was=getBlock(p.x,p.y,p.z);digs.push({target:{...p},feet:f,name:was.name});put(p,'air')
+      if(isDescent && Math.floor(f.x)===p.x && Math.floor(f.z)===p.z && p.y===Math.floor(f.y)-1)setFeet({x:p.x+0.5,y:p.y,z:p.z+0.5})
       const resource=/diamond_ore$/.test(was.name)?'diamond':/iron_ore$/.test(was.name)?'raw_iron':/copper_ore$/.test(was.name)?'raw_copper':/coal_ore$/.test(was.name)?'coal':/gold_ore$/.test(was.name)?'raw_gold':was.name==='minecraft:stone'?'cobblestone':null
       if(resource)give(resource)
       const above={...p,y:p.y+1};if(getBlock(above.x,above.y,above.z).name==='minecraft:torch'){put(above,'air');give('torch')}
@@ -80,7 +82,7 @@ function createMineWorld(t){
   const branch={version:1,plan,progress:{upper:createMineState(plan,{layer:'upper'}),lower:createMineState(plan,{layer:'lower'})},request:{resource:'raw_iron',targetHeld:8,layer:'upper',requester:'test'},failures:{}}
   const ctx={root,shared:{botMode:'player'},memory:{stage:'early',early:{mine:{branch}}},signal:new AbortController().signal,cancelled:()=>stopped,getBlock,getFeet:feet,operations,now:()=>clock,sleep:async ms=>{clock+=ms},log:line=>lines.push(line),goal:{step(){},fail(){}},
     runtime:{raw:()=>({...raw,position:feet()}),mineState:()=>({...raw,position:feet()}),inventory:()=>inv,host:()=>({world}),mineConfirmPosition:async to=>({serverConfirmed:proof && Math.hypot(feet().x-to.x,feet().y-to.y,feet().z-to.z)<.13}),
-      mineLadderMove:async request=>{try{ladderPlan(request,getBlock,navigator.physics);climbs.push(request);setFeet(request.to);return {status:'completed',serverConfirmed:proof}}catch(error){return {status:'blocked',code:error.code??error.message,serverConfirmed:false}}}},
+      mineLadderMove:async request=>{try{ladderPlan(request,getBlock,navigator.physics);climbs.push(request);if(request.midLadderStop){pose=navigator.physics.fromServer({position:{...request.to,y:request.to.y+1.62},rotation:{yaw:0,pitch:0},gameMode:'survival'})}else{setFeet(request.to)}return {status:'completed',serverConfirmed:proof}}catch(error){return {status:'blocked',code:error.code??error.message,serverConfirmed:false}}}},
     saveMine:async()=>{saved.push(structuredClone(ctx.memory.early.mine));return !stopped},supplies:{acquire:async()=>({done:false})}}
   ctx.hands=createScaffoldPorts({operations,getBlock,getFeet:feet,getInventory:()=>inv,getMotion:()=>({phase:'idle'}),getHealth:()=>20,getHeld:hand,disposed:ctx.cancelled,sleep:ctx.sleep,now:ctx.now})
   ctx.minePorts=createMinePorts(ctx)

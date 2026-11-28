@@ -74,7 +74,7 @@ test('a log taken for the expedition is the first of its tree: the tree is down 
   assert.ok(w.next, `the next work was reached\n${log}`)
   assert.equal(w.next.standing, 0, `logs of the oak standing when the next work began\n${log}`)
   assert.deepEqual(w.dig.minedNames.filter(name => /_log$/.test(name)), ['oak_log', 'oak_log', 'oak_log', 'oak_log'], log)
-  assert.ok(w.dig.minedNames.every(name => !/leaves|leaf_litter/.test(name)), w.dig.minedNames.join(' '))
+  assert.ok(w.dig.minedNames.filter(name => !/_log$/.test(name)).every(name => /_leaves$/.test(name)), w.dig.minedNames.join(' '))
   assert.equal(w.dig.count('oak_log'), 4)
   assert.equal(w.said(BEGUN).length, 1, log)
   assert.equal(BEGUN.exec(w.said(BEGUN)[0])[1], '4')
@@ -82,13 +82,7 @@ test('a log taken for the expedition is the first of its tree: the tree is down 
   assert.equal(w.shared.playerTree, undefined)
   // No other tree was touched.
   assert.equal(w.said(LEFT).length, 0)
-  // This oak has leaves from its second log up: the upper two logs were cut from the trunk's own column, entered one
-  // block lower through the ground, and that ground is back.
-  const ground = w.dig.minedNames.filter(name => !/_log$/.test(name))
-  assert.ok(ground.length >= 1 && ground.length <= 4 && ground.every(name => /^(?:dirt|grass_block)$/.test(name)), ground.join(' '))
-  assert.equal(w.dig.placed.length, ground.length, log)
-  assert.equal(w.said(/掘った地面 \d+ か所を埋め戻しました/).length, 1, log)
-  for (const at of w.dig.placed) assert.equal(w.dig.getBlock(at.x, at.y, at.z).boundingBox, 'block')
+  // Blocking leaves are cleared via tree_access without digging ground around the trunk (user spec 2026-11-27).
   assert.equal(w.dig.getBlock(9884, 65, 10158).boundingBox, 'block', 'the ground under the trunk')
   assert.ok(w.dig.cell().y <= 66, `not on the leaves: ${JSON.stringify(w.dig.cell())}`)
 })
@@ -173,4 +167,56 @@ test('with no tree recorded the step is nothing', async () => {
   const dig = createDigWorld({ ...forest, feet: { x: 9887.5, y: 65, z: 10158.5 } }, { logs: true, outside: () => 'air' })
   assert.equal(await finishTree(dig.ctx), null)
   assert.deepEqual(dig.minedNames, [])
+})
+
+test('a trunk wrapped on all four sides by vines clears the blocking vine before cutting the log (live 2026-11-27 11:55 JST)', async t => {
+  const scene = { ...forest, legend: { ...forest.legend, v: 'vine' }, rows: { ...forest.rows } }
+  for (const y of [66, 67]) {
+    const rows = [...scene.rows[y]]
+    const put = (col, row, ch) => { rows[row] = rows[row].slice(0, col) + ch + rows[row].slice(col + 1) }
+    put(6, 7, 'v'); put(8, 7, 'v'); put(7, 6, 'v'); put(7, 8, 'v')
+    scene.rows[y] = rows
+  }
+  const w = await expedition(t, { scene })
+  await w.pass(60000, { tickMs: 2000 })
+  assert.equal(w.standing(OAK), 0, `vine-wrapped oak was cut down\n${w.lines.join('\n')}`)
+  assert.equal(w.said(DOWN).length, 1, w.lines.join('\n'))
+  assert.ok(w.dig.minedNames.includes('vine'), `vine was cleared: ${w.dig.minedNames.join(',')}`)
+})
+
+test('a log buried on all six sides by solid ground is excluded from inView, while a log behind leaves stays reachable (user spec 2026-11-27)', () => {
+  const { inView } = require('../src/modes/dragon-supply-gather')
+  const cells = new Map([
+    ['0,69,0', { known: true, name: full('dirt'), boundingBox: 'block', extra: [] }],
+    ['0,70,0', { known: true, name: full('oak_log'), boundingBox: 'block', extra: [] }],
+    ['0,71,0', { known: true, name: full('grass_block'), boundingBox: 'block', extra: [] }],
+    ['1,70,0', { known: true, name: full('dirt'), boundingBox: 'block', extra: [] }],
+    ['-1,70,0', { known: true, name: full('dirt'), boundingBox: 'block', extra: [] }],
+    ['0,70,1', { known: true, name: full('dirt'), boundingBox: 'block', extra: [] }],
+    ['0,70,-1', { known: true, name: full('grass_block'), boundingBox: 'block', extra: [] }],
+    ['3,70,0', { known: true, name: full('oak_log'), boundingBox: 'block', extra: [] }]
+  ])
+  const ctx = {
+    shared: {},
+    runtime: { raw: () => ({ dimension: 'overworld' }) },
+    getFeet: () => ({ x: 2.5, y: 70, z: 0.5 }),
+    getBlock: (x, y, z) => cells.get(`${x},${y},${z}`) ?? { known: true, name: full('air'), boundingBox: 'empty', extra: [] }
+  }
+  const visible = inView(ctx, 'log')
+  assert.deepEqual(visible.map(p => `${p.x},${p.y},${p.z}`), ['3,70,0'])
+})
+
+test('a log wrapped on all four sides by leaves clears only the blocking leaf before cutting the log (user spec 2026-11-27)', async t => {
+  const scene = { ...forest, legend: { ...forest.legend, L: 'oak_leaves' }, rows: { ...forest.rows } }
+  for (const y of [66, 67]) {
+    const rows = [...scene.rows[y]]
+    const put = (col, row, ch) => { rows[row] = rows[row].slice(0, col) + ch + rows[row].slice(col + 1) }
+    put(6, 7, 'L'); put(8, 7, 'L'); put(7, 6, 'L'); put(7, 8, 'L')
+    scene.rows[y] = rows
+  }
+  const w = await expedition(t, { scene })
+  await w.pass(60000, { tickMs: 2000 })
+  assert.equal(w.standing(OAK), 0, `leaf-wrapped oak was cut down\n${w.lines.join('\n')}`)
+  assert.equal(w.said(DOWN).length, 1, w.lines.join('\n'))
+  assert.ok(w.dig.minedNames.includes('oak_leaves'), `blocking leaf was cleared: ${w.dig.minedNames.join(',')}`)
 })

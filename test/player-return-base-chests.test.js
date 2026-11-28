@@ -141,3 +141,31 @@ test('a preview that refuses for a reason that is not the place does not make a 
   await sim.run(runtime, { until: () => sim.held('diamond') > 0, ms: 2400000 })
   assert.equal(sim.held('diamond'), 20, sim.log.slice(-30).join('\n'))
 })
+
+// Live 2026-11-27 12:44:33 JST: three distinct chests at the base returned CONTAINER_FULL in a row;
+// store() cleared goal.target to null before returning, so laps.back collapsed all three to target='-',
+// triggering a false STAGE_LOOP hold before reaching the fourth chest with room.
+test('three distinct chests filling up in a row do not trigger a false STAGE_LOOP hold', async () => {
+  const sim = createReturnSim({
+    feet: { x: 5.5, y: GROUND, z: 2.5 },
+    items: [[0, 'stone_sword', 1], [1, 'stone_pickaxe', 1], [2, 'cobblestone', 64], [3, 'cobblestone', 64], [4, 'tuff', 30], [5, 'bone', 20], [6, 'emerald', 3]]
+  })
+  const c1 = sim.placeChest(4, GROUND, 1)
+  const c2 = sim.placeChest(6, GROUND, 1)
+  const c3 = sim.placeChest(4, GROUND, 3)
+  const c4 = sim.placeChest(6, GROUND, 3)
+  // Fill c1, c2, c3 so each has 26 slots of cobblestone and 1 partial slot of tuff (63/64):
+  // each chest triggers store -> CONTAINER_FULL (c1, c2, c3 are three distinct targets).
+  for (const chest of [c1, c2, c3]) {
+    rubble(sim, chest, 'cobblestone')
+    sim.storeOf(chest)[0] = stack(sim, 'tuff', 63)
+  }
+  sim.shared.playerBase = c1
+  sim.agent.running = true
+  const runtime = sim.mount()
+  await sim.run(runtime, { until: () => sim.held('tuff') === 0 && sim.held('bone') === 0 && !sim.shared.playerReturn, ms: 120000 })
+  assert.equal(lines(sim, /STAGE_LOOP/).length, 0, sim.log.join('\n'))
+  assert.equal(sim.held('tuff'), 0, sim.log.join('\n'))
+  assert.equal(sim.held('bone'), 0, sim.log.join('\n'))
+  assert.ok(sim.stored(c4, 'bone') > 0, 'cargo reached the fourth chest with room')
+})

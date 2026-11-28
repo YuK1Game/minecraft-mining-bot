@@ -17,7 +17,7 @@ const { isDoor, openDoorCell } = require('../../src/movement/door-cell')
 
 const DROPS = { coal_ore: 'coal', iron_ore: 'raw_iron', copper_ore: 'raw_copper', stone: 'cobblestone', andesite: 'andesite', diorite: 'diorite', granite: 'granite', dirt: 'dirt', grass_block: 'dirt', oak_log: 'oak_log', birch_log: 'birch_log' }
 // Water is given as a source (only names were read); seagrass stands in water.
-const EMPTY = new Set(['air', 'leaf_litter', 'short_grass', 'water', 'seagrass', 'torch'])
+const EMPTY = new Set(['air', 'leaf_litter', 'short_grass', 'water', 'seagrass', 'torch', 'vine'])
 const WET = { extra: [{ name: 'minecraft:water', properties: { liquid_depth: 0 } }] }
 // The pickaxe tier a block needs (actions/mining.js PICK, as far as these boxes hold).
 const NEEDS = { stone: 1, cobblestone: 1, andesite: 1, diorite: 1, granite: 1, dripstone_block: 1, coal_ore: 1, iron_ore: 2, copper_ore: 2 }
@@ -55,13 +55,14 @@ function createDigWorld (received, { outside = () => 'stone', items = [{ slot: 0
   const LESSER = cell => `適切なツルハシの装備を確認できません: ${bareName(cell)}`
   const lesser = cell => !['hand_dig', 'pillar_descent'].includes(cell.accessPreparation) && (NEEDS[bareName(cell)] ?? 0) > tierInHand()
   const wet = found => /water|seagrass/.test(found.name ?? '')
-  const open = (x, y, z) => { const found = getBlock(x, y, z); return found.known === true && found.boundingBox === 'empty' && !wet(found) }
+  const open = (x, y, z) => { const found = getBlock(x, y, z); return found.known === true && found.boundingBox === 'empty' && !wet(found) && found.name !== 'minecraft:vine' }
   // The mining check's own rule (actions/mining.js): a block with liquid on one of its six sides is refused.
   const BESIDE_LIQUID = '対象の隣に液体・落下ブロックなどがあります。'
   const besideLiquid = cell => FACES.some(([dx, dy, dz]) => wet(getBlock(cell.x + dx, cell.y + dy, cell.z + dz)))
   const visible = cell => {
     const found = getBlock(cell.x, cell.y, cell.z)
-    if (found.known !== true || found.boundingBox === 'empty' || (logs ? /leaves/ : /leaves|_log$/).test(found.name)) return false
+    const treePlant = cell.accessPreparation === 'tree_access' && (found.name === 'minecraft:vine' || found.name === 'minecraft:leaf_litter' || /^minecraft:[a-z0-9_]+_leaves$/.test(found.name)) && found.name === cell.expectedName
+    if (found.known !== true || (!treePlant && found.boundingBox === 'empty') || (!treePlant && (logs ? /leaves/ : /leaves|_log$/).test(found.name))) return false
     const eye = { x: state.position.x, y: state.position.y + 1.62, z: state.position.z }
     return FACES.some(([dx, dy, dz]) => {
       if (!open(cell.x + dx, cell.y + dy, cell.z + dz)) return false

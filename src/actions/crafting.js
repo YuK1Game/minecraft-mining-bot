@@ -1,6 +1,8 @@
 'use strict'
 
+const { isDeepStrictEqual } = require('node:util')
 const { resourceMinHealth } = require('../safety/learning-health')
+const { stackLimit } = require('../inventory/stack-limit')
 
 // Authoritative inventory requests only. Recipe and stack network IDs always
 // come from the current connection; no recipe IDs survive a reconnect.
@@ -145,9 +147,25 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       }
       if (remaining) throw new Error(`材料が不足しています: ${ingredient.name ?? ingredient.tag ?? ingredient.descriptor_type}`)
     }
+    // Stack crafted output onto an existing compatible stack first so repeated
+    // crafts (e.g. oak_planks x4) do not fragment across multiple slots.
+    const limit = stackLimit(outputName)
+    const canMerge = slot => {
+      const item = inventory.get(slot)
+      return !empty(item) && !allocations.has(slot) &&
+        item.has_stack_id === true && Number.isInteger(item.stack_id) && item.stack_id > 0 &&
+        limit != null && limit > 1 &&
+        item.network_id === output.network_id &&
+        (item.metadata ?? 0) === (output.metadata ?? 0) &&
+        ((item.block_runtime_id ?? 0) >>> 0) === ((output.block_runtime_id ?? 0) >>> 0) &&
+        isDeepStrictEqual(item.extra ?? EMPTY_EXTRA, output.extra ?? EMPTY_EXTRA) &&
+        item.count + count <= limit
+    }
+    const mergeSlot = Array.from({ length: 36 }, (_, slot) => slot).find(canMerge)
     // Consume actions run before the output is taken. When the main
     // inventory is full, a completely consumed source is an empty target.
-    const destination = Array.from({ length: 36 }, (_, slot) => slot).find(slot => empty(inventory.get(slot))) ??
+    const destination = mergeSlot ??
+      Array.from({ length: 36 }, (_, slot) => slot).find(slot => empty(inventory.get(slot))) ??
       [...allocations.keys()].find(slot => available.get(slot) === 0)
     if (destination === undefined) {
       // Preserve the normal material choice. Retry only when it would
@@ -155,6 +173,9 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
       if (!smallestFirst) return planRecipe(recipe, outputName, times, true)
       throw new Error('クラフト結果を置く空きスロットがありません。')
     }
+    const destinationBefore = mergeSlot !== undefined ? copy(inventory.get(mergeSlot)) : null
+    const expectedCount = (destinationBefore ? destinationBefore.count : 0) + count
+    const destinationStackId = destinationBefore ? destinationBefore.stack_id : 0
     const ingredients = []
     for (let ingredientIndex = 0; ingredientIndex < recipe.input.length; ingredientIndex++) {
       const concrete = new Map()
@@ -171,7 +192,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
         ingredients.push(ingredient)
       }
     }
-    return { recipe, outputName, output: copy(output), outputCount: count, times, destination, allocations, consumptions, before: new Map([...allocations.keys()].map(slot => [slot, copy(inventory.get(slot))])), ingredients, tableRequired }
+    return { recipe, outputName, output: copy(output), outputCount: count, expectedCount, destinationStackId, destinationBefore, times, destination, allocations, consumptions, before: new Map([...allocations.keys()].map(slot => [slot, copy(inventory.get(slot))])), ingredients, tableRequired }
   }
 
   function findPlan (outputName, { times = 1 } = {}) {
@@ -213,7 +234,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
         action('results_deprecated', { result_items: [result], times_crafted: plan.times }),
         ...plan.consumptions.map(({ slot, count }) => action('consume', { count, source: slotInfo('hotbar_and_inventory', slot, inventory.get(slot).stack_id) })),
         // Wire enum 60 is CreatedOutputContainer; minecraft-data names it creative_output.
-        action('take', { count: plan.outputCount, source: slotInfo('creative_output', 50, requestId), destination: slotInfo('hotbar_and_inventory', plan.destination, 0) })
+        action('take', { count: plan.outputCount, source: slotInfo('creative_output', 50, requestId), destination: slotInfo('hotbar_and_inventory', plan.destination, plan.destinationStackId) })
       ],
       custom_names: [], cause: -1
     }
@@ -224,7 +245,7 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
     try { validateSession() } catch (error) { cancel(error.message); return }
     const request = pending
     const item = inventory.get(request.plan.destination)
-    if (itemName(item) !== request.plan.outputName || item.count !== request.plan.outputCount || item.has_stack_id !== true || item.stack_id <= 0) return
+    if (itemName(item) !== request.plan.outputName || item.count !== request.plan.expectedCount || item.has_stack_id !== true || item.stack_id <= 0) return
     for (const [slot, used] of request.plan.allocations) {
       const before = request.plan.before.get(slot)
       if (slot === request.plan.destination) {
@@ -255,12 +276,12 @@ function createCrafting ({ client, getState, version = VERSION, timeoutMs = 8000
         updates.push(slot)
       }
     }
-    const destination = updates.find(update => update.slot === pending.plan.destination && update.count === pending.plan.outputCount && Number.isInteger(update.item_stack_id) && update.item_stack_id > 0)
-    const usedDestination = pending.plan.before.get(pending.plan.destination)
-    if (destination && usedDestination) {
+    const destination = updates.find(update => update.slot === pending.plan.destination && update.count === pending.plan.expectedCount && Number.isInteger(update.item_stack_id) && update.item_stack_id > 0)
+    const priorDestination = pending.plan.destinationBefore ?? pending.plan.before.get(pending.plan.destination)
+    if (destination && priorDestination) {
       const current = inventory.get(pending.plan.destination)
-      const original = current?.network_id === usedDestination.network_id && current.count === usedDestination.count &&
-        current.stack_id === usedDestination.stack_id && current.metadata === usedDestination.metadata
+      const original = current?.network_id === priorDestination.network_id && current.count === priorDestination.count &&
+        current.stack_id === priorDestination.stack_id && current.metadata === priorDestination.metadata
       const confirmedOutput = current && itemName(current) === pending.plan.outputName &&
         current.count === destination.count && current.stack_id === destination.item_stack_id
       if (!empty(current) && !original && !confirmedOutput) {

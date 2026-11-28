@@ -36,7 +36,7 @@ function houseClickGeometry (click, face, clickY, clickAcross = null) {
 function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, players, sightError }) {
   const air = block => block?.known === true && AIR.has(block.name) && !block.extra?.length
   function housePlan (options) {
-    const { position, slot, clicked, face, clickY = null, clickAcross = null, head = null, alignFacing = false } = options ?? {}
+    const { position, slot, clicked, face, clickY = null, clickAcross = null, head = null, alignFacing = false, holdSneak = false } = options ?? {}
     if (!valid(position) || !valid(clicked) || !Number.isInteger(face) || face < 0 || face > 5) throw new Error('設置先・クリックするブロック・面を整数で指定してください。')
     const target = int(position), click = int(clicked), normal = FACE[face]
     if (click.x + normal.x !== target.x || click.y + normal.y !== target.y || click.z + normal.z !== target.z) throw new Error('クリック面が設置先に向いていません。')
@@ -51,7 +51,7 @@ function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, 
     if (!air(world.getBlock(target.x, target.y, target.z))) throw new Error('設置先は取得済みの空気ブロックである必要があります。')
     if (/_door$/.test(expectedBlock) && !air(world.getBlock(target.x, target.y + 1, target.z))) throw new Error('ドアの上のマスが空いていません。')
     if (expectedBlock === 'minecraft:bed' && (!valid(head) || !air(world.getBlock(head.x, head.y, head.z)))) throw new Error('ベッドの枕側のマスが空いていません。')
-    if (overlapsPlayer(target, state.position) || /_door$/.test(expectedBlock) && overlapsPlayer({ ...target, y: target.y + 1 }, state.position)) throw new Error('自分に重なる場所には設置できません。')
+    if (expectedBlock !== 'minecraft:ladder' && overlapsPlayer(target, state.position) || /_door$/.test(expectedBlock) && overlapsPlayer({ ...target, y: target.y + 1 }, state.position)) throw new Error('自分に重なる場所には設置できません。')
     for (const player of players.values()) if (overlapsPlayer(target, player.position, true)) throw new Error('他のプレイヤーに重なる可能性があります。')
     const support = world.getBlock(click.x, click.y, click.z)
     if (support?.known !== true || AIR.has(support.name) || LIQUID.test(support.name) || support.boundingBox === 'empty' || support.extra?.length) throw new Error('クリックするブロックは取得済みの通常ブロックである必要があります。')
@@ -66,7 +66,7 @@ function createHousePlan ({ session, slotItem, crafting, world, overlapsPlayer, 
     if (Math.hypot(point.x - eye.x, point.y - eye.y, point.z - eye.z) > 4.5) throw new Error('操作対象が手の届く範囲外です。')
     const error = sightError(eye, point, click)
     if (error) throw new Error(error)
-    return { target, clicked: click, face, clickPos, point, blockRuntimeId: support.runtimeId, expectedBlock, slot, raw, alignFacing: alignFacing === true, wall: expectedBlock === 'minecraft:torch' && side, ...(ladder ? { ladderFacing: face } : {}), ...(bottomSlab ? { bottomSlab: true } : {}), replan: () => housePlan(options) }
+    return { target, clicked: click, face, clickPos, point, blockRuntimeId: support.runtimeId, expectedBlock, slot, raw, alignFacing: alignFacing === true, holdSneak: holdSneak === true, wall: expectedBlock === 'minecraft:torch' && side, ...(ladder ? { ladderFacing: face } : {}), ...(bottomSlab ? { bottomSlab: true } : {}), replan: () => housePlan(options) }
   }
   return housePlan
 }

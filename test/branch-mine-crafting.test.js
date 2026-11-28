@@ -26,7 +26,8 @@ function fixture (stock) {
         changed.set(slot, { slot, count: before - action.count, item_stack_id: 100 + slot })
       }
       const take = request.actions.find(action => action.type_id === 'take')
-      changed.set(take.destination.slot, { slot: take.destination.slot, count: take.count, item_stack_id: 200 })
+      const destBefore = take.destination.stack_id ? crafting.rawItem(take.destination.slot).count : 0
+      changed.set(take.destination.slot, { slot: take.destination.slot, count: destBefore + take.count, item_stack_id: 200 })
       crafting.applyPacket('item_stack_response', { responses: [{ request_id: request.request_id, status: 'ok', containers: [{ slot_type: { container_id: 'hotbar_and_inventory' }, slots: [...changed.values()] }] }] })
     })
   } }
@@ -60,4 +61,68 @@ test('mine batch torches choose one executable coal variant and credit the serve
   assert.equal(f.sent[0].actions[0].times_crafted, 5)
   assert.equal(f.sent[0].actions[0].recipe_network_id, 3)
   assert.equal(f.inventory().items.find(i => i.name === 'minecraft:torch').count, 20)
+})
+
+test('mine station placement mines an adjacent rock wall when boxed into a 1x1 pit instead of stalling on MINE_STATION_SPACE_UNAVAILABLE', async () => {
+  const { createMineSupplies } = require('../src/modes/mining/mine-supplies')
+  const dug = []
+  const placed = []
+  const opened = new Set()
+  const blockAt = ({ x, y, z }) => {
+    const key = `${x},${y},${z}`
+    if (opened.has(key)) return { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+    if (x === 10 && z === 10 && (y === 61 || y === 62)) return { known: true, name: 'minecraft:air', boundingBox: 'empty' }
+    return { known: true, name: 'minecraft:stone', boundingBox: 'block' }
+  }
+  const plan = {
+    shaft: { topY: 70, columns: [{ x: 0, z: 0 }], approach: { x: 0.5, y: 70, z: 0.5 }, ladder: { column: { x: 0, z: 0 }, support: { x: -1, z: 0 } } },
+    layers: [{ id: 'upper', y: 16 }],
+    storage: [{ layer: 'upper', pairs: [] }],
+    steps: []
+  }
+  const branch = { plan, shaft: { depth: 16, landings: { upper: true } }, progress: { upper: { cursor: 0, confirmedSteps: 0 } }, storage: { pairs: {} }, lobbyReady: {} }
+  const ctx = {
+    cancelled: () => false,
+    getFeet: () => ({ x: 10.5, y: 61, z: 10.5 }),
+    memory: { early: { mine: { branch } } },
+    shared: {},
+    supplies: { acquire: async () => ({ done: false, reason: 'acquiring' }) },
+    log: () => {}
+  }
+  const inv = {
+    known: true,
+    items: [
+      { slot: 0, name: 'minecraft:torch', count: 32 },
+      { slot: 1, name: 'minecraft:cobblestone', count: 88 },
+      { slot: 2, name: 'minecraft:crafting_table', count: 1 },
+      { slot: 3, name: 'minecraft:ladder', count: 64 },
+      { slot: 4, name: 'minecraft:chest', count: 16 }
+    ]
+  }
+  const actions = {
+    inventory: () => inv,
+    block: blockAt,
+    walk: async () => ({ status: 'failed', code: 'MINE_WALK_REFUSED' }),
+    mine: async pos => {
+      dug.push(pos)
+      opened.add(`${pos.x},${pos.y},${pos.z}`)
+      return { status: 'completed', code: 'MINE_AIR_RECEIVED', serverConfirmed: true }
+    },
+    place: async req => {
+      placed.push(req)
+      return { status: 'completed', code: 'MINE_STRUCTURE_RECEIVED', serverConfirmed: true }
+    },
+    house: {
+      craft: async () => false,
+      why: () => null
+    },
+    save: async () => true,
+    done: (code, evidence) => ({ status: 'completed', code, evidence, serverConfirmed: true })
+  }
+  const supplies = createMineSupplies(ctx, actions, {})
+  await supplies.ensure(plan, { layer: 'upper', shaftOnly: false })
+  assert.equal(dug.length, 1)
+  assert.equal(placed.length, 1)
+  assert.equal(placed[0].name, 'crafting_table')
+  assert.deepEqual(placed[0].position, dug[0])
 })

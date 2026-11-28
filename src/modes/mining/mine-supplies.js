@@ -10,6 +10,7 @@ const { supplyNeeds, ladderBatches, builtWork } = require('./mine-needs')
 const { occupied } = require('./mine-carry')
 const { count } = require('../dragon-supply-kit')
 const { placementTopVisible, planPlacementAccess } = require('../../actions/action-access')
+const { bareStance, nearGround, wallSpots } = require('../station-room')
 const { prerequisiteResult } = require('./mine-common')
 
 // Infrastructure is prepared in bounded batches. Torches can bootstrap from
@@ -57,7 +58,7 @@ function createMineSupplies (ctx, actions, storage) {
         const block = actions.block(floor)
         if (!solid(block) || !air(actions.block(position)) || !air(actions.block({ x, y: y + 1, z }))) continue
         ground.push({ ...block, position: floor })
-        if (!INTERACTIVE.test(String(block?.name ?? '')) && !reserved(position) && Math.hypot(x + 0.5 - feet.x, z + 0.5 - feet.z) >= 1.1) targets.push(position)
+        if (!INTERACTIVE.test(String(block?.name ?? '')) && !reserved(position) && Math.hypot(x + 0.5 - feet.x, z + 0.5 - feet.z) >= 0.85) targets.push(position)
       }
     }
     const distance = p => Math.hypot(p.x + 0.5 - feet.x, p.y - feet.y, p.z + 0.5 - feet.z)
@@ -76,6 +77,45 @@ function createMineSupplies (ctx, actions, storage) {
     if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
     const placed = await actions.place({ position, name, clicked: { ...position, y: position.y - 1 }, face: 1 })
     return confirmed(placed) ? { position } : { result: placed }
+  }
+  async function makeStationRoom (name, branch) {
+    const feet = ctx.getFeet()
+    if (!feet || stopped()) return null
+    const reserved = p => reservedShaftCell(branch?.plan, p)
+    const getBlock = (x, y, z) => actions.block({ x, y, z })
+    const label = name === 'crafting_table' ? '作業台' : name === 'furnace' ? 'かまど' : name
+    const spot = bareStance(getBlock, feet) ?? nearGround(getBlock, feet)
+    if (spot && typeof actions.walk === 'function') {
+      ctx.log?.(`プレイヤーモード: ${label}を置く場所が周りにないため、近くの地面 (${spot.x}, ${spot.y}, ${spot.z}) へ移ってから置きます`)
+      const moved = await actions.walk({ x: spot.x + 0.5, y: spot.y, z: spot.z + 0.5 })
+      if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+      if (confirmed(moved)) {
+        const retried = await placeStation(name, branch)
+        if (retried.position || retried.result?.code !== 'MINE_STATION_SPACE_UNAVAILABLE') return retried
+      }
+    }
+    if (typeof actions.mine === 'function') {
+      for (const cell of wallSpots(getBlock, feet).filter(p => !reserved(p))) {
+        if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+        ctx.log?.(`プレイヤーモード: ${label}を置く場所がないため、横の壁を1マス掘ります（${cell.x}, ${cell.y}, ${cell.z}）`)
+        const dug = await actions.mine(cell)
+        if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+        if (confirmed(dug)) {
+          const placed = await actions.place({ position: cell, name, clicked: { ...cell, y: cell.y - 1 }, face: 1 })
+          return confirmed(placed) ? { position: cell } : { result: placed }
+        }
+      }
+    }
+    if (typeof ctx.climbUp === 'function') {
+      const before = ctx.getFeet()
+      try { await ctx.climbUp() } catch {}
+      if (stopped()) return { result: interrupted('MINE_INTERRUPTED') }
+      const after = ctx.getFeet()
+      if (before && after && Math.hypot(after.x - before.x, after.y - before.y, after.z - before.z) > 0.5) {
+        return { result: blocked('MINE_STATION_CLIMBED', { kind: 'time', ms: 500 }) }
+      }
+    }
+    return null
   }
   async function homeStation (name, { receivedOnly = false } = {}) {
     if (!ctx.shared?.playerHouse?.origin || stopped()) return null
@@ -129,7 +169,7 @@ function createMineSupplies (ctx, actions, storage) {
     }
     const placed = await placeStation(name, branch)
     if (placed.result?.code === 'MINE_STATION_SPACE_UNAVAILABLE') {
-      return await homeStation(name, { receivedOnly: true }) ?? placed
+      return await homeStation(name, { receivedOnly: true }) ?? await makeStationRoom(name, branch) ?? placed
     }
     return placed
   }
@@ -189,13 +229,13 @@ function createMineSupplies (ctx, actions, storage) {
     if (missing && actions.inventory() && (!need || need.input > 0 && !log || need.fuel && !plank)) return gather()
     return wait('MINE_CHARCOAL_UNCONFIRMED', actions.house.why())
   }
-  async function ensure (plan, { layer = 'upper', request = null, shaftOnly = false } = {}) {
+  async function ensure (plan, { layer = 'upper', request = null, shaftOnly = false, singleLayer = false } = {}) {
     if (stopped()) return interrupted('MINE_INTERRUPTED')
     if (!actions.inventory()) return blocked('MINE_INVENTORY_UNKNOWN', { kind: 'inventory_update' })
     const id = typeof layer === 'string' ? layer : layer.id
     const branch = ctx.memory.early.mine.branch
     const needs = supplyNeeds(plan, id, {
-      inventory: actions.inventory(), getBlock: actions.block,
+      inventory: actions.inventory(), getBlock: actions.block, singleLayer,
       refillCobblestone: branch.refillCobblestone === true, refillTorches: branch.refillTorches === true, built: builtWork(branch)
     })
     if (!needs) return wait('MINE_SUPPLY_LAYER_INVALID')

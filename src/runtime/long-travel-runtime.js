@@ -216,6 +216,22 @@ function createLongTravelRuntime (rt) {
     // Shooters (live 16:22: a pillager shot the bot from 20 to 0 while the trip
     // kept trying legs): retreat out of range first.
     try { if (await travelShooterRetreat(signal)) return { hold: false } } catch {}
+    // Low health with a nearby hostile (e.g. a drowned at 9-12m): combat holds back
+    // and idle-safety is paused during travel, so NEARBY_THREAT can stall every leg
+    // for minutes (live 2026-11-28 07:10-07:14 JST). Step away once.
+    try {
+      const hp = rt.working().health ?? 20
+      const p = rt.working().position
+      const nowMs = Date.now()
+      if (hp < 12 && p && nowMs - (rt.host.shared.travelLowHpRetreatAt ?? 0) >= 6000) {
+        const feet = { x: p.x, y: p.y - 1.62, z: p.z }
+        const near = rt.allActors().filter(a => a?.hostile === true && a.alive !== false && a.position && Math.hypot(a.position.x - feet.x, a.position.z - feet.z) <= 12)
+        if (near.length) {
+          rt.host.shared.travelLowHpRetreatAt = nowMs
+          if (await retreatStep(near, feet, { signal, low: true, label: `長距離移動: 低体力のため近くの敵（${near.map(a => String(a.entityType ?? a.name).replace('minecraft:', '')).join('・')}）から離れます` })) return { hold: false }
+        }
+      }
+    } catch {}
     if (hunger !== null && hunger < 18) { try { await rt.operations.quarry.prepGather({ logs: 0, maxMs: 90000 }) } catch {} }
     // The boat was lost (coordinator 2026-11-14): within the preparation
     // allowance, with trees near, gather a few logs and craft a boat again.
@@ -717,6 +733,7 @@ function createLongTravelRuntime (rt) {
   function ensureChunkTravel () {
     if (rt.chunkTravel) return rt.chunkTravel
     let planner = null
+    let lastReconciled = null
     rt.chunkTravel = rt.createChunkTravel({ getState: rt.quarryState, getBlock: (x, y, z) => rt.host.world.getBlock(x, y, z),
       getMovement: () => rt.require('./travel/chunk-travel-errors').movementStatus(rt.movement?.snapshot(), rt.chunkMoveLease?.guardFailure),
       generation: () => rt.host.shared.loadoutGeneration, jobIdentity: rt.chunkMoveJobIdentity, log: message => rt.host.log(message),
@@ -726,7 +743,13 @@ function createLongTravelRuntime (rt) {
         if (!rt.idlePhysics) return { ready: false, reason: '移動に必要な地形が未受信です。' }
         planner ??= rt.createNavigator({ world: rt.host.world, version: rt.host.meta.version, allowWater: true,
           physics: rt.idlePhysics.withWorld(rt.host.world, { allowWater: true }), planningDistanceLimit: 48 })
-        await rt.reconcilePlanningOrigin()
+        const st = rt.quarryState?.()
+        const key = st ? JSON.stringify([st.connectionId, st.dimension, st.position?.x?.toFixed?.(2), st.position?.y?.toFixed?.(2), st.position?.z?.toFixed?.(2), st.rawServerPosition?.x?.toFixed?.(2), st.rawServerPosition?.y?.toFixed?.(2), st.rawServerPosition?.z?.toFixed?.(2)]) : null
+        const nowMs = Date.now()
+        if (!key || !lastReconciled || lastReconciled.key !== key || nowMs - lastReconciled.at >= 10000) {
+          const rec = await rt.reconcilePlanningOrigin()
+          lastReconciled = rec?.workingOk === true && key ? { key, at: Date.now() } : null
+        }
         const origin = rt.require('./movement/move-origin').planningOrigin({ fromServer: state => planner.physics.fromServer(state), getState: rt.quarryState, discardPrediction: rt.discardWorkingPrediction })
         return planner.planAsync(origin, target, { ...options, maxDistance: 48, maxExpanded: 5000 })
       },

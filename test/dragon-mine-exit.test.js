@@ -73,3 +73,51 @@ test('no work of the starter jobs is due: the step inside the mine is the early 
   assert.deepEqual(w.feet(), before)
   assert.equal(w.climbs.length, climbs)
 })
+
+test('mine placement reconciliation runs even while death recovery is active (live 2026-11-27 19:27 JST)', async t => {
+  const w = createMineWorld(t)
+  const raw = () => ({ ...w.raw, position: w.feet() }), host = () => ({ getLife: () => w.raw.lifecycle, meta: { startGame: { seed: 1 } }, world: { getBlock: w.getBlock } })
+  const seed = createDragonState({ root: w.ctx.root, shared: {}, getState: raw, getLife: () => w.raw.lifecycle, getWorldId: () => 1 })
+  const record = seed.record()
+  Object.assign(record.early, { spawnReady: true, mine: { branch: w.branch } })
+  record.recovery = { at: 1e9, cause: 'death', lootChecked: true }
+  assert.equal(await seed.save(record), true)
+  const shared = { playerHouse: { origin: { x: 40, y: 70, z: 40 }, done: true, built: true } }, lines = []
+  let at = 1e9, reconciledCalls = 0
+  const rt = createDragonRuntime({ now: () => at, shared, root: w.ctx.root, getBlock: w.getBlock, log: line => lines.push(line), getFeet: w.feet,
+    runtime: { ...w.ctx.runtime, raw, host, armor: () => ({ known: true, worn: [] }), inventory: () => w.inv },
+    active: () => true, legacyBusy: () => false, legacyIdle: () => true, stopLegacy: () => {}, lifeKey: () => 'a/0', loading: () => false, threatened: () => false,
+    stepPorts: signal => ({ ...w.ctx, shared, cancelled: () => signal.aborted, signal, log: line => lines.push(line),
+      minePorts: { ...w.ctx.minePorts, reconcilePlacement: async () => { reconciledCalls++; return reconciledCalls === 1 } } }) })
+  for (const end = Date.now() + 5000; Date.now() < end && reconciledCalls === 0;) {
+    at += 2000; rt.tick(); await turns(50); await new Promise(resolve => setTimeout(resolve, 5))
+  }
+  assert.ok(reconciledCalls >= 1, 'reconcilePlacement must run ahead of death recovery')
+  assert.ok(lines.some(line => /設置の受信を確かめたので/.test(line)), lines.join('\n'))
+})
+
+test('unarmed death-recovery gathering crafts a stone sword before re-entering the mine (live 2026-11-27 20:28 JST)', async t => {
+  const w = createMineWorld(t)
+  // Unarmed inventory with stone + sticks + crafting_table so real supplies.weapon() triggers NOT_MADE.
+  w.items.splice(0, w.items.length,
+    { slot: 0, name: 'minecraft:cobblestone', count: 16 },
+    { slot: 1, name: 'minecraft:stick', count: 4 },
+    { slot: 2, name: 'minecraft:crafting_table', count: 1 }
+  )
+  const raw = () => ({ ...w.raw, position: w.feet() }), host = () => ({ getLife: () => w.raw.lifecycle, meta: { startGame: { seed: 1 } }, world: { getBlock: w.getBlock } })
+  const seed = createDragonState({ root: w.ctx.root, shared: {}, getState: raw, getLife: () => w.raw.lifecycle, getWorldId: () => 1 })
+  const record = seed.record()
+  Object.assign(record.early, { spawnReady: true, mine: { branch: w.branch } })
+  record.recovery = { at: 1e9, cause: 'death', lootChecked: true, gather: { name: 'iron_pickaxe', count: 1 } }
+  assert.equal(await seed.save(record), true)
+  const shared = { playerHouse: { origin: { x: 40, y: 70, z: 40 }, done: true, built: true } }, lines = []
+  let at = 1e9
+  const rt = createDragonRuntime({ now: () => at, shared, root: w.ctx.root, getBlock: w.getBlock, log: line => lines.push(line), getFeet: w.feet,
+    runtime: { ...w.ctx.runtime, raw, host, armor: () => ({ known: true, worn: [] }), inventory: () => w.inv },
+    active: () => true, legacyBusy: () => false, legacyIdle: () => true, stopLegacy: () => {}, lifeKey: () => 'a/0', loading: () => false, threatened: () => false,
+    stepPorts: signal => ({ ...w.ctx, shared, cancelled: () => signal.aborted, signal, log: line => lines.push(line) }) })
+  for (const end = Date.now() + 5000; Date.now() < end && !lines.some(line => /石の剣を作ります/.test(line));) {
+    at += 2000; rt.tick(); await turns(50); await new Promise(resolve => setTimeout(resolve, 5))
+  }
+  assert.ok(lines.some(line => /石の剣を作ります/.test(line)), 'weapon crafting must run before recovery.gather\n' + lines.join('\n'))
+})

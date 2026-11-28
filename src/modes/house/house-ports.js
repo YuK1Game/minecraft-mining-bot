@@ -37,7 +37,7 @@ function createHousePorts ({ operations, getBlock, getInventory, disposed = () =
     placementRetrySafe = true
     const slot = await inHand(name)
     if (slot == null || slot === false) { why ??= `${name} を手に持てません`; return false }
-    const options = { position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, clickAcross: plan.clickAcross ?? null, head: plan.head ?? null, alignFacing: plan.alignFacing === true }
+    const options = { position: plan.position, slot, clicked: plan.clicked, face: plan.face, clickY: plan.clickY, clickAcross: plan.clickAcross ?? null, head: plan.head ?? null, alignFacing: plan.alignFacing === true, ...(plan.holdSneak === true ? { holdSneak: true } : {}) }
     const preview = operations.interactions.previewHouseBlock(options)
     if (preview?.ready !== true) { why = String(preview?.errors?.[0] ?? '設置できません').slice(0, 160); return false }
     try {

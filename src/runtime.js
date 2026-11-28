@@ -991,11 +991,11 @@ function createRuntime (host) {
     // Native water contact remains valid when the submerged feet touch bottom;
     // waterSurface intentionally rejects a head that is still underwater.
     const floating = idlePhysicsState.isInWater || !!feetInSurfaceWater
-    const wasJumping = idlePhysicsState.controls?.jump === true
-    idlePhysicsState = idlePhysics.step({ ...idlePhysicsState, yaw: rotation.yaw, pitch: rotation.pitch }, { jump: !!floating })
+    const { controls, inputFlags } = require('./movement/idle-ladder-hold').idleFrameControls(idlePhysicsState, host.world, floating)
+    idlePhysicsState = idlePhysics.step({ ...idlePhysicsState, yaw: rotation.yaw, pitch: rotation.pitch }, controls)
     const position = idlePhysics.toServerPosition(idlePhysicsState)
     const predictedState = structuredClone(idlePhysicsState)
-    return { position, delta: predictedState.velocity, physicsState: predictedState, predictedState, controls: { jump: !!floating }, inputFlags: floating ? ['jumping', 'want_up', ...(!wasJumping ? ['start_jumping'] : [])] : [], commitPrediction: () => publishControlPrediction({ position, feetPosition: predictedState.position, velocity: predictedState.velocity, onGround: predictedState.onGround, physicsState: predictedState, source: 'client_prediction', serverConfirmed: false }, 'idle_physics') }
+    return { position, delta: predictedState.velocity, physicsState: predictedState, predictedState, controls, inputFlags, commitPrediction: () => publishControlPrediction({ position, feetPosition: predictedState.position, velocity: predictedState.velocity, onGround: predictedState.onGround, physicsState: predictedState, source: 'client_prediction', serverConfirmed: false }, 'idle_physics') }
   }
   function maintainIdle () {
     if (disposed || disposing || !inputStream || !host.shared.loadingScreenEnded || host.shared.respawnTerrain?.pending) return

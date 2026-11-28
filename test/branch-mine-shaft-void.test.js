@@ -105,3 +105,20 @@ test('planMine chooses the direction whose shaft has no cave under it', { timeou
   const none = await planMine({ ...all, ...options })
   assert.equal(none.status, 'blocked'); assert.equal(none.code, 'MINE_NO_SAFE_RESOURCE_PLAN')
 })
+
+test('planMine prioritizes shifted shaft candidates with no cave over cheaper hollow shafts (live 2026-11-27 14:46 JST)', { timeout: 60000 }, async () => {
+  const origin = { x: 7.5, y: 64, z: 7.5 }
+  const DIRECTIONS = { east: { x: 1, z: 0 }, south: { x: 0, z: 1 }, west: { x: -1, z: 0 }, north: { x: 0, z: -1 } }
+  const f = plannerWorld()
+  for (let x = -8; x <= 24; x++) for (let z = -8; z <= 24; z++) f.put({ x, y: 32, z }, 'iron_ore')
+  // Put a cave under every direction's unshifted (dx=0, dz=0) shaft, while shifted shafts stay solid.
+  for (const direction of Object.keys(DIRECTIONS)) {
+    const dir = DIRECTIONS[direction], r = { x: -dir.z, z: dir.x }
+    const anchor = { x: Math.floor(origin.x - dir.x * 7.5 - r.x * 7.5), z: Math.floor(origin.z - dir.z * 7.5 - r.z * 7.5) }
+    const shaft = createMineGeometry({ scope: mineWorldScope(state()), anchor, direction, width: 16, length: 16, surfaceY: 64, upperY: 32 }).shaft
+    f.put({ ...shaft.columns[0], y: 45 }, 'air')
+  }
+  const out = await planMine({ ...f, origin, resource: 'raw_iron', sizes: [16], upperYs: [32], maxLowerLevels: 1, searchRadius: 8, maxCandidates: 4, targetCount: 4 })
+  assert.equal(out.status, 'planned', JSON.stringify(out.diagnostics))
+  assert.deepEqual(shaftVoids(out.plan, p => f.world.getBlock(p.x, p.y, p.z)), [])
+})

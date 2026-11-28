@@ -76,8 +76,11 @@ function createDragonRuntime (ports) {
     // The health wait's covered pit (dragon-rest-pit.js): left as soon as the wait is over, before anything else goes on.
     const rest = createRest({ ctx, health: () => raw().health, hostileDistance: () => runtime.nearestHostile?.(), dig: runtime.travel?.()?.travelNightPit, climb: ctx.rise, now })
     if (rest.inside() && !recoverHealth) { judge(...says.restLeave(raw().health)); return rest.leave() }
-    // From dusk the overworld part before the Nether goes home to its bed (dragon-night.js).
-    if (dim === 'overworld' && record.stage === 'early' && !record.recovery && !rest.inside() && !(recoverHealth && ports.threatened())) {
+    // From dusk the overworld part before the Nether goes home to its bed when
+    // on the surface (not safely working underground in the branch mine) (dragon-night.js).
+    const inMine = dim === 'overworld' && require('./mining/mine-location').insideMine(ctx, record.early?.mine?.branch)
+    const recoveryBlocksNight = !!record.recovery && !record.recovery.gather
+    if (dim === 'overworld' && record.stage === 'early' && !inMine && !recoveryBlocksNight && !record.lootRecovery && !rest.inside() && !(recoverHealth && ports.threatened())) {
       const night = await nightHome(ctx, { clock: () => runtime.travel?.()?.travelClock?.() })
       if (night) { judge(...says.night(runtime.travel?.()?.travelClock?.())); return night }
     }
@@ -94,6 +97,20 @@ function createDragonRuntime (ports) {
         if (packed) { judge(...says.pack(runtime.inventory())); return packed }
       }
     }
+    // Reconcile any timed-out mine placement before heal/hungry/recovery too:
+    // low-health heal and hungry paths can delegate into mine work and hit
+    // MINE_ACTION_UNCONFIRMED forever if they return before reconcilePlacement
+    // runs (live 2026-11-27 19:27 JST, 2026-11-28 06:28 JST).
+    if (dim === 'overworld' && record.stage === 'early') {
+      const mineGoal = ['early.home_reserve', 'early.diamond'].includes(ledger.goal()?.key)
+      if (mineGoal || record.recovery || record.lootRecovery || mine?.pendingAction) {
+        const reconciled = await ctx.minePorts?.reconcilePlacement?.()
+        if (reconciled) {
+          judge(...says.mineMend(false))
+          return { phase: 'waiting', reason: '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。' }
+        }
+      }
+    }
     // The wait for health: a meal, the regeneration, or the way to food (dragon-heal.js).
     if (recoverHealth && dim !== 'end') {
       // Healing is the work now: more health than at any time since the last result is a mark, a hit and a heal in turn is none.
@@ -108,6 +125,10 @@ function createDragonRuntime (ports) {
     // once to take it back from the partial reserve (dragon-rearm.js, dragon-recovery.js `partial`).
     if (!record.recovery && dim === 'overworld' && record.stage === 'early' && !record.early?.reserveReady && require('./dragon-rearm').rearmWanted(ctx, record)) record.recovery = { at: Date.now(), cause: 'rearm', lootChecked: true, rearm: true }
     const hadRecovery = Boolean(record.recovery)
+    if (dim === 'overworld' && record.stage === 'early' && record.recovery?.gather) {
+      const way = supplies.weapon()
+      if (way && (way.code === 'NOT_MADE' || !ports.threatened())) { judge(...says.weapon()); return supplies.arm(way) }
+    }
     if (record.recovery || record.lootRecovery) {
       judge(...says.recover(record))
       const recovery = await recoverDragon(ctx, record)
@@ -141,16 +162,6 @@ function createDragonRuntime (ports) {
     if (currentGoal?.hold) {
       ledger.clearHold?.()
       currentGoal.hold = null
-    }
-    if (dim === 'overworld') {
-      const mineGoal = record.stage === 'early' && ['early.home_reserve', 'early.diamond'].includes(currentGoal?.key)
-      if (mineGoal) {
-        const reconciled = await ctx.minePorts?.reconcilePlacement?.()
-        if (reconciled) {
-          judge(...says.mineMend(false))
-          return { phase: 'waiting', reason: '設置先の受信結果を確認しました。縦坑・坑道の作業を続けます。' }
-        }
-      }
     }
     if (dim === 'end') {
       judge(...says.stage('end', dim))

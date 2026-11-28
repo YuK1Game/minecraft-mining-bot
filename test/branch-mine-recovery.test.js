@@ -178,6 +178,38 @@ test('capacity relief rejects unknown inventory and keeps all retained gear with
   assert.equal(w.opened.length,before)
 })
 
+test('home capacity relief releases its hold when retained-only inventory is already below 35 slots (live 2026-11-27 18:00 JST)', async t => {
+  const w = createMineWorld(t)
+  w.branch.capacityDestination = 'home'
+  w.items.splice(0, w.items.length, ...Array.from({ length: 32 }, (_, slot) => ({
+    slot, name: 'minecraft:iron_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 100
+  })))
+  w.ctx.minePorts.storage.depositHome = async () => ({ status: 'blocked', code: 'MINE_CAPACITY_RETAINED', serverConfirmed: false })
+  const out = await minePackRoom(w.ctx)
+  assert.equal(out, null)
+  assert.equal(w.branch.capacityDestination, undefined)
+})
+
+test('capacity relief offers surface/woodwork extras like leaf_litter, saplings, slabs and boats while keeping retained cobblestone_slab (live 2026-11-27 18:24 JST)', () => {
+  const inv = {
+    known: true,
+    items: [
+      { slot: 0, name: 'minecraft:iron_pickaxe', count: 1, durabilityKnown: true, durabilityRemaining: 100 },
+      { slot: 1, name: 'minecraft:cobblestone_slab', count: 23 },
+      { slot: 2, name: 'minecraft:birch_slab', count: 5 },
+      { slot: 3, name: 'minecraft:oak_sapling', count: 5 },
+      { slot: 4, name: 'minecraft:leaf_litter', count: 10 },
+      { slot: 5, name: 'minecraft:birch_boat', count: 1 },
+      { slot: 6, name: 'minecraft:oak_planks', count: 16 }
+    ]
+  }
+  const offered = capacityCargo(inv, {})
+  assert.deepEqual(
+    offered.map(item => item.name).sort(),
+    ['minecraft:birch_boat', 'minecraft:birch_slab', 'minecraft:leaf_litter', 'minecraft:oak_sapling']
+  )
+})
+
 test('capacity relief stops on unreceived inventory after a transfer instead of claiming empty cargo success',async t=>{
   const w=createMineWorld(t);await upper(w);fillNonCargo(w)
   const deposit=w.ctx.operations.chest.depositItem;let sent=0
@@ -218,7 +250,7 @@ test('a lower ore request can build the upper shaft with only its own ladders, t
   w.items.find(item => item.name === 'minecraft:chest').count = 0
   let result
   for (let i = 0; i < 15 && !w.branch.shaft?.landings?.upper; i++) {
-    result = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+    result = await requestMine(w.ctx, { resource: 'raw_gold', targetHeld: 3 })
   }
   assert.equal(result.result.code, 'MINE_LANDING_READY', JSON.stringify(result))
   assert.equal(w.branch.shaft.depth, 66)
@@ -228,9 +260,22 @@ test('a lower ore request can build the upper shaft with only its own ladders, t
   assert.ok(w.places.some(item => item.name === 'minecraft:ladder'))
   assert.equal(w.opened.length, 0)
 
-  const room = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+  const room = await requestMine(w.ctx, { resource: 'raw_gold', targetHeld: 3 })
   assert.match(room.result.code, /^MINE_(?:SURFACE_SUPPLY_STATION|SUPPLIES_IN_PROGRESS)$/)
   assert.equal(w.branch.shaft.depth, 66)
+  assert.equal(w.branch.lobbyReady?.upper, undefined)
+})
+
+test('a diamond request goes directly to the lower shaft and builds its storage room there without building upper storage', async t => {
+  const w = createMineWorld(t)
+  let result
+  for (let i = 0; i < 40 && !w.branch.lobbyReady?.lower; i++) {
+    result = await requestMine(w.ctx, { resource: 'diamond', targetHeld: 3 })
+    assert.notEqual(result.result.status, 'failed', JSON.stringify(result))
+  }
+  assert.equal(w.branch.shaft.depth, 60)
+  assert.equal(w.branch.shaft.landings.lower, true)
+  assert.ok(w.branch.lobbyReady?.lower, JSON.stringify(result))
   assert.equal(w.branch.lobbyReady?.upper, undefined)
 })
 
@@ -239,8 +284,8 @@ test('a supported incomplete lower shaft returns to upper supplies by ladder wit
   for(let i=0;i<15 && !w.branch.shaft?.landings?.upper;i++)await ensureShaft(w.ctx,w.branch,'upper')
   assert.equal(w.branch.shaft.landings.upper,true)
   const dug=await ensureShaft(w.ctx,w.branch,'lower')
-  assert.equal(dug.code,'MINE_SHAFT_ADVANCED',JSON.stringify(dug))
-  assert.equal(w.feet().y,65)
+  assert.equal(dug.code,'MINE_SHAFT_READY',JSON.stringify(dug))
+  assert.equal(w.feet().y,59.5)
   const climbs=w.climbs.length,out=await reachLayer(w.ctx,w.branch,'upper')
   assert.equal(out.status,'completed',JSON.stringify(out))
   assert.equal(w.feet().y,65.5);assert.equal(w.climbs.length,climbs+1)
@@ -464,4 +509,49 @@ test('with the armed-entry rule on, an unarmed Bot outside the mine is not taken
   w.items.push({ slot: 1, name: 'minecraft:stone_sword', count: 1 })
   const armed = await requestMine(w.ctx, { resource: 'raw_iron', targetHeld: 4 })
   assert.notEqual(armed.result?.code, 'MINE_UNARMED')
+})
+
+test('supplies.acquire falls back to stone_sword acquisition when planned mining refuses MINE_UNARMED (live 2026-11-27 20:30 JST)', async t => {
+  const { createDragonSupplies } = require('../src/modes/dragon-supplies')
+  const w = createMineWorld(t)
+  await upper(w)
+  w.setFeet({ x: 6.5, y: 70, z: 0.5 })
+  w.ctx.shared.mineArmedEntry = true
+  w.items.splice(0, w.items.length,
+    { slot: 0, name: 'minecraft:cobblestone', count: 16 },
+    { slot: 1, name: 'minecraft:stone_pickaxe', count: 1 }
+  )
+  const seen = []
+  const supplies = createDragonSupplies({
+    ...w.ctx,
+    judge: { need: name => { seen.push(name); return () => {} } },
+    travelTo: async () => { seen.push('travelTo') }
+  })
+  const out = await supplies.acquire('raw_iron', 1)
+  assert.equal(out.done, false)
+  assert.notEqual(out.result?.code, 'MINE_UNARMED')
+  assert.ok(seen.includes('stone_sword'), JSON.stringify(seen))
+})
+
+test('bare-handed respawn with pending mine segmentTask falls back to stone_sword without infinite recursion (live 2026-11-27 21:41 JST)', async t => {
+  const { createDragonSupplies } = require('../src/modes/dragon-supplies')
+  const w = createMineWorld(t)
+  await upper(w)
+  w.setFeet({ x: 6.5, y: 70, z: 0.5 })
+  w.ctx.shared.mineArmedEntry = true
+  // Pending mine segment triggers finishMineWork -> MINE_UNARMED; bare bag has 0 cobblestone/wood/tools.
+  w.branch.segmentTask = { layer: 'upper', stepId: 'upper:lobby:0', cursor: 0, lobbyOnly: true }
+  w.items.splice(0, w.items.length)
+  const seen = []
+  const supplies = createDragonSupplies({
+    ...w.ctx,
+    judge: { need: name => { seen.push(name); return () => {} } },
+    travelTo: async () => { seen.push('travelTo') }
+  })
+  const out = await supplies.acquire('iron_pickaxe', 1)
+  assert.equal(out.done, false)
+  assert.notEqual(out.result?.code, 'MINE_UNARMED')
+  assert.ok(seen.includes('stone_sword'), JSON.stringify(seen))
+  assert.ok(seen.includes('cobblestone'), JSON.stringify(seen))
+  assert.ok(seen.filter(x => x === 'stone_sword').length === 1, 'stone_sword must not recurse: ' + JSON.stringify(seen))
 })

@@ -104,6 +104,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
   let transactionSent = null
   let actionRevision = 0
   let activeTarget = null
+  let stationarySneak = false
   let lastError = null
   let sent = 0
   const receiptMismatches = []
@@ -188,6 +189,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
       }
     }
     const packet = buildStationaryInput({ position, pitch: rotation.pitch, yaw: rotation.yaw, tick: nextTick, actions: pending })
+    if (!providedFrame && stationarySneak) flags.add('sneaking')
     packet.delta = delta
     if (providedFrame?.moveVector) {
       packet.move_vector = { x: providedFrame.moveVector.x, z: providedFrame.moveVector.z }
@@ -237,6 +239,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     actions = []
     transaction = null
     transactionSent = null
+    stationarySneak = false
     if (sendAbort && wasRunning && activeTarget) {
       try {
         const pending = [{ ...activeTarget, action: 'abort_break' }]
@@ -260,6 +263,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     actions = []
     transaction = null
     transactionSent = null
+    stationarySneak = false
     if (timer !== null && activeTarget) actions.push({ ...activeTarget, action: 'abort_break', position: { ...activeTarget.position } })
   }
 
@@ -292,6 +296,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     const onTransactionSent = transactionSent
     transaction = null
     transactionSent = null
+    stationarySneak = false
     emit(pending, packedTransaction, onTransactionSent)
   }
 
@@ -372,6 +377,7 @@ function createInput ({ client, getState, version, startGame, startGameReceivedA
     sendAction,
     lookAt,
     sendTransaction,
+    setStationarySneak: value => { stationarySneak = value === true },
     drainQueued,
     stats: () => ({ running: timer !== null, tick: String(tick), sent, queuedActions: actions.length, queuedTransaction: transaction !== null, actionRevision, target: activeTarget ? structuredClone(activeTarget.position) : null, rotation: desiredRotation ? { ...desiredRotation } : null, lastError, receiptMismatches: structuredClone(receiptMismatches) })
   }

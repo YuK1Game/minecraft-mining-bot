@@ -115,10 +115,10 @@ test('as at 08:16 JST: hunger 6 and nothing to eat, health whole: the food comes
   assert.deepEqual(f.calls, [`acquire food ${FOOD_TRIP}`])
 })
 
-test('a hungry food trip keeps stocking cooked provisions after hunger rises above 6 until FOOD_TRIP is held', async () => {
+test('a hungry food trip keeps stocking cooked provisions after hunger reaches 18 until FOOD_TRIP is held', async () => {
   const shared = { playerHouse: { origin: { x: 9877, y: 64, z: 10138 } } }
   const calls = []
-  let hunger = 6
+  let hunger = 17
   let items = []
   const preview = () => items.some(item => FOOD.test(item.name)) ? { ready: true } : { ready: false, code: 'FOOD_NOT_IN_INVENTORY' }
   const ctx = { operations: { food: { preview, eat: async () => { calls.push('eat') }, snapshot: () => ({ hunger }) } } }
@@ -127,11 +127,11 @@ test('a hungry food trip keeps stocking cooked provisions after hunger rises abo
     const want = hungry({ ctx, record: { stage: 'early', recovery: null }, dim: 'overworld', shared, runtime: { inventory: () => ({ known: true, items }) }, threatened: () => false })
     return want ? feed(want, { ctx, supplies }) : null
   }
-  // Starts the food trip at hunger 6 with 0 food.
+  // Starts the food trip when hunger drops below 18 with 0 food.
   await step()
   assert.equal(shared.dragonFoodTrip, true)
-  // After eating 1 raw meat (hunger 9, cooked 0), keep gathering instead of returning to the mine empty-handed.
-  hunger = 9
+  // After eating up to hunger 18 with cooked 0, keep gathering instead of returning to the mine empty-handed.
+  hunger = 18
   items = [{ slot: 1, name: 'minecraft:beef', count: 2 }]
   await step()
   assert.equal(shared.dragonFoodTrip, true)
@@ -142,11 +142,14 @@ test('a hungry food trip keeps stocking cooked provisions after hunger rises abo
   assert.equal(shared.dragonFoodTrip, undefined)
 })
 
-test('hunger 6 with food in the pack: the meal is taken here; hunger 7, or unreceived: the work goes on', async () => {
-  const fed = hungryScene({ items: [{ slot: 1, name: 'minecraft:bread', count: 1 }] })
+test('hunger below 18 with food in the pack: the meal is taken here; hunger 18+, or unreceived: the work goes on', async () => {
+  const fed = hungryScene({ hunger: 17, items: [{ slot: 1, name: 'minecraft:bread', count: 1 }] })
   assert.equal((await fed.run()).phase, 'recovering')
   assert.deepEqual(fed.calls, ['eat'])
-  for (const hunger of [7, 18, null]) {
+  const lowNoFood = hungryScene({ hunger: 17, items: [] })
+  assert.deepEqual(await lowNoFood.run(), { done: false, reason: 'hunt' })
+  assert.deepEqual(lowNoFood.calls, [`acquire food ${FOOD_TRIP}`])
+  for (const hunger of [18, 20, null]) {
     const f = hungryScene({ hunger })
     assert.equal(await f.run(), null)
     assert.deepEqual(f.calls, [])
@@ -159,4 +162,19 @@ test('not for the hungry step: an enemy near, no home, a death recovery, another
     assert.equal(await f.run(), null)
     assert.deepEqual(f.calls, [])
   }
+})
+
+test('during recovery gear crafting (recovery.gather non-food), low health or hunger prioritizes food acquisition', async () => {
+  const lowHp = scene({ items: [], hunger: 0, health: 0.8, recovery: { dimension: 'overworld', gather: { name: 'iron_boots', count: 1 } } })
+  await lowHp.run()
+  assert.deepEqual(lowHp.calls, ['acquire food 1'])
+
+  const lowHunger = hungryScene({ items: [], hunger: 0, recovery: { dimension: 'overworld', gather: { name: 'iron_boots', count: 1 } } })
+  await lowHunger.run()
+  assert.deepEqual(lowHunger.calls, [`acquire food ${FOOD_TRIP}`])
+
+  // Recovery already gathering food still delegates to recover.
+  const foodRecovery = scene({ items: [], hunger: 0, health: 0.8, recovery: { dimension: 'overworld', gather: { name: 'food', count: 6 } } })
+  await foodRecovery.run()
+  assert.deepEqual(foodRecovery.calls, ['recover'])
 })

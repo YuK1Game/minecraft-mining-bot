@@ -8,7 +8,7 @@ const { cellRest } = require('../supply-cell-rest')
 const { pocketOf,isMineNaturalBlock } = require('./mine-vein-geometry')
 const {prepareVeinReturn}=require('./mine-vein-access')
 const {insideMine}=require('./mine-location')
-const {veinFillOrder}=require('./mine-vein-fill')
+const {veinFillOrder,veinCellClosed}=require('./mine-vein-fill')
 const { digTool } = require('../dig-tool')
 const ORES={
   coal:/^(?:deepslate_)?coal_ore$/,
@@ -91,8 +91,8 @@ async function restoreVein (ctx,branch) {
   const ordered=veinFillOrder(vein)
   for(const p of ordered){
     if(!live(ctx))return stopped()
-    // An interrupted intent may name a block that was never mined: that received solid is left alone.
-    if(solid(at(ctx,p)))continue
+    // An interrupted intent may name a block that was never mined, or falling gravel/sand may already occupy it.
+    if(veinCellClosed(at(ctx,p)))continue
     const out=await fillCell(ctx,branch,p,'vein_restore')
     if(!received(out))return out
   }
@@ -138,6 +138,12 @@ async function workVein (ctx,branch,cells=null) {
   if(!received(approach))return approach
   for(const p of [head,base]){
     if(open(at(ctx,p)))continue
+    const checked=inspectDig(ctx,p,branch,'vein')
+    if(checked.code){
+      cellRest(ctx.shared,ctx.runtime.raw().dimension,{now:ctx.now}).miss(ore,ore.distance,ore.distance)
+      vein.closing=true
+      return restoreVein(ctx,branch)
+    }
     if(!vein.opened.some(old=>key(old)===key(p)))vein.opened.push(p)
     if(vein.opened.length>max){vein.closing=true;return restoreVein(ctx,branch)}
     const out=await digCell(ctx,branch,p,'vein')

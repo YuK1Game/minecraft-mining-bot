@@ -25,10 +25,31 @@ function shaftBoundary (plan, { minY = plan?.shaft?.bottomY, maxY = plan?.shaft?
 // The cell above this floor is the next rung and will be open. Check the
 // same lower and side attachment faces the placement port can actually use.
 function shaftLandingHasAnchor (read, target) {
-  const blocks = [[0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]
-    .map(([dx, dy, dz]) => read({ x: target.x + dx, y: target.y + dy, z: target.z + dz }))
-  if (blocks.some(solid)) return true
-  return blocks.every(block => block?.known === true) ? false : null
+  let allKnown = true
+  for (const [dx, dy, dz] of [[0, -1, 0], [1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) {
+    const block = read({ x: target.x + dx, y: target.y + dy, z: target.z + dz })
+    if (solid(block)) return true
+    if (block?.known !== true) allKnown = false
+  }
+  return allKnown ? false : null
+}
+
+// The top rung's backing may sit over a one-block terrain drop where the
+// cell directly below it is air with solid ground/side support. Filling
+// that lower backing cell first makes the top backing placeable; a deeper
+// cliff with no anchor even one block below cannot be supported safely.
+function shaftEntryBackingSupportable (read, target) {
+  const block = read(target)
+  if (block?.known !== true) return null
+  if (solid(block)) return true
+  if (!shaftEntryBackingUsable(block)) return false
+  const direct = shaftLandingHasAnchor(read, target)
+  if (direct !== false) return direct
+  const below = { x: target.x, y: target.y - 1, z: target.z }
+  const under = read(below)
+  if (under?.known !== true) return null
+  if (!air(under) && !clearableSitePlant(under)) return false
+  return shaftLandingHasAnchor(read, below)
 }
 
 // The shaft is dug straight down, so it is only planned through rock: a received cell of its four columns,
@@ -48,4 +69,4 @@ function shaftVoids (plan, read, { maxY = plan?.shaft?.topY - 2 } = {}) {
   return voids
 }
 
-module.exports = { shaftBoundary, shaftEntryBackingUsable, shaftLandingHasAnchor, shaftVoids }
+module.exports = { shaftBoundary, shaftEntryBackingUsable, shaftEntryBackingSupportable, shaftLandingHasAnchor, shaftVoids }

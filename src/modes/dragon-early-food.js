@@ -203,6 +203,17 @@ async function provisionFood (ctx, wanted = 32) {
       return pending('食料源のそばから狩りをやり直します。')
     }
   }
+  if (!plan.ready && plan.code === 'INVENTORY_FULL') {
+    if (ctx.minePorts?.storage?.depositHome) {
+      const stored = await ctx.minePorts.storage.depositHome({ freeSlots: 2, drain: false })
+      if (stored?.status === 'completed') return pending('本拠点のチェストへ荷物を預け、食料を回収する空き枠を確保しました。')
+    }
+    if (ctx.drop && !ctx.cancelled()) {
+      const { discardJunk } = require('./player-discard')
+      const dropped = await discardJunk({ drop: ctx.drop, walk: ctx.walk, why: () => ctx.hands?.why?.(), cells: ctx.cells, getInventory, getFeet: ctx.getFeet, shared: ctx.shared, say: text => ctx.log?.(`プレイヤーモード: ${text}`), now: ctx.now })
+      if (dropped > 0) return pending('食料を回収するため不要品を整理して空き枠を確保しました。')
+    }
+  }
   if (!plan.ready && plan.code !== 'NO_KNOWN_FOOD_SOURCE') {
     const reason = plan.errors?.[0] ?? '食料探しの安全確認を待ちます。'
     // An enemy nobody fights is not waited for without end (dragon-threat-wait.js): the search goes on somewhere else.

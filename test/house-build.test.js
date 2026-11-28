@@ -496,7 +496,7 @@ test('the table cannot be seen from the nearest place: crafts from another place
   assert.equal(remaining(w.getBlock, shared.playerHouse.origin).length, 0, lines.join('\n'))
 })
 
-test('the door goes last; a door already standing with work left is taken down first (live 2026-11-17 06:44-06:52 JST)', async () => {
+test('the door goes last; a door already standing with work left is opened instead of removed (user rule 2026-11-27)', async () => {
   assert.equal(order(placements({ x: 0, y: 64, z: 0 })).at(-1).item, 'oak_door')
   const w = world()
   const feet = { x: 0.5, y: 64, z: 0.5 }
@@ -509,6 +509,7 @@ test('the door goes last; a door already standing with work left is taken down f
   const door = placements(origin0).find(step => step.item === 'oak_door')
   const recipes = { 'minecraft:oak_slab': [6, [['minecraft:oak_planks', 3]]], 'minecraft:oak_door': [3, [['minecraft:oak_planks', 6]]] }
   const mined = [], placedOrder = []
+  let opened = 0
   const ports = {
     inspectChest: largeWindow,
     craft: async (output, times) => { const [yieldCount, parts] = recipes[output]; for (const [name, n] of parts) take(name, n * times); give(output, yieldCount * times); return true },
@@ -526,17 +527,17 @@ test('the door goes last; a door already standing with work left is taken down f
   const lines = []
   const build = createHouseBuild({
     getMode: () => 'player', shared, log: text => lines.push(text), sleep: async () => {},
+    openEntrance: async () => { opened++; return true },
     agent: { objective: {}, start: async () => {}, stop: () => {}, settled: () => true },
     ports, hands: { walk: async stand => { Object.assign(feet, stand); return true }, approach: async () => true },
     climb: async () => ({ ok: true }), travel: { to: async () => {}, status: () => ({ busy: false }), cancel: async () => {} },
     getBlock: w.getBlock, getPosition: () => ({ ...feet, y: feet.y + 1.62 }), getFeet: () => ({ ...feet }), getInventory: () => inventory
   })
   assert.equal(await build.tick(), true, lines.join('\n'))
-  assert.equal(mined.length, 1)
-  assert.equal(mined[0].extra.accessPreparation, 'house_door')
-  assert.equal(placedOrder.at(-1), 'oak_door')
+  assert.equal(opened, 1)
+  assert.equal(mined.length, 0)
   assert.equal(remaining(w.getBlock, origin0).length, 0, lines.join('\n'))
-  assert.match(lines.join('\n'), /入口のドアを外しました/)
+  assert.doesNotMatch(lines.join('\n'), /入口のドアを外しました/)
 })
 
 test('a climb cut short by an enemy says so and tries again in 2 minutes, not 10 (live 2026-11-17 07:02 JST)', async () => {

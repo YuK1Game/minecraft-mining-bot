@@ -14,7 +14,8 @@ const { createInteractions } = require('../src/actions/interactions')
 const { createMineActions } = require('../src/modes/mining/mine-actions')
 const { createMineLighting } = require('../src/modes/mining/mine-lighting')
 const { fillCell } = require('../src/modes/mining/mine-shaft')
-const { veinFillOrder, createVeinFillStand } = require('../src/modes/mining/mine-vein-fill')
+const { veinFillOrder, createVeinFillStand, veinCellClosed } = require('../src/modes/mining/mine-vein-fill')
+const { restoreVein } = require('../src/modes/mining/mine-veins')
 const received = require('./fixtures/mine-vein-pocket.json')
 
 const VEIN = {
@@ -101,4 +102,34 @@ test('every opened cell is filled from a stand inside the pocket that sees it: s
   // The 14:32 cell (third in the order) is not clicked from the corridor stand that could not see it.
   assert.notEqual(`${Math.floor(f.sent[2].from.x)},${Math.floor(f.sent[2].from.z)}`, '9879,10235', JSON.stringify(f.sent[2].from))
   assert.deepEqual(f.lines.filter(line => /置けません/.test(line)), [])
+})
+
+test('2026-11-28 16:15 JST: restoreVein closes cleanly when an opened cell is occupied by gravel instead of looping on MINE_FILL_OCCUPIED', async () => {
+  assert.equal(veinCellClosed(block('gravel')), true)
+  assert.equal(veinCellClosed(block('sand')), true)
+  assert.equal(veinCellClosed(block('air', 'empty')), false)
+  assert.equal(veinCellClosed(block('water', 'empty')), false)
+
+  const f = fixture()
+  const gravelPos = { x: 9878, y: 49, z: 10234 }
+  f.blocks.set(`${gravelPos.x},${gravelPos.y},${gravelPos.z}`, block('gravel'))
+  f.branch.plan.layers = [{ id: 'upper', y: 48 }]
+  f.branch.plan.shaft = { topY: 64, bottomY: 16, columns: [{ x: 9879, z: 10235 }], ladder: { x: 9879, z: 10235, face: 2, support: { x: 9879, z: 10236 } }, landings: [{ layer: 'upper', stand: { ...VEIN.returnTo }, clear: [{ x: 9879, y: 48, z: 10235 }] }] }
+  f.branch.plan.site = { anchor: { x: 9870, z: 10230 }, direction: 'east', width: 32, length: 32 }
+  f.branch.shaft = { landings: { upper: true } }
+  f.ctx.minePorts.confirmPosition = async () => ({ status: 'completed', code: 'MINE_POSITION_RECEIVED', serverConfirmed: true })
+  f.branch.vein = {
+    layer: 'upper',
+    anchor: { x: 9879, y: 48, z: 10235 },
+    returnTo: { ...VEIN.returnTo },
+    frontier: [{ x: 9879, y: 48, z: 10235 }],
+    opened: [gravelPos],
+    mined: 0,
+    closing: true
+  }
+  const out = await restoreVein(f.ctx, f.branch)
+  assert.equal(out.status, 'completed', JSON.stringify(out))
+  assert.equal(out.code, 'MINE_VEIN_CLOSED')
+  assert.equal(f.branch.vein, undefined)
+  assert.equal(f.sent.length, 0)
 })

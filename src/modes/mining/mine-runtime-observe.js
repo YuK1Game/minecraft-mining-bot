@@ -6,6 +6,7 @@ const results = require('../return/return-result')
 const { mineLiveScope } = require('./mine-state')
 const { cell, key } = require('./mine-observed')
 const recent = new WeakMap()
+const MAX_SECTIONS_PER_OBSERVE = 24
 const sectionOf = p => ({ x: Math.floor(p.x / 16), y: Math.floor(p.y / 16), z: Math.floor(p.z / 16) })
 
 async function observeMineRuntime (rt, { cells = [] } = {}, { signal } = {}) {
@@ -24,7 +25,7 @@ async function observeMineRuntime (rt, { cells = [] } = {}, { signal } = {}) {
   if (history?.scope !== before) { history = { scope: before, sections: new Map() }; recent.set(rt, history) }
   const wanted = new Map(unknown.map(p => { const s = sectionOf(p); return [key(s), s] }))
   const sent = new Set()
-  for (const section of [...wanted.values()].slice(0, 8)) {
+  for (const section of [...wanted.values()].slice(0, MAX_SECTIONS_PER_OBSERVE)) {
     if (!current()) return results.interrupted('MINE_INTERRUPTED', { evidence })
     let out
     try {
@@ -55,4 +56,4 @@ async function observeMineRuntime (rt, { cells = [] } = {}, { signal } = {}) {
   return results.blocked('MINE_TERRAIN_UNREQUESTABLE', { kind: 'position_changed' }, { evidence })
 }
 
-module.exports = { observeMineRuntime }
+module.exports = { observeMineRuntime, MAX_SECTIONS_PER_OBSERVE }

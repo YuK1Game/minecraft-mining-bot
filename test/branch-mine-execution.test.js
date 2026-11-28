@@ -12,16 +12,18 @@ const {beforeSurfaceSupply,minePackRoom}=require('../src/modes/mining/mine-contr
 const {nightHome}=require('../src/modes/dragon-night')
 const {createDragonSupplies}=require('../src/modes/dragon-supplies')
 
-test('two real shaft slices keep a side floor, place received ladders and light the work bay before advancing',async t=>{
+test('direct-down shaft digs to target Y, places ladders upward, and lights the landing',async t=>{
   const w=createMineWorld(t)
-  for(let i=0;i<2;i++){
-    const out=await ensureShaft(w.ctx,w.branch,'upper')
-    assert.equal(out.code,'MINE_SHAFT_ADVANCED',JSON.stringify({out,feet:w.feet(),last:w.lines.slice(-3)}))
-    assert.equal(w.branch.shaft.depth,w.plan.shaft.topY-i-1)
-  }
-  assert.equal(w.climbs.length,2)
+  const out=await ensureShaft(w.ctx,w.branch,'upper')
+  assert.equal(out.code,'MINE_SHAFT_READY',JSON.stringify({out,feet:w.feet(),last:w.lines.slice(-3)}))
+  assert.equal(w.branch.shaft.depth,66)
+  assert.equal(w.branch.shaft.landings.upper,true)
   assert.ok(w.places.some(p=>p.name==='minecraft:torch'))
-  assert.ok(w.digs.every(({target,feet})=>!(Math.floor(feet.x)===target.x && Math.floor(feet.z)===target.z && target.y<feet.y && feet.y-target.y<=1.05)))
+  const shaftDigs=w.digs.filter(d=>d.target.x===w.plan.shaft.ladder.x && d.target.z===w.plan.shaft.ladder.z)
+  assert.deepEqual(shaftDigs.map(d=>d.target.y),[69,68,67,66])
+  assert.ok(shaftDigs.every(d=>d.target.accessPreparation==='shaft_descent'))
+  const ladders=w.places.filter(p=>p.name==='minecraft:ladder').map(p=>p.position.y)
+  assert.deepEqual(ladders,[70,66,67,68,69])
   assert.ok(w.saved.some(record=>record.branch.pendingAction?.kind==='place'),'the actual placement intent is durable before its peer receipt')
 })
 
@@ -61,8 +63,8 @@ test('lower shaft construction preserves the upper landing and works from the fr
   const upper=w.plan.shaft.landings.find(p=>p.layer==='upper'),floor=upper.floor[0].position
   assert.equal(w.getBlock(floor.x,floor.y,floor.z).name,'minecraft:cobblestone_slab')
   assert.equal(w.digs.some(p=>p.name==='minecraft:cobblestone_slab'),false)
-  const front=w.plan.shaft.columns[1],ladder=w.plan.shaft.ladder
-  assert.ok(w.digs.filter(p=>p.target.x===ladder.x && p.target.z===ladder.z).every(p=>Math.floor(p.feet.x)===front.x && Math.floor(p.feet.z)===front.z))
+  const ladder=w.plan.shaft.ladder
+  assert.ok(w.digs.filter(p=>p.target.x===ladder.x && p.target.z===ladder.z).every(p=>p.target.accessPreparation==='shaft_descent'))
   const returned=await leaveMine(w.ctx,w.branch)
   assert.equal(returned.status,'completed',JSON.stringify({returned,feet:w.feet()}))
   assert.equal(w.feet().y,70)
@@ -266,7 +268,7 @@ test('the real ingot supplier keeps its raw batch underground after the first pa
   w.give('raw_iron',3)
   await supplies.acquire('iron_ingot',6)
   assert.equal(w.branch.request.targetHeld,6)
-  assert.equal(w.branch.shaft.depth,68)
+  assert.equal(w.branch.shaft.depth,66)
   assert.ok(w.climbs.slice(climbed).every(p=>p.to.y<70),'partial raw stock does not start a furnace return trip')
 })
 

@@ -3,7 +3,7 @@
 const { mineSteps,stepCells }=require('./mine-geometry')
 const { at,open,solid,standY,key,scope,live,received,feetAt,blocked,stopped,action,results }=require('./mine-common')
 const { walkCell }=require('./mine-excavate')
-const { climb,topStand }=require('./mine-shaft')
+const { climb,topStand,installRungsUpward,rungInstalled }=require('./mine-shaft')
 const { insideMine }=require('./mine-location')
 const { createBuildWalk } = require('../player-build-walk')
 const same=(a,b)=>a.x===b.x && a.z===b.z
@@ -221,6 +221,21 @@ async function leaveMine(ctx,branch){
   const current=plan.layers.find(p=>Math.abs(feet.y-(p.y-0.5))<0.15 || Math.abs(feet.y-p.y)<0.15)
   if(current){const landing=plan.shaft.landings.find(p=>p.layer===current.id),out=await walkLayer(ctx,branch,current.id,landing.stand);if(!received(out))return out}
   else if(feet.y>=plan.shaft.topY-0.2)return {...results.completed('MINE_OUTSIDE'),serverConfirmed:true}
+  // If exiting mid-descent (e.g. inventory full at 35/36 during direct-down digging, live 2026-11-27 16:46 JST at y=-1),
+  // place missing ladders from the current floor up to the existing shaft ladder before climbing to the surface.
+  const nowFeet=ctx.getFeet(), shaft=plan.shaft
+  if(nowFeet && Math.floor(nowFeet.x)===shaft.ladder.x && Math.floor(nowFeet.z)===shaft.ladder.z){
+    const floorY=Math.floor(nowFeet.y+0.001)
+    let missingFrom=null
+    for(let y=floorY;y<=shaft.topY;y++){
+      if(!rungInstalled(ctx,shaft,y)){missingFrom=y;break}
+    }
+    if(missingFrom!=null && missingFrom<shaft.topY){
+      const laddered=await installRungsUpward(ctx,branch,missingFrom,shaft.topY)
+      if(!received(laddered))return laddered
+      if(branch.shaft && floorY<(branch.shaft.depth??shaft.topY))branch.shaft.depth=floorY
+    }
+  }
   const out=await climb(ctx,branch,topStand(plan))
   if(!received(out))return out
   return walkCell(ctx,branch,plan.shaft.approach,'mine_exit')

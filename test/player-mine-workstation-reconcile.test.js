@@ -88,6 +88,46 @@ test('reconcilePlacement clears timed-out crafting_table placement when server a
   assert.ok(logs.some(line => line.includes('minecraft:crafting_table') && line.includes('current_structure_received')))
 })
 
+test('reconcilePlacement runs minePlacementAudit even while inventoryUncertain is true and verifies post-audit inventory (live 2026-11-27 15:57 JST)', async () => {
+  const pos = { x: 9973, y: 62, z: 10057 }
+  let auditCalls = 0
+  const { ctx, branch } = makeCtx({
+    blockAt: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }),
+    inventoryItems: [{ slot: 0, name: 'minecraft:cobblestone', count: 64 }],
+    pendingAction: { kind: 'place', key: 'place:9973,62,10057', position: pos, name: 'minecraft:cobblestone', before: 64, at: 45000 }
+  })
+  ctx.shared.inventoryUncertain = true
+  ctx.runtime.minePlacementAudit = async () => {
+    auditCalls++
+    ctx.shared.inventoryUncertain = false
+    return { target: { serverConfirmed: true } }
+  }
+  const actions = createMineActions(ctx)
+  const reconciled = await actions.reconcilePlacement()
+  assert.equal(auditCalls, 1)
+  assert.equal(reconciled, true)
+  assert.equal(branch.pendingAction, undefined)
+  assert.equal(branch.lastReconciledPlacement?.evidence?.kind, 'current_target_air')
+})
+
+test('reconcilePlacement refuses to clear if inventory remains uncertain or count dropped after audit', async () => {
+  const pos = { x: 9973, y: 62, z: 10057 }
+  const { ctx, branch } = makeCtx({
+    blockAt: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }),
+    inventoryItems: [{ slot: 0, name: 'minecraft:cobblestone', count: 63 }],
+    pendingAction: { kind: 'place', key: 'place:9973,62,10057', position: pos, name: 'minecraft:cobblestone', before: 64, at: 45000 }
+  })
+  ctx.shared.inventoryUncertain = true
+  ctx.runtime.minePlacementAudit = async () => {
+    ctx.shared.inventoryUncertain = false
+    return { target: { serverConfirmed: true } }
+  }
+  const actions = createMineActions(ctx)
+  const reconciled = await actions.reconcilePlacement()
+  assert.equal(reconciled, false)
+  assert.ok(branch.pendingAction)
+})
+
 test('mine supplies never places a furnace on top of an interactive crafting_table (live 2026-11-27 10:05 JST)', async () => {
   const placedCalls = []
   const blockAt = (x, y, z) => {

@@ -23,7 +23,7 @@ test('a received 54-level shaft advances the real watcher beyond sixteen steps; 
   const look = () => watcher.note('early.diamond', { feet: w.feet(), health: 20, scope: 'life', ...measure({ key: 'early.diamond', items: w.items, record: w.ctx.memory }) }, { reason: '縦坑を施工しています。' })
   look()
   for (let i = 0; i < KEYS; i++) ledger.step('other-confirmed-step:' + i)
-  for (let i = 0; i < 54; i++) {
+  for (let i = 0; i < 54 && !w.branch.shaft?.landings?.upper; i++) {
     const out = await ensureShaft(w.ctx, w.branch, 'upper')
     assert.ok(['partial', 'completed'].includes(out.status), JSON.stringify(out))
     // Virtual elapsed construction time, not a claim about real Realm speed.

@@ -273,7 +273,9 @@ function createReturnRunner ({ getMode, shared, agent, ports, policy, scope = ()
         commit()
         // A step back is never taken in the same instant, and the same one from the same place is a loop (return-laps.js).
         if (isBack(stage, to)) {
-          if (laps.back({ from: stage, to, code: out.code, target: goal.target, position: ports.getPosition() })) return hold(mine, 'STAGE_LOOP', ['position_changed'], `${LABEL[stage]}と${LABEL[to]}の間を進まずに行き来しています（${out.code}）`, stage)
+          if (out.status === 'partial') laps.clear()
+          const lapTarget = goal.target ?? out.evidence?.chest ?? null
+          if (laps.back({ from: stage, to, code: out.code, target: lapTarget, position: ports.getPosition() })) return hold(mine, 'STAGE_LOOP', ['position_changed'], `${LABEL[stage]}と${LABEL[to]}の間を進まずに行き来しています（${out.code}）`, stage)
           await sleep(BUDGET.LAP_WAIT_MS)
           if (!current() || goal !== owner) return null
         }

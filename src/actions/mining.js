@@ -82,6 +82,11 @@ function targetList (targets) {
       // The player's climb also stands on the cobblestone it mined on the way.
       if (!['minecraft:dirt', 'minecraft:grass_block', 'minecraft:cobblestone', 'minecraft:cobbled_deepslate'].includes(position.expectedName)) throw new Error('Pillar descent mines only the dirt under the feet')
       Object.assign(target, { accessPreparation: 'pillar_descent', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null })
+    } else if (position.accessPreparation === 'shaft_descent') {
+      // Planned branch-mine direct-down shaft: only the single block directly
+      // under the feet, with a received solid dry block below it (user spec 2026-11-27).
+      if (typeof position.expectedName !== 'string' || !/^minecraft:[a-z0-9_]+$/.test(position.expectedName)) throw new Error('Shaft descent requires an expected received block name')
+      Object.assign(target, { accessPreparation: 'shaft_descent', expectedName: position.expectedName, expectedRuntimeId: position.expectedRuntimeId ?? null })
     } else if (position.accessPreparation === 'quarry' || position.accessPreparation === 'quarry_fluid_roof') {
       // Quarry targets: the quarry planner already chose the block, the tool
       // and checked falling/fluid dependencies; mining re-checks them live.
@@ -100,7 +105,7 @@ function targetList (targets) {
         target.fluidSource = { position: { x: p.x, y: p.y, z: p.z }, expectedName: source.expectedName, expectedRuntimeId: source.expectedRuntimeId }
       }
     } else if (position.accessPreparation != null || position.expectedName != null) {
-      if (position.accessPreparation !== 'tree_access' || !['minecraft:leaf_litter', 'minecraft:vine'].includes(position.expectedName)) throw new Error('植物の準備採掘には許可された対象名が必要です。')
+      if (position.accessPreparation !== 'tree_access' || !(['minecraft:leaf_litter', 'minecraft:vine'].includes(position.expectedName) || /^minecraft:[a-z0-9_]+_leaves$/.test(position.expectedName ?? ''))) throw new Error('植物の準備採掘には許可された対象名が必要です。')
       Object.assign(target, { accessPreparation: 'tree_access', expectedName: position.expectedName })
     }
     return target
@@ -211,11 +216,11 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     const feet = { x: Math.floor(state.position.x), y: Math.floor(state.position.y - 1.62 + 0.001), z: Math.floor(state.position.z) }
     const feetY = state.position.y - 1.62
     const support = world.getBlock(feet.x, feet.y - 1, feet.z)
-    const slabFooting = !['pillar_descent', 'travel_down'].includes(target.accessPreparation) && require('../common/cobblestone-slab').bottomSlabFooting(world, state)
+    const slabFooting = !['pillar_descent', 'shaft_descent', 'travel_down'].includes(target.accessPreparation) && require('../common/cobblestone-slab').bottomSlabFooting(world, state)
     if (!slabFooting && (Math.abs(feetY - Math.round(feetY)) > 0.05 || !support.known || AIR.has(blockName(support)) || HAZARDS.test(blockName(support)))) {
       throw new Error('通常の地面に静止していることを確認できません。')
     }
-    const descent = target.accessPreparation === 'pillar_descent'
+    const descent = target.accessPreparation === 'pillar_descent' || target.accessPreparation === 'shaft_descent'
     if (descent) {
       const below = world.getBlock(target.x, target.y - 1, target.z), here = world.getBlock(target.x, target.y, target.z)
       const dry = p => { const b = world.getBlock(p.x, p.y, p.z); return b?.known === true && !/water|lava/.test(blockName(b)) && !b.extra?.length }
@@ -236,11 +241,13 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     // 2026-11-14 user decision (relay): logs may be cut only to prepare a long trip, about 10, starting empty-handed. Leaves stay off, the quarry rule stays.
     const logAllowed = harvestRule.reason === 'WOOD_HARVEST_DISABLED' && /_log$|_stem$/.test(block.name ?? '') && (() => { try { return logAllowance() === true } catch { return false } })()
     // Leaves only under the feet during long travel (coordinator 2026-11-14:
-    // getting down is not harvesting; the quarry never handles leaves).
+    // getting down is not harvesting; the quarry never handles leaves), or blocking
+    // sight to a log during tree cutting (`tree_access`, user spec 2026-11-27).
     const leafDown = target.accessPreparation === 'travel_down' && harvestRule.reason === 'LEAF_HARVEST_DISABLED' && /leaves$/.test(block.name ?? '')
-    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason) && !logAllowed && !leafDown) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
+    const leafTree = target.accessPreparation === 'tree_access' && harvestRule.reason === 'LEAF_HARVEST_DISABLED' && /^minecraft:[a-z0-9_]+_leaves$/.test(block.name ?? '') && block.protected !== true && !block.protectionSource && !block.extra?.length
+    if (['WOOD_HARVEST_DISABLED', 'LEAF_HARVEST_DISABLED'].includes(harvestRule.reason) && !logAllowed && !leafDown && !leafTree) throw Object.assign(new Error(harvestRule.reason), { code: harvestRule.reason })
     const name = blockName(block)
-    if (target.accessPreparation === 'tree_access' && (!isDryAccessPlant(block) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
+    if (target.accessPreparation === 'tree_access' && (!(isDryAccessPlant(block) || leafTree) || block.name !== target.expectedName)) throw new Error('準備採掘の植物が変更されたか、乾いた未保護の植物ではありません。')
     const ownedBed = target.accessPreparation === 'owned_bed' && name === 'bed' && block.name === target.expectedName && typeof verifyOwnedBed === 'function' && verifyOwnedBed(state, target, block) === true
     if (target.accessPreparation === 'owned_bed' && !ownedBed) throw new Error('This bed lacks the current portable-bed ownership proof')
     const ownedStation = target.accessPreparation === 'owned_station'
@@ -296,7 +303,7 @@ function createMining ({ getState, world, getInput, verifyOwnedBed = null, verif
     if (ingredient && (state.dimension !== 'nether' || block.name !== target.expectedName || block.protected || block.protectionSource || isProtected(target, state, block))) throw new Error('取得したネザーの素材だけを掘れます。')
     const farmHarvest = target.accessPreparation === 'farm_harvest'
     if (farmHarvest && (state.dimension !== 'overworld' || block.name !== target.expectedName || block.runtimeId !== target.expectedRuntimeId || name === 'wheat' && block.properties?.growth !== 7 || block.protected || block.protectionSource || isProtected(target, state, block))) throw new Error('収穫対象が変わったか、作物がまだ育っていません。')
-    if (!farmHarvest && !endTarget && !quarry && !ingredient && !stronghold && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !ownedStation && !logAllowed && !leafDown && !houseDoor && !houseSand && !mineGravel) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
+    if (!farmHarvest && !endTarget && !quarry && !ingredient && !stronghold && !HAND.has(name) && !PICK.has(name) && !ownedBed && !ownedShulker && !ownedStation && !logAllowed && !leafDown && !leafTree && !houseDoor && !houseSand && !mineGravel) throw new Error(`このブロックは自動採掘の対象外です: ${name}`)
     if (clearance && (block.name !== 'minecraft:stone' || block.runtimeId !== target.expectedRuntimeId || block.protected === true || block.protectionSource || block.natural === false || isProtected(target, state, block))) throw new Error('Stone clearance target changed or is protected')
     const handDig = target.accessPreparation === 'hand_dig'
     if (handDig && !HAND_ROCK.has(name)) throw new Error(`素手で掘るのは普通の石だけです: ${name}`)

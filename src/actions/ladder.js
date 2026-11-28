@@ -29,7 +29,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
     if (run.failure) fail(run.failure)
     if (run.plan) {
       for (let y = run.plan.minY; y <= run.plan.maxY; y++) if (ladderAt(getBlock, { ...run.plan.column, y })?.face !== run.plan.facing) fail('LADDER_CONTINUITY_CHANGED')
-      if (!landingAt(getBlock, run.physics, run.plan.to)) fail('LADDER_LANDING_CHANGED')
+      if (!landingAt(getBlock, run.physics, run.plan.to) && !(run.plan.midLadderStop && ladderOriginAt(getBlock, run.physics, run.plan.to, run.plan.column))) fail('LADDER_LANDING_CHANGED')
     }
     const pose = serverPose(state)
     if (run.input && pose && pose.stamp !== run.lastPoseStamp) {
@@ -123,7 +123,9 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         const normal = FACE[plan.facing]
         next = steer(run, { x: plan.centre.x - normal.x * 0.25, z: plan.centre.z - normal.z * 0.25 }, false, true)
       } else if (run.phase === 'climb') next = { controls: {}, predicted: run.physics.step(run.physical, {}) }
-      else {
+      else if (plan.midLadderStop) {
+        next = { controls: { sneak: true }, predicted: run.physics.step(run.physical, { sneak: true }) }
+      } else {
         const near = horizontal(p, plan.to) < 0.3
         // Sneak arrests ladder descent while crossing onto a landing. Once
         // the body clears the ladder, gravity lands it on the received floor.
@@ -131,7 +133,7 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
         const fineLanding = run.physical.onGround && near && horizontal(p, plan.centre) > 0.85
         next = steer(run, plan.to, ontoLanding && (fineLanding || !run.physical.onGround && (horizontal(p, plan.centre) < 0.7 || near)))
       }
-      safeBody(getBlock, run.physics, next.predicted.position, (run.replayedCorrections > 0 || run.plan.midLadder) ? run.plan : null)
+      safeBody(getBlock, run.physics, next.predicted.position, (run.replayedCorrections > 0 || run.plan.midLadder || run.plan.midLadderStop) ? run.plan : null)
       const np = next.predicted.position
       if (np.y < Math.min(plan.from.y, plan.to.y) - 0.35 || np.y > Math.max(plan.from.y, plan.to.y) + 1.25 || horizontal(np, plan.centre) > 1.25) fail('LADDER_LEFT_ROUTE')
       // Upward momentum can carry the Bot above the last rung during a
@@ -140,7 +142,9 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       const aboveExit = run.phase === 'dismount' && plan.direction === 1 &&
         horizontal(plan.to, plan.centre) > 0.1 && rungY === plan.maxY + 1
       if (!aboveExit && horizontal(np, plan.centre) < 0.3 && !next.predicted.onGround && !ladderAt(getBlock, { x: plan.column.x, y: rungY, z: plan.column.z })) fail('LADDER_LOST_CONTACT')
-      const settled = run.phase === 'dismount' && !next.controls.sneak && next.predicted.onGround === true && horizontal(np, plan.to) <= 0.08 && Math.abs(np.y - plan.to.y) <= 0.04 && Math.hypot(next.predicted.velocity.x, next.predicted.velocity.z) < 0.008
+      const settled = plan.midLadderStop
+        ? (run.phase === 'dismount' && next.controls.sneak === true && horizontal(np, plan.to) <= 0.28 && Math.abs(np.y - plan.to.y) <= 0.45 && Math.abs(next.predicted.velocity.y) < 0.05)
+        : (run.phase === 'dismount' && !next.controls.sneak && next.predicted.onGround === true && horizontal(np, plan.to) <= 0.08 && Math.abs(np.y - plan.to.y) <= 0.04 && Math.hypot(next.predicted.velocity.x, next.predicted.velocity.z) < 0.008)
       run.settledFrames = settled ? run.settledFrames + 1 : 0
       if (distance(run.physical.position, np) < 1e-5 && !settled) run.stalled++
       else run.stalled = 0
@@ -203,10 +207,13 @@ function createLadderMovement ({ getState, getBlock, getPhysics, getInput, acqui
       while (now() < deadline) {
         check(run)
         if (run.settledFrames >= 2 && run.queued >= 2) {
-          const positionEvidence = await confirm(run, run.plan.to)
+          const confirmTarget = run.plan.midLadderStop ? run.physical.position : run.plan.to
+          const positionEvidence = await confirm(run, confirmTarget)
           check(run)
           if (positionEvidence) {
-            if (!landingAt(getBlock, run.physics, run.plan.to) || !run.physical.onGround || horizontal(run.physical.position, run.plan.to) > 0.1) fail('LADDER_LANDING_CHANGED')
+            if (run.plan.midLadderStop
+              ? (!ladderOriginAt(getBlock, run.physics, run.plan.to, run.plan.column) || Math.abs(run.physical.position.y - run.plan.to.y) > 0.5)
+              : (!landingAt(getBlock, run.physics, run.plan.to) || !run.physical.onGround || horizontal(run.physical.position, run.plan.to) > 0.1)) fail('LADDER_LANDING_CHANGED')
             last = { status: 'completed', serverConfirmed: true, confirmedBy: positionEvidence.kind, positionEvidence, from: copy(run.plan.from), to: copy(run.plan.to), queuedFrames: run.queued, replayedCorrections: run.replayedCorrections }
             return copy(last)
           }

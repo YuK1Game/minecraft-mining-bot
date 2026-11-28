@@ -12,7 +12,7 @@ const SIZES = Object.freeze([128])
 const MAX_CANDIDATES = 12
 const { mineWorldScope, mineLiveScope } = require('./mine-state')
 const { pocketOf, isMineNaturalBlock } = require('./mine-vein-geometry')
-const { shaftBoundary, shaftEntryBackingUsable, shaftVoids } = require('./mine-shaft-boundary')
+const { shaftBoundary, shaftEntryBackingUsable, shaftEntryBackingSupportable, shaftVoids } = require('./mine-shaft-boundary')
 const FULL_GROUND = new Set(require('../../common/standing-ground').STANDING_GROUND.map(name => `minecraft:${name}`))
 
 const NEIGHBOURS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
@@ -27,6 +27,7 @@ const hazardous = block => HAZARD.test(block.name) || block.extra?.length > 0
 const solid = block => !AIR.has(block.name) && block.boundingBox !== 'empty'
 const bottomSlab = block => /slab$/.test(block.name) && !/double/.test(block.name) && (block.properties?.['minecraft:vertical_half'] === 'bottom' || block.properties?.top_slot_bit === 0 || block.properties?.top_slot_bit === false)
 
+const DIAMOND_PREFERRED_Y = -55
 function lowerLevels (survey, upperMinimum, maximum = 2, minimumY = -Infinity, resource = 'diamond') {
   const scores = new Map()
   const low = survey.ores.filter(ore => ore.position.y <= upperMinimum - 5)
@@ -166,7 +167,7 @@ async function evaluateOpenSteps (plan, survey, { origin, resource, targetCount 
   }
   if (!existingPlan) {
     const backing = { ...plan.shaft.ladder.support, y: plan.shaft.topY }, block = get(backing)
-    if (block.known && !shaftEntryBackingUsable(block)) blocked.add(key(backing))
+    if (block.known && (!shaftEntryBackingUsable(block) || !solid(block) && shaftEntryBackingSupportable(get, backing) === false)) blocked.add(key(backing))
   }
   if (missing.size || blocked.size) return failure('surface', { surfaceBlocked: true })
   // The part of the shaft that is still to be dug stands in rock only (mine-shaft-boundary.js, shaftVoids).
@@ -405,10 +406,21 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
     guard()
     const observedLowers = upperOnly ? [] : [...new Set(uppers.flatMap(upperY => lowerLevels(survey, upperY, maxLowerLevels, -Infinity, resource)))]
     if (!upperOnly && !observedLowers.length) return observed({ status: survey.unknown === 0 ? 'blocked' : 'observing', code: survey.unknown === 0 ? 'MINE_NO_OBSERVED_LOWER_ORE' : 'MINE_LOWER_ORE_OBSERVATION_NEEDED', needsObservation: survey.needsObservation, diagnostics: { known: survey.known, unknown: survey.unknown, observedOres: survey.ores.length, surveyRegions: survey.regions ?? 1 } })
-    const lowersByUpper = new Map(uppers.map(upperY => [upperY, upperOnly ? [null] : lowerLevels(survey, upperY, maxLowerLevels, surfaceY - MAX_SHAFT_DEPTH, resource)]))
+    const lowersByUpper = new Map(uppers.map(upperY => {
+      if (upperOnly) return [upperY, [null]]
+      const found = lowerLevels(survey, upperY, maxLowerLevels, surfaceY - MAX_SHAFT_DEPTH, resource)
+      // Diamond requests prefer Y=-55 when safe and reachable while keeping observed ore levels as fallback (user spec 2026-11-27).
+      if (resource === 'diamond' && found.length > 0 && !found.includes(DIAMOND_PREFERRED_Y) &&
+        DIAMOND_PREFERRED_Y >= survey.bounds.min.y + 2 && DIAMOND_PREFERRED_Y >= surfaceY - MAX_SHAFT_DEPTH && DIAMOND_PREFERRED_Y <= upperY - 6) {
+        return [upperY, [DIAMOND_PREFERRED_Y, ...found]]
+      }
+      return [upperY, found]
+    }))
     const lowers = [...new Set([...lowersByUpper.values()].flat())]
     if (!lowers.length) return observed({ status: 'blocked', code: 'MINE_SHAFT_DEPTH_EXCEEDED', diagnostics: { surfaceY, observedLowerYs: observedLowers, maximumShaftDepth: MAX_SHAFT_DEPTH } })
-    const shifts = [...new Set([-searchRadius, 0, searchRadius])], candidates = [], surfaces = new Map()
+    const halfShift = searchRadius >= 4 ? Math.floor(searchRadius / 2) : null
+    const shifts = [...new Set(halfShift ? [-searchRadius, -halfShift, 0, halfShift, searchRadius] : [-searchRadius, 0, searchRadius])]
+    const candidates = [], surfaces = new Map(), shaftClearCache = new Map()
     for (const [width, length] of dimensions) for (const dx of shifts) for (const dz of shifts) for (const direction of Object.keys(DIRECTIONS)) for (const upperY of uppers) for (const lowerY of lowersByUpper.get(upperY)) {
       const f = DIRECTIONS[direction], r = { x: -f.z, z: f.x }
       // For large sites (>64), keep the shaft entrance and storage room inside
@@ -419,7 +431,13 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
       if (!surfaces.has(surfaceKey)) surfaces.set(surfaceKey, observedSurfaceY({ anchor, direction, width, surfaceY }, surfaceRadius, read))
       const entrance = surfaces.get(surfaceKey)
       if (entrance.y >= upperY + 3 && entrance.y - (lowerY ?? upperY) <= MAX_SHAFT_DEPTH) {
-        candidates.push({ options: { scope, anchor, direction, width, length, surfaceY: entrance.y, upperY, lowerY }, entranceReady: entrance.ready })
+        const bottomY = lowerY ?? upperY
+        const shaftKey = `${surfaceKey},${entrance.y},${bottomY}`
+        if (!shaftClearCache.has(shaftKey)) {
+          const { columns } = shaftSurfaceLayout({ anchor, direction, width, surfaceY: entrance.y })
+          shaftClearCache.set(shaftKey, shaftVoids({ shaft: { columns, topY: entrance.y, bottomY } }, read).length === 0)
+        }
+        candidates.push({ options: { scope, anchor, direction, width, length, surfaceY: entrance.y, upperY, lowerY }, entranceReady: entrance.ready, shaftClear: shaftClearCache.get(shaftKey) })
       }
       await checkpoint()
     }
@@ -427,12 +445,13 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
     // vein evaluation. Keep all size/direction/upper-height families represented.
     const pools = new Map(), ranked = []
     const potentialAt = await potentialIndex(survey, resource, [...new Set([...uppers, ...lowers.filter(y => y != null)])], account, checkpoint)
-    const compare = (a, b) => Number(b.entranceReady) - Number(a.entranceReady) || Number(b.potential >= targetCount) - Number(a.potential >= targetCount) || a.optimisticCost - b.optimisticCost
-    for (const { options, entranceReady } of candidates) {
+    const preferY = resource === 'diamond' ? DIAMOND_PREFERRED_Y : null
+    const compare = (a, b) => Number(b.entranceReady) - Number(a.entranceReady) || Number(b.shaftClear) - Number(a.shaftClear) || (preferY != null ? Number(b.options.lowerY === preferY) - Number(a.options.lowerY === preferY) : 0) || Number(b.potential >= targetCount) - Number(a.potential >= targetCount) || a.optimisticCost - b.optimisticCost
+    for (const { options, entranceReady, shaftClear } of candidates) {
       const targetY = ['coal', 'raw_iron', 'raw_copper'].includes(resource) ? options.upperY : options.lowerY
       account(); const potential = potentialAt(options)
       const optimisticCost = (options.surfaceY - targetY) * 5 + options.width * options.length * Math.min(1, targetCount / Math.max(1, potential))
-      const candidate = { options, potential, optimisticCost, entranceReady }
+      const candidate = { options, potential, optimisticCost, entranceReady, shaftClear }
       const family = `${options.width}:${options.length}:${options.direction}:${options.upperY}`
       const previous = pools.get(family)
       if (!previous || compare(candidate, previous) < 0) pools.set(family, candidate)
@@ -470,7 +489,9 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
         rejectedHazard++
         if (evaluation.unsafe) unsafeSamples[evaluation.unsafe.stage] ??= evaluation.unsafe.blocks
       }
-      if (evaluation.eligible && (!best || Number(evaluation.meetsTarget) > Number(best.evaluation.meetsTarget) || evaluation.meetsTarget === best.evaluation.meetsTarget && (evaluation.meetsTarget ? evaluation.targetCost < best.evaluation.targetCost : evaluation.shortfall < best.evaluation.shortfall || evaluation.shortfall === best.evaluation.shortfall && evaluation.targetCost < best.evaluation.targetCost))) best = { plan, evaluation }
+      const preferThis = preferY != null && plan.layers.find(l => l.id === 'lower')?.y === preferY
+      const preferBest = preferY != null && best?.plan.layers.find(l => l.id === 'lower')?.y === preferY
+      if (evaluation.eligible && (!best || Number(preferThis) > Number(preferBest) || preferThis === preferBest && (Number(evaluation.meetsTarget) > Number(best.evaluation.meetsTarget) || evaluation.meetsTarget === best.evaluation.meetsTarget && (evaluation.meetsTarget ? evaluation.targetCost < best.evaluation.targetCost : evaluation.shortfall < best.evaluation.shortfall || evaluation.shortfall === best.evaluation.shortfall && evaluation.targetCost < best.evaluation.targetCost)))) best = { plan, evaluation }
       // Geometry work itself also yields, including uniformly unknown areas.
       await yieldNow(); guard()
     }
@@ -489,6 +510,7 @@ async function planMine ({ world, getState, origin, resource = 'raw_iron', targe
 // 4: sites are 48 or 64 blocks a side (were 16 to 32).
 // 5: sites are 128x128 with full-size large-chest rooms and deferred outer corridors.
 // 6: tall survey volumes are partitioned; computation limits cannot reject terrain.
-const PLAN_RULES = 6
+// 7: diamond requests prefer lower Y=-55 and commission the lower storage room directly.
+const PLAN_RULES = 7
 
 module.exports = { planMine, evaluateMineGeometry, lowerLevels, resourceName, withClosed, PLAN_RULES }

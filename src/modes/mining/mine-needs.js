@@ -20,7 +20,7 @@ function builtWork (branch) {
 // storing ladders still needed below would immediately withdraw them again.
 // A received cell is read as it is. A cell that is not received is read from `built` (builtWork): installed
 // when the saved record confirms it, still to be built otherwise.
-function supplyNeeds(plan,layer,{inventory,getBlock,refillCobblestone=false,refillTorches=false,built=null}){
+function supplyNeeds(plan,layer,{inventory,getBlock,refillCobblestone=false,refillTorches=false,built=null,singleLayer=false}){
   const level=plan.layers.find(p=>p.id===layer),room=plan.storage.find(p=>p.layer===layer)
   if(!level || !room)return null
   const have=name=>held(inventory,name)??0
@@ -33,8 +33,8 @@ function supplyNeeds(plan,layer,{inventory,getBlock,refillCobblestone=false,refi
   // A spare is useful while installing rungs. A finished ladder does not
   // need another supply trip just to meet a carried reserve.
   const ladders=remainingRungs>0?remainingRungs+1:0
-  // A first lower-layer trip commissions the upper storage room on its way.
-  const rooms=layer==='lower'?plan.storage:[room]
+  // A first non-diamond lower-layer trip commissions the upper storage room on its way.
+  const rooms=layer==='lower' && !singleLayer?plan.storage:[room]
   const chests=rooms.flatMap(entry=>entry.pairs).reduce((sum,pair)=>sum+pair.positions.filter(p=>{
     const block=getBlock(p)
     return block?.known===true ? block.name!=='minecraft:chest' : !built?.pairs?.includes(pair.id)

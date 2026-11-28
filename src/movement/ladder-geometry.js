@@ -104,8 +104,10 @@ function ladderPlan (request, getBlock, physics) {
     const dx = Math.abs(p.x - centre.x), dz = Math.abs(p.z - centre.z)
     if (dx + dz > 1.001 || Math.min(dx, dz) > 0.001 || Math.abs(p.x - Math.floor(p.x) - 0.5) > 0.001 || Math.abs(p.z - Math.floor(p.z) - 0.5) > 0.001) fail('LADDER_LANDING_NOT_ADJACENT')
   }
+  const midLadderStop = request?.midLadderStop === true
+  const targetOnLadder = midLadderStop && ladderOriginAt(getBlock, physics, to, column)
   if (!landingAt(getBlock, physics, from) && !midLadder) fail('LADDER_ORIGIN_UNSUPPORTED')
-  if (!landingAt(getBlock, physics, to)) fail('LADDER_TARGET_UNSUPPORTED')
+  if (!landingAt(getBlock, physics, to) && !targetOnLadder) fail('LADDER_TARGET_UNSUPPORTED')
   const columnLevel = p => {
     const y = Math.ceil(p.y), halfStep = y - p.y
     return Math.hypot(p.x - centre.x, p.z - centre.z) > 0.1 && halfStep > 0.001 && halfStep <= 0.55 && landingAt(getBlock, physics, { ...centre, y }) ? y : p.y
@@ -119,7 +121,7 @@ function ladderPlan (request, getBlock, physics) {
     facing = rung.face
   }
   safeBody(getBlock, physics, from, midLadder ? { column: { ...column }, facing } : null)
-  return { column: { ...column }, centre, from, to: { ...to }, minY, maxY, facing, climbToY, direction: Math.sign(climbToY - climbFromY), midLadder }
+  return { column: { ...column }, centre, from, to: { ...to }, minY, maxY, facing, climbToY, direction: Math.sign(climbToY - climbFromY), midLadder, midLadderStop: targetOnLadder }
 }
 
 module.exports = { FACE, ladderAt, ladderOriginAt, ladderPlan, landingAt, safeBody, finite, fail }

@@ -125,6 +125,13 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
     if(out.status==='failed' || out.status==='blocked' && /HAZARD|UNSAFE|REFUSED|BLOCKED|FINISH_STAND_UNAVAILABLE/.test(out.code??'')){
       const id=step.segmentId,attempts=branch.failures[id]=(branch.failures[id]??0)+1
       ctx.goal?.fail?.({stage:'mine',target:id,code:out.code})
+      if (attempts >= 4) {
+        const sig = `${step.id}:${out.code}:${out.detail ?? ''}`
+        if (ctx.shared && ctx.shared.mineSegmentFailSaid !== sig) {
+          ctx.shared.mineSegmentFailSaid = sig
+          ctx.log?.(`採掘場: 区間 ${step.id} の施工に失敗が続いています（${attempts}回目・code=${out.code}${out.detail ? `・理由=${String(out.detail).slice(0, 80)}` : ''}）`)
+        }
+      }
       // Skipping an unopened branch changes only the future plan. Once any
       // cell has opened, keep its finishing task; a failure budget cannot
       // erase the debt for a lit, floored and sealed excavation.
@@ -132,7 +139,7 @@ async function stepLayer(ctx,branch,layer,{lobbyOnly=false,finishOnly=false}={})
         branch.progress[layer]=state.skipMineSegment(progress,{segmentId:id,code:out.code,attempts,plan:branch.plan,liveScope:before})
         delete branch.segmentTask
         await save(ctx,branch,before)
-      } else if(attempts>=4 && step.kind==='branch' && (['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE','MINE_FINISH_STAND_UNAVAILABLE'].includes(out.code) || hazardRefusal(out)) && typeof state.skipMineSegment==='function'){
+      } else if(attempts>=4 && step.kind==='branch' && (['MINE_HAZARD','MINE_PROTECTED_OR_UNSAFE','MINE_CAVE_BOUNDARY_UNSAFE','MINE_FINISH_STAND_UNAVAILABLE','MINE_WALK_REFUSED'].includes(out.code) || hazardRefusal(out)) && typeof state.skipMineSegment==='function'){
         // A partially opened branch hit water/lava/overhead gravel, an unminable structure block,
         // or an unsafe cave boundary (live 2026-11-25/26: 2,370 loops on branch-35-left:15 and
         // 2,103 loops on branch-38-right:18). Persist closingHazard so retries finish refilling
@@ -218,7 +225,19 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     if(!received(reached))return outcome(reached)
     return outcome(await stepLayer(ctx,branch,task.layer,{lobbyOnly:task.lobbyOnly,finishOnly:true}),'掘り始めた区間の床・照明・封鎖を確認してから次へ進みます。')
   }
-  if(branch.vein){const out=await workVein(ctx,branch);return outcome(out,'鉱脈の回収と埋戻しを進めます。')}
+  if(branch.vein){
+    const out=await workVein(ctx,branch)
+    if(!received(out) && out?.code && ctx.shared){
+      const sig=`vein:${out.code}:${out.detail??''}`
+      if(ctx.shared.mineVeinFailSaid!==sig){
+        ctx.shared.mineVeinFailSaid=sig
+        const target=branch.vein?.opened?.[0]
+        const block=target?at(ctx,target):null
+        ctx.log?.(`採掘場: 鉱脈の処理が止まっています（code=${out.code}${out.detail?`・理由=${String(out.detail).slice(0,80)}`:''}${target?`・対象=${target.x},${target.y},${target.z}(${block?.known?block.name:'unknown'})`:''}）`)
+      }
+    }
+    return outcome(out,'鉱脈の回収と埋戻しを進めます。')
+  }
   if(count(ctx,resource)>=targetHeld){
     const out=await leaveMine(ctx,branch)
     return received(out) && live(ctx) ? {done:true,reason:`${resource} ${count(ctx,resource)}個を受信し、採掘場から戻りました。`,result:results.completed('MINE_SUPPLY_DELIVERED')} : outcome(out)
@@ -247,11 +266,12 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
     if(!received(stocked))return outcome(stocked,'保管した鉱石をラージチェストから確認して取り出します。')
     if(count(ctx,resource)>=targetHeld){const out=await leaveMine(ctx,branch);return received(out)&&live(ctx)?{done:true,reason:`保管済みの${resource}を持ち物で確認し、採掘場から戻りました。`,result:results.completed('MINE_SUPPLY_DELIVERED')}:outcome(out)}
   }
-  // A lower request first commissions the upper shaft and its storage.
-  const current=layer==='lower' && !branch.lobbyReady?.upper?'upper':layer
+  // A non-diamond lower request first commissions the upper shaft and its storage.
+  // Diamond requests go directly to the lower layer (Y=-55) and build its storage room there (user spec 2026-11-27).
+  const current=layer==='lower' && resource!=='diamond' && !branch.lobbyReady?.upper?'upper':layer
   const shaftOnly=!branch.shaft?.landings?.[current]
   const nextStep=!shaftOnly && current===layer ? steps[progress.cursor] : null
-  const prepared=await prepare(ctx,branch,current,{shaftOnly,blockName:nextStep?remainingPickBlock(ctx,branch,nextStep):null})
+  const prepared=await prepare(ctx,branch,current,{shaftOnly,singleLayer:resource==='diamond',blockName:nextStep?remainingPickBlock(ctx,branch,nextStep):null})
   if (!live(ctx)) return outcome(stopped())
   if (!received(prepared)) {
     const detail = prepared?.detail || prepared?.code
@@ -263,7 +283,7 @@ async function requestMine(ctx,{resource,targetHeld=1,requester=null}={}){
   if(['MINE_SHAFT_ENTRY_BACKING_BLOCKED','MINE_SHAFT_LANDING_UNSUPPORTED'].includes(shaft.code)){
     return outcome(await retireMine(ctx,branch,shaft.code),shaft.detail)
   }
-  if(!received(shaft)){await save(ctx,branch);return outcome(shaft,`採掘場の${current==='upper'?'上層':'下層'}へ、足場とはしごを確認しながら縦坑を施工します。`)}
+  if(!received(shaft)){await save(ctx,branch);const detail=shaft?.detail||shaft?.code;return outcome(shaft,`採掘場の${current==='upper'?'上層':'下層'}へ、足場とはしごを確認しながら縦坑を施工します${detail?`（${detail}）`:''}。`)}
   if(shaftOnly)return outcome({...results.partial('MINE_LANDING_READY'),serverConfirmed:true},'縦坑と踊り場を確認し、収納室に必要な資材を整えます。')
   const reached=await reachLayer(ctx,branch,current)
   if(!received(reached))return outcome(reached)
@@ -342,6 +362,19 @@ async function minePackRoom(ctx,{returningToMine=false}={}){
     const before=scope(ctx),left=await leaveMine(ctx,branch)
     if(!received(left))return outcome(left,'採掘場の入口へ戻り、地上の箱へ採掘物を運びます。')
     const out=await ctx.minePorts.storage.depositHome?.({keep,freeSlots:6,drain:true})
+    // If all non-retained cargo was stored and slots are already below the 35-slot
+    // trigger (e.g. split plank stacks at 32/36, live 2026-11-27 18:00 JST), release
+    // the capacity hold so crafting/mining can consume those retained stacks.
+    const afterHome=occupied(inventory(ctx))
+    if(out?.code==='MINE_CAPACITY_RETAINED' && afterHome!=null && afterHome<35 && live(ctx,before)){
+      delete branch.capacityDestination
+      delete branch.homeCapacityPending
+      if(!await save(ctx,branch,before)){
+        branch.capacityDestination='home'
+        return outcome(blocked('MINE_CHECKPOINT','収納後の空き枠を保存します。','owner_released'))
+      }
+      return null
+    }
     // This code is returned before the home container is opened. Keep any
     // submitted transfer on its original route until its receipt is known.
     if(out?.code==='MINE_HOME_ACCESS_UNCONFIRMED' && readyLayer && branch.lobbyReady[readyLayer]===before && live(ctx,before)){

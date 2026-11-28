@@ -123,3 +123,59 @@ test('equipment preparation passes through a blocked mining ingredient', async (
   assert.equal(out.result.code, 'MINE_WORLD_CHANGED')
   assert.equal(out.reason, '現在のワールドの採掘場を確認します。')
 })
+
+test('2026-11-28 19:00 JST: acquiring food inside branch mine with raw meat and no fuel mines coal instead of bouncing to surface', async () => {
+  const raw = { profile: 'p', realm: { id: 'current' }, dimension: 'overworld', phase: 'spawned', health: 20,
+    connectionId: 'current-connection', startedAt: 'now', runtimeEntityId: '1', lifecycle: { deathId: 0 } }
+  const inventory = { known: true, items: [{ slot: 0, name: 'minecraft:beef', count: 3 }, { slot: 1, name: 'minecraft:stone_pickaxe', count: 1, durabilityUsed: 0, maxDurability: 131 }] }
+  const feet = { x: 10.5, y: 15.5, z: 10.5 }
+  const plan = {
+    id: 'test-plan',
+    scope: { profile: 'p', realmId: 'current', dimension: 'overworld' },
+    site: { anchor: { x: 0, z: 0 }, direction: 'east', width: 32, length: 32 },
+    layers: [{ id: 'upper', y: 16 }],
+    shaft: { topY: 64, bottomY: 16, columns: [{ x: 10, z: 10 }], landings: [{ layer: 'upper', stand: feet, clear: [{ x: 10, y: 16, z: 10 }] }] }
+  }
+  const branch = { plan, shaft: { landings: { upper: true } }, progress: { upper: { cursor: 0 } } }
+  const asked = []
+  const ctx = {
+    operations: {},
+    getFeet: () => feet,
+    getBlock: () => ({ known: true, name: 'minecraft:stone', boundingBox: 'block' }),
+    shared: {},
+    cancelled: () => false,
+    runtime: { raw: () => raw, inventory: () => inventory },
+    minePorts: {},
+    judge: { need: name => { asked.push(name); return () => {} } },
+    memory: { early: { mine: { branch } } }
+  }
+  const out = await createDragonSupplies(ctx).acquire('food', 6)
+  assert.equal(out.done, false)
+  assert.deepEqual(asked, ['food', 'coal'])
+  assert.doesNotMatch(out.reason, /採掘場の入口へ戻り/)
+})
+
+test('2026-11-28 19:25 JST: smelt gather keeps furnace-measured inputGoal after 60s when away from any furnace', async () => {
+  const raw = { profile: 'p', realm: { id: 'current' }, dimension: 'overworld', phase: 'spawned', health: 20,
+    connectionId: 'current-connection', startedAt: 'now', runtimeEntityId: '1', lifecycle: { deathId: 0 } }
+  const inventory = { known: true, items: [{ slot: 0, name: 'minecraft:iron_ingot', count: 1 }, { slot: 1, name: 'minecraft:stone_pickaxe', count: 1, durabilityUsed: 0, maxDurability: 131 }] }
+  const asked = []
+  const shared = {
+    dragonSmeltGather: { name: 'iron_ingot', dimension: 'overworld', at: 1000, need: { input: 1, fuel: false }, inputGoal: 1 }
+  }
+  const ctx = {
+    operations: {},
+    getFeet: () => ({ x: 100, y: 70, z: 100 }),
+    getBlock: () => ({ known: true, name: 'minecraft:air', boundingBox: 'empty' }),
+    shared,
+    cancelled: () => false,
+    now: () => 80000,
+    runtime: { raw: () => raw, inventory: () => inventory },
+    minePorts: {},
+    judge: { need: (name, _have, target) => { asked.push([name, target]); return () => {} } },
+    memory: { early: { mine: { branch: { plan: { scope: { profile: 'p', realmId: 'different', dimension: 'overworld' } } } } } }
+  }
+  const out = await createDragonSupplies(ctx).acquire('iron_ingot', 3)
+  assert.equal(out.done, false)
+  assert.deepEqual(asked, [['iron_ingot', 3], ['raw_iron', 1]])
+})

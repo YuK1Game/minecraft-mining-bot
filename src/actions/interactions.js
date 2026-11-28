@@ -278,6 +278,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     pending = null
     clearTimeout(request.timeout)
     clearInterval(request.poll)
+    if (request.plan?.holdSneak) request.input.setStationarySneak?.(false)
     if (request.startedInput) request.input.stop()
     lastResult = result
     request.resolve(copy(result))
@@ -320,6 +321,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
     clearInterval(request.poll)
     let inputStopError = null
     try {
+      if (request.plan?.holdSneak) request.input.setStationarySneak?.(false)
       if (request.startedInput || request.plan.alignFacing && request.transactionQueued && !request.wireSent && request.input.stats().running) request.input.stop()
     } catch (failure) { inputStopError = String(failure?.message ?? failure).slice(0, 256) }
     notifyUncertain(request, error.message)
@@ -452,6 +454,7 @@ function createInteractions ({ client, getState, world, crafting, getInput, vers
           if (!expected || !Number.isFinite(expected.pitch) || !Number.isFinite(expected.yaw) || !Number.isSafeInteger(beforeStart.sent)) throw new Error('向き合わせ用の入力送信状況を確認できません。')
           request.alignment = { sent: beforeStart.sent, rotation: copy(expected), selectedSlot: observedSelection(session(bedRequest)) }
         }
+        if (plan.holdSneak === true) input.setStationarySneak?.(true)
         input.start()
         if (plan.alignFacing) { request.alignment.owner = input.stats().owner; check() } else sendRequest(request)
       } catch (error) { cancel(error) }
