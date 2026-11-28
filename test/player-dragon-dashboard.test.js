@@ -174,7 +174,9 @@ test('stage details list exact transition item requirements and live received co
   assert.match(pickWithoutChest.value, /箱未確認/)
 
   const diamond = viewStages.find(s => s.id === 'diamond')
-  assert.equal(diamond.checks[0].value, '所持 5 / 残り 26 個')
+  // The road's own steps come first (the carried iron kit, the reserve, the shaft, the lower layer).
+  assert.ok(diamond.checks.length <= 12)
+  assert.equal(diamond.checks.find(c => c.label.startsWith('ダイヤ必要数')).value,'所持 5 / 残り 26 個')
 
   const nether = viewStages.find(s => s.id === 'nether')
   assert.equal(nether.checks.find(c => c.label.includes('矢')).value, '12 / 32 本')

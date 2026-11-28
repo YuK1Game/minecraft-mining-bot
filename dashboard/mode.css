@@ -111,3 +111,9 @@ body.v2 .control-panel .mode-switch button[aria-pressed=true]:disabled{opacity:1
   font-size: 13px;
   overflow-wrap: anywhere;
 }
+
+/* The current stage's steps under the stage chips: compact, so the first view still holds the whole panel. */
+.mode-current-steps { padding: 2px 2px 0; font-size: 12px; max-height: 118px; overflow-y: auto; }
+.mode-current-steps li { gap: 8px; padding: 3px 0; line-height: 1.35; }
+.mode-current-steps .mode-check-state { font-size: 11px; }
+.mode-current-steps li[data-state=done] .mode-check-label { color: var(--sub); }

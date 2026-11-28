@@ -83,13 +83,13 @@ function diamondEquipment (items) {
   }))
 }
 
-function upperMineStatus (site) {
+function upperMineStatus (site, layer = 'upper') {
   const plan = site?.plan
-  const progress = site?.progress?.upper
+  const progress = site?.progress?.[layer]
   const validPlan = plan?.version === 1 && Array.isArray(plan.layers) && Array.isArray(plan.segments) &&
-    Array.isArray(plan.storage) && plan.layers.some(entry => entry.id === 'upper')
-  const landed = validPlan && site.shaft?.landings?.upper === true
-  const pairs = validPlan ? (plan.storage.find(room => room.layer === 'upper')?.pairs ?? []) : []
+    Array.isArray(plan.storage) && plan.layers.some(entry => entry.id === layer)
+  const landed = validPlan && site.shaft?.landings?.[layer] === true
+  const pairs = validPlan ? (plan.storage.find(room => room.layer === layer)?.pairs ?? []) : []
   const plannedPairs = pairs.length
   const builtPairs = pairs.filter(pair => {
     const saved = site.storage?.pairs?.[pair.id]
@@ -100,7 +100,7 @@ function upperMineStatus (site) {
 
   let corridorSteps = 0
   if (validPlan && Number.isSafeInteger(progress?.cursor) && Number.isSafeInteger(progress?.confirmedSteps)) {
-    const steps = mineSteps(plan, { layer: 'upper' })
+    const steps = mineSteps(plan, { layer })
     if (progress.cursor >= 1 && progress.cursor <= steps.length && progress.confirmedSteps <= progress.cursor) {
       // A skipped branch advances the cursor without adding a confirmed step.
       const storageSteps = steps.slice(0, progress.cursor).filter(step => step.kind === 'storage').length
@@ -115,7 +115,9 @@ function upperMineStatus (site) {
     builtPairs,
     chestsReady,
     corridorSteps,
-    corridorReady
+    corridorReady,
+    stepCount: Number.isSafeInteger(progress?.stepCount) ? progress.stepCount : null,
+    cursor: Number.isSafeInteger(progress?.cursor) ? progress.cursor : 0
   }
 }
 
@@ -257,17 +259,36 @@ function stageChecks (stage, rawItems, house, record, options = {}) {
       const allDone = Boolean(early?.finished || stage.reached)
       const missingDiamonds = allDone ? 0 : pieces.reduce((sum, piece) => sum + (piece.done ? 0 : piece.cost), 0)
       const heldDiamonds = held(items, 'diamond')
+      // The road to the diamonds, step by step (user 2026-11-29 00:08 JST: 「細かいロードマップもダッシュボードの目標で
+      // 確認できるようにして」): the carried iron kit, the house reserve, the shaft down to the lower layer, its storage
+      // room, its corridors; then the diamonds and the six pieces.
+      const branch = early?.mine?.branch
+      const lower = upperMineStatus(branch, 'lower')
+      const kit = HOME_ITEMS.filter(([name]) => name !== 'food')
+      const kitHeld = kit.filter(([name]) => homeCarryCount(name, items) >= 1)
+      const kitMissing = kit.filter(([name]) => homeCarryCount(name, items) < 1).map(([, label]) => label.replace(/^鉄の/, ''))
+      const shaft = branch?.shaft
+      const shaftDown = allDone || shaft?.landings?.lower === true
+      const request = branch?.request
+      const asked = !allDone && request?.resource ? check(`いま採掘場に頼んでいる物: ${bare(request.resource)}（${request.layer === 'lower' ? '下層' : '上層'}）`, false, fmtCount(known, held(items, bare(request.resource)), request.targetHeld, '個')) : null
       return [
+        check('1. 鉄の携行装備（ツルハシ・剣・防具4・盾・バケツ）', allDone || (known && !kitMissing.length), allDone ? '揃っています' : known ? `${kitHeld.length} / ${kit.length}${kitMissing.length ? '・不足 ' + kitMissing.join('・') : ''}` : '受信待ち'),
+        check('2. 本拠点の予備チェストに鉄装備と食料', allDone || early?.reserveReady === true, early?.reserveReady === true || allDone ? '備蓄済み' : '補給中'),
+        check('3. 縦坑を下層（Y-45）まで掘って着底', shaftDown, shaftDown ? '着底済み' : Number.isFinite(shaft?.dugDepth) ? `いま Y${shaft.dugDepth}` : '未着手'),
+        check('4. 下層収納室のラージチェストを設置', allDone || lower.chestsReady, lower.plannedPairs ? `${lower.builtPairs} / ${lower.plannedPairs} 組` : '計画待ち'),
+        check('5. 下層の坑道を掘ってダイヤを探す', allDone, lower.stepCount ? `${lower.cursor} / ${lower.stepCount} 手` : '未着手'),
+        ...(asked ? [asked] : []),
         check(
           'ダイヤ必要数（全6部位で29個・達成で次へ）',
           allDone || (known && heldDiamonds >= missingDiamonds),
           allDone ? '6 / 6 部位' : known ? `所持 ${heldDiamonds} / 残り ${missingDiamonds} 個` : '受信待ち'
         ),
-        ...pieces.map(piece => check(
-          `ダイヤの${piece.label}（ダイヤ ${piece.cost} 個）`,
-          allDone || piece.done,
-          allDone || piece.done ? '1 / 1' : known ? '0 / 1' : '受信待ち'
-        ))
+        // The six pieces in one row, so the stage stays within the panel's rows (player-dragon-dashboard.test.js).
+        check(
+          'ダイヤ装備を作る（ツルハシ・剣・ヘルメット・チェスト・レギンス・ブーツ）',
+          allDone || pieces.every(piece => piece.done),
+          allDone ? '6 / 6 部位' : known ? `${pieces.filter(piece => piece.done).length} / 6 部位${pieces.some(piece => !piece.done) ? '・次 ' + pieces.find(piece => !piece.done).label : ''}` : '受信待ち'
+        )
       ]
     }
     case 'nether': {

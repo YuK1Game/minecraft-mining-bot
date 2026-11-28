@@ -30,7 +30,10 @@
   const total = element('span', 'mode-roadmap-total')
   const stages = element('ol', 'mode-stages')
   summary.append(goal, total)
-  roadmap.append(summary, stages)
+  // The current stage's own steps, under the stages: the roadmap at a glance without opening a stage.
+  const steps = element('ul', 'mode-stage-checks mode-current-steps')
+  steps.setAttribute('aria-label', '現在の目標の小目標')
+  roadmap.append(summary, stages, steps)
   roadmap.hidden = true
   $('target-heading').after(roadmap)
 
@@ -61,6 +64,17 @@
   let selected = null, signature = null
   const stageButtons = new Map()
 
+  const checkRows = rows => rows.map(check => {
+    const row = element('li', '')
+    const state = labelsForCheck[check.status] ? check.status : 'pending'
+    row.dataset.state = state
+    row.append(element('span', 'mode-check-label', check.label))
+    const receipt = element('span', 'mode-check-state', check.value || labelsForCheck[state])
+    if (check.value) receipt.setAttribute('aria-label', check.value + '、' + labelsForCheck[state])
+    row.append(receipt)
+    return row
+  })
+
   function renderDetail (player) {
     const stage = player.stages.find(stage => stage.id === selected)
     if (!stage) { if (detail.open) detail.close(); return }
@@ -69,16 +83,7 @@
     status.textContent = labelsForStatus[status.dataset.state]
     const rows = stage.checks ?? []
     checks.hidden = !rows.length
-    checks.replaceChildren(...rows.map(check => {
-      const row = element('li', '')
-      const state = labelsForCheck[check.status] ? check.status : 'pending'
-      row.dataset.state = state
-      row.append(element('span', 'mode-check-label', check.label))
-      const receipt = element('span', 'mode-check-state', check.value || labelsForCheck[state])
-      if (check.value) receipt.setAttribute('aria-label', check.value + '、' + labelsForCheck[state])
-      row.append(receipt)
-      return row
-    }))
+    checks.replaceChildren(...checkRows(rows))
     const activity = stage.id === player.current ? [player.reason, player.decision && player.decision !== player.reason ? player.decision : null].filter(Boolean).join(' · ') : null
     reason.hidden = !activity
     reason.textContent = activity || ''
@@ -122,6 +127,9 @@
       if (state === 'current') button.setAttribute('aria-current', 'step')
       else button.removeAttribute('aria-current')
     }
+    const currentRows = active?.checks ?? []
+    steps.hidden = !currentRows.length
+    steps.replaceChildren(...checkRows(currentRows))
     if (selected && detail.open) renderDetail(player)
   }
 
