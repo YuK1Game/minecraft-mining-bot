@@ -27,16 +27,24 @@ function storedIron (shared, origin) {
   return out.sort((a, b) => IRON.indexOf(a.name) - IRON.indexOf(b.name) || b.count - a.count)
 }
 
-// One look: the chest to take from now, or null. `held(name)` counts the bag.
+const keyOf = entry => `${entry.pos.x},${entry.pos.y},${entry.pos.z}:${entry.name}`
+
+// The chest to take from now, or null. `held(name)` counts the bag. A chest rests only after a look beside it
+// (`markStoredIron`) gave nothing; the walk there does not count.
 function nextStoredIron (shared, origin, held, now = Date.now()) {
   const tried = shared.dragonStoredIronTried ??= {}
   for (const entry of storedIron(shared, origin)) {
-    const key = `${entry.pos.x},${entry.pos.y},${entry.pos.z}:${entry.name}`, last = tried[key]
+    const last = tried[keyOf(entry)]
     if (last && now - last.at < REST_MS && held(entry.name) <= last.held) continue
-    if (!last || now - last.at >= REST_MS || held(entry.name) > last.held) tried[key] = { at: now, held: held(entry.name) }
     return entry
   }
   return null
 }
 
-module.exports = { storedIron, nextStoredIron, NEAR_M }
+// A look beside the chest: the count held now, to see whether the next look gained anything.
+function markStoredIron (shared, entry, held, now = Date.now()) {
+  const tried = shared.dragonStoredIronTried ??= {}, last = tried[keyOf(entry)]
+  if (!last || now - last.at >= REST_MS || held(entry.name) > last.held) tried[keyOf(entry)] = { at: now, held: held(entry.name) }
+}
+
+module.exports = { storedIron, nextStoredIron, markStoredIron, NEAR_M }

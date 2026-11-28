@@ -242,6 +242,14 @@ function createDragonSupplies (ctx) {
       const stored = name === 'iron_ingot' && runtime.raw()?.dimension === 'overworld' && held(name) < target
         ? require('./dragon-stored-iron').nextStoredIron(ctx.shared, ctx.shared.playerHouse?.origin, item => held(bare(item)), (ctx.now ?? Date.now)()) : null
       if (stored) {
+        // From the mine the house is 150 m away: the short approach of `bank` did not get there and the look ended
+        // silently every time (live 2026-11-28 23:25-23:32 JST). The way home is the recovery's own.
+        const feet = ctx.getFeet?.()
+        if (feet && Math.hypot(feet.x - stored.pos.x - 0.5, feet.y - stored.pos.y, feet.z - stored.pos.z - 0.5) > 5) {
+          await require('./dragon-early-home').approachHome(ctx, stored.pos)
+          return pending('家のチェストにある鉄を取りに戻っています。')
+        }
+        require('./dragon-stored-iron').markStoredIron(ctx.shared, stored, item => held(bare(item)), (ctx.now ?? Date.now)())
         const item = bare(stored.name), wanted = item === 'iron_ingot' ? Math.min(stored.count, target - held(name)) : stored.count
         const taken = await bank(stored.pos, item, held(item) + wanted, true)
         return taken.done ? pending(item + ' をチェストから取り出しました。') : taken

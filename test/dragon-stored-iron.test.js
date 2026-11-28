@@ -2,7 +2,7 @@
 
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { storedIron, nextStoredIron } = require('../src/modes/dragon-stored-iron')
+const { storedIron, nextStoredIron, markStoredIron } = require('../src/modes/dragon-stored-iron')
 
 const origin = { x: 9876, y: 65, z: 10136 }
 const memory = () => ({ seen: new Map([
@@ -19,10 +19,13 @@ test('a chest that gave nothing rests, one that gave something is taken from aga
   const shared = { playerChestMemory: memory() }
   let bag = 0
   const held = () => bag
-  assert.equal(nextStoredIron(shared, origin, held, 1000).name, 'minecraft:iron_ingot')
+  const look = now => { const entry = nextStoredIron(shared, origin, held, now); if (entry) markStoredIron(shared, entry, held, now); return entry }
+  // Walking there is no look: the same chest stays next.
+  assert.equal(nextStoredIron(shared, origin, held, 500).name, 'minecraft:iron_ingot')
+  assert.equal(look(1000).name, 'minecraft:iron_ingot')
   // Nothing came: the ingots rest, the raw iron is next.
-  assert.equal(nextStoredIron(shared, origin, held, 2000).name, 'minecraft:raw_iron')
-  assert.equal(nextStoredIron(shared, origin, held, 3000), null)
+  assert.equal(look(2000).name, 'minecraft:raw_iron')
+  assert.equal(look(3000), null)
   bag = 3
-  assert.equal(nextStoredIron(shared, origin, held, 4000).name, 'minecraft:iron_ingot')
+  assert.equal(look(4000).name, 'minecraft:iron_ingot')
 })
