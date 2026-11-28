@@ -90,7 +90,10 @@ async function recoverDragon (ctx, record) {
   }
   if (recovery.gather) {
     const { name, count } = recovery.gather
-    const result = name === 'food' ? await provisionFood(ctx, count) : await ctx.supplies.acquire(name, count)
+    // Food goes through the supplies too: inside the mine with raw meat and no fuel, they mine the coal there. Straight
+    // to provisionFood, the cook walked home for want of coal and the coal step walked back down, twenty minutes over
+    // (live 2026-11-28 23:42-00:03 JST: raw meat 8, no coal or wood, 「coal 0/1」 then 「狩りで得た肉を確認して調理します」).
+    const result = name === 'food' && typeof ctx.supplies?.acquire !== 'function' ? await provisionFood(ctx, count) : await ctx.supplies.acquire(name, count)
     if (result.done && !ctx.cancelled()) delete recovery.gather
     return working(result.reason)
   }
