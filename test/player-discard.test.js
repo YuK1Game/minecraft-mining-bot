@@ -20,7 +20,8 @@ test('throws whole rubble stacks and junk, keeps the reserve, valuables and the 
   // 72 cobblestone stay (the starter house takes 68): the first 64 and part of
   // the second, so only the 40 is thrown whole; the dirt stack is partly
   // reserve so it is not thrown whole. The stone pickaxe stays as the spare.
-  assert.deepEqual(slots, [2, 3, 4, 9, 10, 11, 12])
+  // The sapling stays: it grows the house's trees (dragon-saplings.js).
+  assert.deepEqual(slots, [2, 3, 4, 10, 11, 12])
 })
 
 test('discardJunk throws, records where, and the drop planning skips those drops', async () => {

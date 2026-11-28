@@ -206,7 +206,8 @@ test('capacity relief offers surface/woodwork extras like leaf_litter, saplings,
   const offered = capacityCargo(inv, {})
   assert.deepEqual(
     offered.map(item => item.name).sort(),
-    ['minecraft:birch_boat', 'minecraft:birch_slab', 'minecraft:leaf_litter', 'minecraft:oak_sapling']
+    // Saplings up to 16 stay carried for the house's trees (dragon-saplings.js).
+    ['minecraft:birch_boat', 'minecraft:birch_slab', 'minecraft:leaf_litter']
   )
 })
 

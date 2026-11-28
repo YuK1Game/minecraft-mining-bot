@@ -158,6 +158,11 @@ function createDragonRuntime (ports) {
       const logs = shared.playerTree?.logs?.length, felling = await finishTree(ctx)
       if (felling) { judge(...says.tree(logs)); return felling }
     }
+    // Saplings and bone meal by the house, so its wood grows back (dragon-saplings.js).
+    if (dim === 'overworld' && ctx.shared.mineArmedEntry === true && !ports.threatened()) {
+      const planting = await require('./dragon-saplings').plantSaplings(ctx)
+      if (planting) return planting
+    }
     const currentGoal = ledger.goal()
     if (currentGoal?.hold) {
       ledger.clearHold?.()

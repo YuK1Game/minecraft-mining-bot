@@ -14,7 +14,8 @@
 //   does not walk back for the same things (player-drops.js).
 const { storable } = require('./player-storage-rubble')
 
-const JUNK = /^minecraft:(?:\w+_sapling|spider_eye|bone|feather|poisonous_potato|rotten_flesh|wheat_seeds|pumpkin_seeds|melon_seeds|beetroot_seeds|stick_unused)$/
+// Saplings and bones are kept: they grow the house's trees (dragon-saplings.js).
+const JUNK = /^minecraft:(?:dark_oak_sapling|spider_eye|feather|poisonous_potato|rotten_flesh|wheat_seeds|pumpkin_seeds|melon_seeds|beetroot_seeds|stick_unused)$/
 const TIER = { wooden: 1, golden: 1, stone: 2, iron: 3, diamond: 4, netherite: 5 }
 const AGAIN_MS = 10 * 60 * 1000
 const tierOf = name => TIER[/^minecraft:(\w+?)_(?:sword|pickaxe)$/.exec(name ?? '')?.[1]] ?? 0

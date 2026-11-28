@@ -10,6 +10,11 @@ const surfaces = {
   'minecraft:stone_hoe': ['minecraft:dirt', 'minecraft:grass', 'minecraft:grass_block'],
   'minecraft:wheat_seeds': ['minecraft:farmland']
 }
+// Saplings are planted on the top of received soil, and bone meal is used on a received sapling (player-saplings.js):
+// the wood near the house was cut out and each log was a 48 m trip (live 2026-11-28 23:00 JST).
+const SAPLINGS = ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'cherry'].map(wood => `minecraft:${wood}_sapling`)
+for (const sapling of SAPLINGS) surfaces[sapling] = ['minecraft:grass_block', 'minecraft:dirt', 'minecraft:podzol']
+surfaces['minecraft:bone_meal'] = SAPLINGS
 
 function dragonItemPlan ({ item, position, slot }, { state, raw, inventory, world, lineOfSight }) {
   if (['minecraft:bucket', 'minecraft:water_bucket', 'minecraft:glass_bottle'].includes(item)) return dragonWaterPlan({ item, position, slot }, { state, raw, inventory, world, lineOfSight })
@@ -27,7 +32,7 @@ function dragonItemPlan ({ item, position, slot }, { state, raw, inventory, worl
   if (item === EYE && ![false, 0].includes(block.properties?.end_portal_eye_bit)) throw Error('空のポータル枠を確認できません。')
   const above = world.getBlock(x, y + 1, z)
   if (above?.known !== true || !/^minecraft:(?:air|cave_air|void_air)$/.test(above.name) || above.extra?.length) throw Error('上面が空いていません。')
-  const top = item === EYE ? 13 / 16 : block.name === 'minecraft:farmland' ? 15 / 16 : 1
+  const top = item === EYE ? 13 / 16 : block.name === 'minecraft:farmland' ? 15 / 16 : SAPLINGS.includes(block.name) ? 0.5 : 1
   const clickPos = { x: 0.5, y: top, z: 0.5 }
   const point = { x: x + 0.5, y: y + top, z: z + 0.5 }
   if (state.position.y <= point.y) throw Error('対象の上面が見えていません。')
@@ -35,4 +40,4 @@ function dragonItemPlan ({ item, position, slot }, { state, raw, inventory, worl
   return { target: position, clicked: position, blockRuntimeId: block.runtimeId, clickPos, point, expectedBlock: block.name, face: 1, raw, slot }
 }
 
-module.exports = { dragonItemPlan }
+module.exports = { dragonItemPlan, SAPLINGS }
