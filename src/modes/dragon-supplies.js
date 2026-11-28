@@ -238,6 +238,14 @@ function createDragonSupplies (ctx) {
       if (!log) await acquire('log', 1)
       else await bench.craftPlanks(log.name, 1, occupied(getInventory()) === 36 ? Math.min(log.count, 16) : 1)
     } else if (material) {
+      // Iron in a chest by the house is taken before more is mined (dragon-stored-iron.js).
+      const stored = name === 'iron_ingot' && runtime.raw()?.dimension === 'overworld' && held(name) < target
+        ? require('./dragon-stored-iron').nextStoredIron(ctx.shared, ctx.shared.playerHouse?.origin, item => held(bare(item)), (ctx.now ?? Date.now)()) : null
+      if (stored) {
+        const item = bare(stored.name), wanted = item === 'iron_ingot' ? Math.min(stored.count, target - held(name)) : stored.count
+        const taken = await bank(stored.pos, item, held(item) + wanted, true)
+        return taken.done ? pending(item + ' をチェストから取り出しました。') : taken
+      }
       const batch = mining.enabled(ctx) ? Math.max(1, Math.min(name === 'iron_ingot' ? 24 : 8, target - held(name))) : 1
       const plank = rows().find(i => matches('planks', i))
       const fuel = held('coal') ? 'minecraft:coal' : held('charcoal') ? 'minecraft:charcoal' : plank?.name
