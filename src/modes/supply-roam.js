@@ -15,6 +15,22 @@
 const MISSES = 4, ROAM_M = 48, SAY_MS = 60000, ARRIVED_M = 20
 const HEADINGS = [[1, 0], [0, 1], [-1, 0], [0, -1]]
 
+// True when the cell under the log, down to four below, holds no log and reaches no ground: air or leaves only.
+function branchOnly (ctx, at) {
+  if (typeof ctx.getBlock !== 'function' || !Number.isFinite(at?.y)) return false
+  const begun = ctx.shared?.playerTree?.logs
+  if (Array.isArray(begun) && begun.some(log => log.x === at.x && log.y === at.y && log.z === at.z)) return false
+  for (let dy = 1; dy <= 4; dy++) {
+    const below = ctx.getBlock(at.x, at.y - dy, at.z)
+    if (below?.known !== true) return false
+    const name = String(below.name ?? '')
+    if (/_log$|_wood$/.test(name)) return false
+    if (/^minecraft:(?:air|cave_air)$|_leaves$/.test(name)) continue
+    return false
+  }
+  return true
+}
+
 async function roam (ctx, resource, step, feet, inView, { now = Date.now, afterWalks = false, findWood = null, buildTo = null } = {}) {
   const key = resource + ':miss'
   step[key] = Number(step[key] ?? 0) + 1
@@ -28,6 +44,11 @@ async function roam (ctx, resource, step, feet, inView, { now = Date.now, afterW
   const wood = resource === 'log'
   let receivedWood = wood && findWood ? await findWood() : null
   if (ctx.cancelled()) return false
+  // A log that hangs on a branch (air or leaves under it, no trunk down to the ground) is not walked or stacked to
+  // as a new tree: the dig-and-stack road under it ends at the leaves (live 2026-11-26/28 by the house, oak_log
+  // (9898, 71, 10142): ASCENT_HEADSPACE_BLOCKED, then 「視線が遮られている」, then the trip again, for half an hour).
+  // A tree already begun is finished elsewhere (dragon-tree.js); this only passes over such a log as the next one.
+  if (receivedWood && branchOnly(ctx, receivedWood)) receivedWood = null
   if (receivedWood && Math.round(Math.hypot(receivedWood.x + 0.5 - feet.x, receivedWood.z + 0.5 - feet.z)) <= ARRIVED_M) {
     if (typeof buildTo === 'function') {
       ctx.log?.(`プレイヤーモード: 近くの受信済みの原木 (${receivedWood.x}, ${receivedWood.z}) へ歩く道がないため、掘る・積む道で向かいます`)
@@ -66,4 +87,4 @@ async function roam (ctx, resource, step, feet, inView, { now = Date.now, afterW
   }
 }
 
-module.exports = { roam, MISSES, ROAM_M }
+module.exports = { roam, branchOnly, MISSES, ROAM_M }
