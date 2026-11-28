@@ -191,6 +191,11 @@ function createInventory ({ client, getState, crafting, allocateRequestId, onInv
       if (operation === attempt) operation = null
       if (attempt.ownedContainerId !== null && craftStatus().openContainer?.id === attempt.ownedContainerId) {
         try { crafting.closeContainer() } catch { /* Cleanup cannot change the server-confirmed swap result. */ }
+      } else if (!attempt.serverConfirmed && attempt.ownedContainerId === null && ['inventory', -1].includes(craftStatus().openContainer?.type)) {
+        // A swap that got no answer in an inventory screen found already open: that screen is closed, so the next
+        // swap opens a fresh one. Left open, every meal's swap reused it and timed out the same way while the Bot
+        // ate nothing at 9.8 health (live 2026-11-29 00:39-00:45 JST, container 35, 「持ち替え結果を確認できませんでした」).
+        try { crafting.closeContainer() } catch { /* the next swap reads the screen state again */ }
       }
     }
   }
