@@ -3,7 +3,7 @@
 const { standable } = require('./house/house-steps')
 const { full, bare, workingPickTier } = require('./dragon-supply-kit')
 const { approachOre, searchMine, coolLava, lake, DEPTH } = require('./dragon-early-quarry')
-const { roam, ROAM_M } = require('./supply-roam')
+const { roam, ROAM_M, branchOnly } = require('./supply-roam')
 const { digTool } = require('./dig-tool')
 const { cellRest } = require('./supply-cell-rest')
 const { treeAt, beginTree, clearTreeAccess } = require('./dragon-tree')
@@ -77,8 +77,9 @@ async function receivedWoodDestination (ctx, feet) {
       if (approached.resting(column)) continue
       for (let y = origin.y - 8; y <= origin.y + 8; y++) {
         const p = { ...column, y }, block = ctx.getBlock(p.x, p.y, p.z)
+        // A log that hangs on a branch is not a tree to walk to (supply-roam.js `branchOnly`).
         if (block?.known !== true || !SOURCES.log.test(bare(block.name)) ||
-            taken(block, p)) continue
+            taken(block, p) || branchOnly(ctx, p)) continue
         destination = column
         at = y
         best = distance
@@ -217,6 +218,8 @@ async function collect (ctx, name) {
       // foot (the nearest stand at the height of a log in the crown is on the leaves).
       const trunk = name === 'log' && ctx.runtime.raw().dimension === 'overworld' ? treeAt(ctx.getBlock, seen, skip) : null
       const cell = trunk?.find(p => !rested.resting(p) && exposedLog(ctx, p)) ?? seen
+      // A cluster of logs with no trunk under it (a branch over leaves, live 2026-11-28 by the house) is passed over as a new tree.
+      if (name === 'log' && !trunk?.some(p => !branchOnly(ctx, p)) && branchOnly(ctx, cell)) continue
       const block = ctx.getBlock(cell.x, cell.y, cell.z)
       // End portal frames are not candidates. Obsidian already in a lit frame
       // is never part of the collection route.
